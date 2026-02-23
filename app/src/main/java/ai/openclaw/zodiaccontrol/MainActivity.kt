@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol
 
 import ai.openclaw.zodiaccontrol.data.FakeTelemetryRepository
+import ai.openclaw.zodiaccontrol.data.FakeVehicleGateway
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModelFactory
 import android.os.Bundle
@@ -20,7 +21,11 @@ class MainActivity : ComponentActivity() {
 private fun zodiacApp() {
     val viewModel: CockpitViewModel =
         viewModel(
-            factory = CockpitViewModelFactory(FakeTelemetryRepository()),
+            factory =
+                CockpitViewModelFactory(
+                    telemetryRepository = FakeTelemetryRepository(),
+                    vehicleGateway = FakeVehicleGateway(),
+                ),
         )
     crtVectorScreen(viewModel = viewModel)
 }
