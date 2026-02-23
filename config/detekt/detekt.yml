@@ -1,0 +1,7 @@
+style:
+  MagicNumber:
+    active: false
+
+naming:
+  FunctionNaming:
+    functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
