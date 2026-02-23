@@ -1,11 +1,14 @@
 package ai.openclaw.zodiaccontrol
 
+import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
+import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,7 +71,12 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                     onSpeedChange = viewModel::setSpeed,
                 )
                 Spacer(Modifier.width(10.dp))
-                rightRail(state = state)
+                rightRail(
+                    state = state,
+                    onSelectTransport = viewModel::selectTransport,
+                    onConnect = viewModel::connectTransport,
+                    onDisconnect = viewModel::disconnectTransport,
+                )
             }
         }
 
@@ -143,12 +151,25 @@ private fun leftRail() {
 }
 
 @Composable
-private fun rightRail(state: CockpitUiState) {
+private fun rightRail(
+    state: CockpitUiState,
+    onSelectTransport: (TransportType) -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
     val modeLine =
         when (state.mode) {
             CockpitMode.DIAGNOSTIC -> "> MODE: DIAGNOSTIC"
             CockpitMode.DRIVE -> "> MODE: DRIVE"
             CockpitMode.COMBAT -> "> MODE: COMBAT"
+        }
+
+    val connectionLabel =
+        when (state.connectionPhase) {
+            ConnectionPhase.DISCONNECTED -> "DISCONNECTED"
+            ConnectionPhase.CONNECTING -> "CONNECTING"
+            ConnectionPhase.CONNECTED -> "CONNECTED"
+            ConnectionPhase.ERROR -> "ERROR"
         }
 
     Column(
@@ -160,11 +181,41 @@ private fun rightRail(state: CockpitUiState) {
                 .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        Text(
+            text = "> TRANSPORT",
+            color = Amber,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            transportChip(
+                label = "BLE",
+                selected = state.selectedTransport == TransportType.BLE,
+                onClick = { onSelectTransport(TransportType.BLE) },
+            )
+            transportChip(
+                label = "USB",
+                selected = state.selectedTransport == TransportType.USB,
+                onClick = { onSelectTransport(TransportType.USB) },
+            )
+            transportChip(
+                label = "WIFI",
+                selected = state.selectedTransport == TransportType.WIFI,
+                onClick = { onSelectTransport(TransportType.WIFI) },
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            actionChip(label = "CONNECT", onClick = onConnect)
+            actionChip(label = "DISCONNECT", onClick = onDisconnect)
+        }
+
         listOf(
             modeLine to Amber,
-            (if (state.linkStable) "> LINK ESTABLISHED" else "> LINK LOST") to
+            "> LINK ${if (state.linkStable) "ESTABLISHED" else "LOST"}" to
                 (if (state.linkStable) VectorGreen else Amber),
-            "> VECTOR CORE READY" to VectorGreen,
+            "> CONN: $connectionLabel" to VectorGreen,
             "> THERMAL ${state.thermalC}C" to VectorGreen,
             "> TOUCH INPUT ACTIVE" to VectorGreen,
             "> NO PROTOCOL BINDING (V1)" to Amber,
@@ -176,6 +227,49 @@ private fun rightRail(state: CockpitUiState) {
                 fontFamily = FontFamily.Monospace,
             )
         }
+    }
+}
+
+@Composable
+private fun transportChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .border(1.dp, if (selected) Amber else VectorGreen)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (selected) Amber else VectorGreen,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+        )
+    }
+}
+
+@Composable
+private fun actionChip(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .border(1.dp, ElectricBlue)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(
+            text = label,
+            color = ElectricBlue,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 10.sp,
+        )
     }
 }
 
