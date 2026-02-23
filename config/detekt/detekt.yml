@@ -1,6 +1,12 @@
 style:
   MagicNumber:
     active: false
+  MaxLineLength:
+    active: false
+
+complexity:
+  LongMethod:
+    active: false
 
 naming:
   FunctionNaming:

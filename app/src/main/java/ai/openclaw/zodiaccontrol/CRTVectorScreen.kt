@@ -1,5 +1,8 @@
 package ai.openclaw.zodiaccontrol
 
+import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
+import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,25 +20,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.consume
-import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.max
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.min
 
 private val Bg = Color(0xFF000000)
@@ -45,35 +42,33 @@ private val Amber = Color(0xFFFFD166)
 private val DarkGreen = Color(0xFF0A3D1D)
 
 @Composable
-fun CRTVectorScreen() {
-    var heading by remember { mutableFloatStateOf(42f) }
-    var speed by remember { mutableFloatStateOf(28f) }
-    var mode by remember { mutableStateOf("DIAGNOSTIC") }
+fun crtVectorScreen(viewModel: CockpitViewModel) {
+    val state = viewModel.uiState.collectAsStateWithLifecycle().value
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Bg)
-            .padding(12.dp)
-            .border(2.dp, VectorGreen)
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(Bg)
+                .padding(12.dp)
+                .border(2.dp, VectorGreen),
     ) {
-        ScanLineOverlay()
+        scanLineOverlay()
 
         Column(Modifier.fillMaxSize()) {
-            TopHeader(mode = mode, heading = heading, speed = speed)
+            topHeader(state = state)
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxSize()) {
-                LeftRail()
+                leftRail()
                 Spacer(Modifier.width(10.dp))
-                CenterViewport(
+                centerViewport(
                     modifier = Modifier.weight(1f),
-                    heading = heading,
-                    onHeadingChange = { heading = it },
-                    speed = speed,
-                    onSpeedChange = { speed = it }
+                    state = state,
+                    onHeadingChange = viewModel::setHeading,
+                    onSpeedChange = viewModel::setSpeed,
                 )
                 Spacer(Modifier.width(10.dp))
-                RightRail()
+                rightRail(state = state)
             }
         }
 
@@ -82,69 +77,51 @@ fun CRTVectorScreen() {
             color = VectorGreen,
             fontSize = 15.sp,
             fontFamily = FontFamily.Monospace,
-            modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
-        )
-
-        Text(
-            text = "DOUBLE TAP MODE TO CYCLE",
-            color = Amber,
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-                .pointerInteropFilter {
-                    if (it.action == android.view.MotionEvent.ACTION_DOWN && it.eventTime - it.downTime < 180) {
-                        mode = when (mode) {
-                            "DIAGNOSTIC" -> "DRIVE"
-                            "DRIVE" -> "COMBAT"
-                            else -> "DIAGNOSTIC"
-                        }
-                    }
-                    true
-                }
+            modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
         )
     }
 }
 
 @Composable
-private fun TopHeader(mode: String, heading: Float, speed: Float) {
+private fun topHeader(state: CockpitUiState) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp)
-            .border(1.dp, VectorGreen)
-            .padding(horizontal = 12.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .border(1.dp, VectorGreen)
+                .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        HeaderText("MODE: $mode")
-        HeaderText("HDG: ${heading.toInt()}°")
-        HeaderText("VEL: ${speed.toInt()} kph")
-        HeaderText("LINK: STABLE")
+        headerText("MODE: ${state.mode.name}")
+        headerText("HDG: ${state.headingDeg}°")
+        headerText("VEL: ${state.speedKph} kph")
+        headerText("THERM: ${state.thermalC}C")
     }
 }
 
 @Composable
-private fun HeaderText(value: String) {
+private fun headerText(value: String) {
     Text(
         text = value,
         color = VectorGreen,
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Bold,
-        fontSize = 14.sp
+        fontSize = 14.sp,
     )
 }
 
 @Composable
-private fun LeftRail() {
+private fun leftRail() {
     Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(190.dp)
-            .border(1.dp, ElectricBlue)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier =
+            Modifier
+                .fillMaxHeight()
+                .width(190.dp)
+                .border(1.dp, ElectricBlue)
+                .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         repeat(6) { idx ->
             Box(
@@ -152,13 +129,13 @@ private fun LeftRail() {
                     .fillMaxWidth()
                     .height(56.dp)
                     .border(1.dp, VectorGreen, RoundedCornerShape(4.dp))
-                    .padding(8.dp)
+                    .padding(8.dp),
             ) {
                 Text(
                     text = "SYS-${idx + 1}",
                     color = VectorGreen,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
                 )
             }
         }
@@ -166,65 +143,75 @@ private fun LeftRail() {
 }
 
 @Composable
-private fun RightRail() {
+private fun rightRail(state: CockpitUiState) {
+    val modeLine =
+        when (state.mode) {
+            CockpitMode.DIAGNOSTIC -> "> MODE: DIAGNOSTIC"
+            CockpitMode.DRIVE -> "> MODE: DRIVE"
+            CockpitMode.COMBAT -> "> MODE: COMBAT"
+        }
+
     Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(235.dp)
-            .border(1.dp, ElectricBlue)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        modifier =
+            Modifier
+                .fillMaxHeight()
+                .width(235.dp)
+                .border(1.dp, ElectricBlue)
+                .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         listOf(
-            "> MODE: DIAGNOSTIC" to Amber,
-            "> LINK ESTABLISHED" to VectorGreen,
+            modeLine to Amber,
+            (if (state.linkStable) "> LINK ESTABLISHED" else "> LINK LOST") to
+                (if (state.linkStable) VectorGreen else Amber),
             "> VECTOR CORE READY" to VectorGreen,
-            "> THERMAL NOMINAL" to VectorGreen,
+            "> THERMAL ${state.thermalC}C" to VectorGreen,
             "> TOUCH INPUT ACTIVE" to VectorGreen,
-            "> NO PROTOCOL BINDING (V1)" to Amber
+            "> NO PROTOCOL BINDING (V1)" to Amber,
         ).forEach { (line, color) ->
             Text(
                 text = line,
                 color = color,
                 fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.Monospace,
             )
         }
     }
 }
 
 @Composable
-private fun CenterViewport(
+private fun centerViewport(
     modifier: Modifier,
-    heading: Float,
-    onHeadingChange: (Float) -> Unit,
-    speed: Float,
-    onSpeedChange: (Float) -> Unit
+    state: CockpitUiState,
+    onHeadingChange: (Int) -> Unit,
+    onSpeedChange: (Int) -> Unit,
 ) {
     Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .border(1.dp, VectorGreen)
-            .padding(8.dp)
+        modifier =
+            modifier
+                .fillMaxHeight()
+                .border(1.dp, VectorGreen)
+                .padding(8.dp),
     ) {
-        Canvas(modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull() ?: continue
-                        if (change.pressed) {
-                            val nx = change.position.x / size.width
-                            val ny = change.position.y / size.height
-                            onHeadingChange((nx * 359f).coerceIn(0f, 359f))
-                            onSpeedChange((ny * 120f).coerceIn(0f, 120f))
-                            change.consume()
+        Canvas(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: continue
+                                if (change.pressed) {
+                                    val nx = change.position.x / size.width
+                                    val ny = change.position.y / size.height
+                                    onHeadingChange((nx * 359f).toInt())
+                                    onSpeedChange((ny * 120f).toInt())
+                                }
+                            }
                         }
-                    }
-                }
-            }) {
-            // perspective grid
+                    },
+        ) {
             val horizon = size.height * 0.62f
             for (i in -12..12) {
                 val x = size.width / 2 + i * (size.width / 26f)
@@ -235,14 +222,14 @@ private fun CenterViewport(
                 drawLine(DarkGreen, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
             }
 
-            // wireframe rover/taxi body
             val center = Offset(size.width / 2, size.height * 0.48f)
             val s = min(size.width, size.height) * 0.24f
-            val pts = listOf(
-                Offset(-1.3f, -0.2f), Offset(-1.0f, -0.55f), Offset(-0.2f, -0.7f), Offset(0.55f, -0.7f),
-                Offset(1.15f, -0.45f), Offset(1.35f, -0.1f), Offset(1.2f, 0.2f), Offset(0.75f, 0.45f),
-                Offset(-0.7f, 0.5f), Offset(-1.2f, 0.25f)
-            ).map { Offset(center.x + it.x * s, center.y + it.y * s) }
+            val pts =
+                listOf(
+                    Offset(-1.3f, -0.2f), Offset(-1.0f, -0.55f), Offset(-0.2f, -0.7f), Offset(0.55f, -0.7f),
+                    Offset(1.15f, -0.45f), Offset(1.35f, -0.1f), Offset(1.2f, 0.2f), Offset(0.75f, 0.45f),
+                    Offset(-0.7f, 0.5f), Offset(-1.2f, 0.25f),
+                ).map { Offset(center.x + it.x * s, center.y + it.y * s) }
 
             for (i in pts.indices) {
                 drawLine(VectorGreen, pts[i], pts[(i + 1) % pts.size], strokeWidth = 2f, cap = StrokeCap.Round)
@@ -254,36 +241,54 @@ private fun CenterViewport(
                 if (i < pts.size) drawLine(VectorGreen, pts[i], top[i], strokeWidth = 1f)
             }
 
-            // wheels
-            val lw = Offset(center.x - 0.68f * s, center.y + 0.56f * s)
-            val rw = Offset(center.x + 0.55f * s, center.y + 0.56f * s)
-            drawCircle(VectorGreen, radius = 0.23f * s, center = lw, style = Stroke(width = 2f))
-            drawCircle(VectorGreen, radius = 0.23f * s, center = rw, style = Stroke(width = 2f))
-            drawCircle(VectorGreen, radius = 0.13f * s, center = lw, style = Stroke(width = 1.4f))
-            drawCircle(VectorGreen, radius = 0.13f * s, center = rw, style = Stroke(width = 1.4f))
+            val leftWheel = Offset(center.x - 0.68f * s, center.y + 0.56f * s)
+            val rightWheel = Offset(center.x + 0.55f * s, center.y + 0.56f * s)
+            drawCircle(VectorGreen, radius = 0.23f * s, center = leftWheel, style = Stroke(width = 2f))
+            drawCircle(VectorGreen, radius = 0.23f * s, center = rightWheel, style = Stroke(width = 2f))
+            drawCircle(VectorGreen, radius = 0.13f * s, center = leftWheel, style = Stroke(width = 1.4f))
+            drawCircle(VectorGreen, radius = 0.13f * s, center = rightWheel, style = Stroke(width = 1.4f))
 
-            // status vectors
-            drawLine(Amber, Offset(center.x - 0.2f * s, center.y - 0.7f * s), Offset(center.x - 0.85f * s, center.y - 1.1f * s), strokeWidth = 1.4f)
-            drawLine(Amber, Offset(center.x + 0.55f * s, center.y - 0.2f * s), Offset(center.x + 1.15f * s, center.y - 0.45f * s), strokeWidth = 1.4f)
+            drawLine(
+                Amber,
+                Offset(center.x - 0.2f * s, center.y - 0.7f * s),
+                Offset(center.x - 0.85f * s, center.y - 1.1f * s),
+                strokeWidth = 1.4f,
+            )
+            drawLine(
+                Amber,
+                Offset(center.x + 0.55f * s, center.y - 0.2f * s),
+                Offset(center.x + 1.15f * s, center.y - 0.45f * s),
+                strokeWidth = 1.4f,
+            )
 
             drawContext.canvas.nativeCanvas.apply {
-                drawText("HDG ${heading.toInt()}°", center.x - s, center.y + s * 1.15f, android.graphics.Paint().apply {
-                    color = android.graphics.Color.rgb(0, 255, 102)
-                    textSize = 28f
-                    typeface = android.graphics.Typeface.MONOSPACE
-                })
-                drawText("SPD ${speed.toInt()} kph", center.x + s * 0.2f, center.y + s * 1.15f, android.graphics.Paint().apply {
-                    color = android.graphics.Color.rgb(255, 209, 102)
-                    textSize = 28f
-                    typeface = android.graphics.Typeface.MONOSPACE
-                })
+                drawText(
+                    "HDG ${state.headingDeg}°",
+                    center.x - s,
+                    center.y + s * 1.15f,
+                    android.graphics.Paint().apply {
+                        color = android.graphics.Color.rgb(0, 255, 102)
+                        textSize = 28f
+                        typeface = android.graphics.Typeface.MONOSPACE
+                    },
+                )
+                drawText(
+                    "SPD ${state.speedKph} kph",
+                    center.x + s * 0.2f,
+                    center.y + s * 1.15f,
+                    android.graphics.Paint().apply {
+                        color = android.graphics.Color.rgb(255, 209, 102)
+                        textSize = 28f
+                        typeface = android.graphics.Typeface.MONOSPACE
+                    },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ScanLineOverlay() {
+private fun scanLineOverlay() {
     Canvas(Modifier.fillMaxSize()) {
         val step = 4f
         var y = 0f
@@ -292,7 +297,7 @@ private fun ScanLineOverlay() {
                 color = Color(0x1100FF66),
                 start = Offset(0f, y),
                 end = Offset(size.width, y),
-                strokeWidth = 1f
+                strokeWidth = 1f,
             )
             y += step
         }
