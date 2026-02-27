@@ -1,0 +1,3 @@
+First-pass edge detection overlays.
+Wheelbase: 101 inches.
+Symmetry: left-right identical.
