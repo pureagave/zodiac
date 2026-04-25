@@ -4,6 +4,7 @@ import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.model.VehicleCommand
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
 import ai.openclaw.zodiaccontrol.data.VehicleConnectionGateway
+import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 class CockpitViewModel(
     private val telemetryRepository: TelemetryRepository,
     private val vehicleGateway: VehicleConnectionGateway,
+    private val playaMapRepository: PlayaMapRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CockpitUiState())
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
@@ -50,6 +52,13 @@ class CockpitViewModel(
                         connectionDetail = connection.detail,
                     )
                 }
+            }
+        }
+
+        viewModelScope.launch { playaMapRepository.load() }
+        viewModelScope.launch {
+            playaMapRepository.map.collect { map ->
+                _uiState.update { it.copy(playaMap = map) }
             }
         }
     }
@@ -87,6 +96,7 @@ class CockpitViewModel(
 class CockpitViewModelFactory(
     private val telemetryRepository: TelemetryRepository,
     private val vehicleGateway: VehicleConnectionGateway,
+    private val playaMapRepository: PlayaMapRepository,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -94,6 +104,7 @@ class CockpitViewModelFactory(
             return CockpitViewModel(
                 telemetryRepository = telemetryRepository,
                 vehicleGateway = vehicleGateway,
+                playaMapRepository = playaMapRepository,
             ) as T
         }
         error("Unknown ViewModel class: ${modelClass.name}")

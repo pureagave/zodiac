@@ -2,7 +2,12 @@ package ai.openclaw.zodiaccontrol
 
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
+import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
+import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
+import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.ui.playamap.drawPlayaMap
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.Canvas
@@ -23,26 +28,27 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.math.min
 
 private val Bg = Color(0xFF000000)
 private val VectorGreen = Color(0xFF00FF66)
 private val ElectricBlue = Color(0xFF00BFFF)
 private val Amber = Color(0xFFFFD166)
-private val DarkGreen = Color(0xFF0A3D1D)
+
+private const val MAP_PIXELS_PER_METER = 0.18
+private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
 @Composable
 fun crtVectorScreen(viewModel: CockpitViewModel) {
@@ -280,6 +286,9 @@ private fun centerViewport(
     onHeadingChange: (Int) -> Unit,
     onSpeedChange: (Int) -> Unit,
 ) {
+    val map = state.playaMap
+    val projection = remember { PLAYA_PROJECTION }
+
     Box(
         modifier =
             modifier
@@ -306,79 +315,30 @@ private fun centerViewport(
                         }
                     },
         ) {
-            val horizon = size.height * 0.62f
-            for (i in -12..12) {
-                val x = size.width / 2 + i * (size.width / 26f)
-                drawLine(DarkGreen, Offset(size.width / 2, horizon), Offset(x, size.height), strokeWidth = 1f)
-            }
-            for (j in 0..8) {
-                val y = horizon + j * ((size.height - horizon) / 9f)
-                drawLine(DarkGreen, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-            }
-
-            val center = Offset(size.width / 2, size.height * 0.48f)
-            val s = min(size.width, size.height) * 0.24f
-            val pts =
-                listOf(
-                    Offset(-1.3f, -0.2f), Offset(-1.0f, -0.55f), Offset(-0.2f, -0.7f), Offset(0.55f, -0.7f),
-                    Offset(1.15f, -0.45f), Offset(1.35f, -0.1f), Offset(1.2f, 0.2f), Offset(0.75f, 0.45f),
-                    Offset(-0.7f, 0.5f), Offset(-1.2f, 0.25f),
-                ).map { Offset(center.x + it.x * s, center.y + it.y * s) }
-
-            for (i in pts.indices) {
-                drawLine(VectorGreen, pts[i], pts[(i + 1) % pts.size], strokeWidth = 2f, cap = StrokeCap.Round)
-            }
-
-            val top = pts.take(8).map { Offset(it.x + s * 0.2f, it.y - s * 0.18f) }
-            for (i in top.indices) {
-                drawLine(VectorGreen, top[i], top[(i + 1) % top.size], strokeWidth = 1.3f)
-                if (i < pts.size) drawLine(VectorGreen, pts[i], top[i], strokeWidth = 1f)
-            }
-
-            val leftWheel = Offset(center.x - 0.68f * s, center.y + 0.56f * s)
-            val rightWheel = Offset(center.x + 0.55f * s, center.y + 0.56f * s)
-            drawCircle(VectorGreen, radius = 0.23f * s, center = leftWheel, style = Stroke(width = 2f))
-            drawCircle(VectorGreen, radius = 0.23f * s, center = rightWheel, style = Stroke(width = 2f))
-            drawCircle(VectorGreen, radius = 0.13f * s, center = leftWheel, style = Stroke(width = 1.4f))
-            drawCircle(VectorGreen, radius = 0.13f * s, center = rightWheel, style = Stroke(width = 1.4f))
-
-            drawLine(
-                Amber,
-                Offset(center.x - 0.2f * s, center.y - 0.7f * s),
-                Offset(center.x - 0.85f * s, center.y - 1.1f * s),
-                strokeWidth = 1.4f,
-            )
-            drawLine(
-                Amber,
-                Offset(center.x + 0.55f * s, center.y - 0.2f * s),
-                Offset(center.x + 1.15f * s, center.y - 0.45f * s),
-                strokeWidth = 1.4f,
-            )
-
-            drawContext.canvas.nativeCanvas.apply {
-                drawText(
-                    "HDG ${state.headingDeg}°",
-                    center.x - s,
-                    center.y + s * 1.15f,
-                    android.graphics.Paint().apply {
-                        color = android.graphics.Color.rgb(0, 255, 102)
-                        textSize = 28f
-                        typeface = android.graphics.Typeface.MONOSPACE
-                    },
-                )
-                drawText(
-                    "SPD ${state.speedKph} kph",
-                    center.x + s * 0.2f,
-                    center.y + s * 1.15f,
-                    android.graphics.Paint().apply {
-                        color = android.graphics.Color.rgb(255, 209, 102)
-                        textSize = 28f
-                        typeface = android.graphics.Typeface.MONOSPACE
-                    },
-                )
+            if (map != null) {
+                val viewport =
+                    PlayaViewport(
+                        center = PlayaPoint(0.0, 0.0),
+                        headingDeg = state.headingDeg.toDouble(),
+                        pixelsPerMeter = MAP_PIXELS_PER_METER,
+                        widthPx = size.width.toInt(),
+                        heightPx = size.height.toInt(),
+                    )
+                drawPlayaMap(map = map, projection = projection, viewport = viewport)
+            } else {
+                drawNoMapPlaceholder()
             }
         }
     }
+}
+
+private fun DrawScope.drawNoMapPlaceholder() {
+    drawCircle(
+        color = VectorGreen,
+        radius = 6f,
+        center = Offset(size.width / 2f, size.height / 2f),
+        style = Stroke(width = 1f),
+    )
 }
 
 @Composable

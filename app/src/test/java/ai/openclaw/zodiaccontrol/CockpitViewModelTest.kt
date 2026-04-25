@@ -1,14 +1,17 @@
 package ai.openclaw.zodiaccontrol
 
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import ai.openclaw.zodiaccontrol.core.model.Telemetry
 import ai.openclaw.zodiaccontrol.core.model.VehicleCommand
 import ai.openclaw.zodiaccontrol.data.FakeVehicleGateway
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
+import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -34,6 +37,7 @@ class CockpitViewModelTest {
                 CockpitViewModel(
                     telemetryRepository = StaticTelemetryRepo(),
                     vehicleGateway = gateway,
+                    playaMapRepository = NoOpPlayaMapRepository,
                 )
 
             vm.setHeading(123)
@@ -41,6 +45,12 @@ class CockpitViewModelTest {
 
             assertTrue(gateway.history().contains(VehicleCommand.SetHeading(123)))
         }
+}
+
+private object NoOpPlayaMapRepository : PlayaMapRepository {
+    override val map: Flow<PlayaMap> = emptyFlow()
+
+    override suspend fun load() = Unit
 }
 
 private class StaticTelemetryRepo : TelemetryRepository {

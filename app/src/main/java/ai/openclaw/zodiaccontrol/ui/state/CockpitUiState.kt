@@ -3,6 +3,7 @@ package ai.openclaw.zodiaccontrol.ui.state
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 
 data class CockpitUiState(
     val headingDeg: Int = 42,
@@ -13,4 +14,5 @@ data class CockpitUiState(
     val selectedTransport: TransportType = TransportType.BLE,
     val connectionPhase: ConnectionPhase = ConnectionPhase.DISCONNECTED,
     val connectionDetail: String? = null,
+    val playaMap: PlayaMap? = null,
 )

@@ -3,6 +3,7 @@ package ai.openclaw.zodiaccontrol
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.data.FakeTelemetryRepository
 import ai.openclaw.zodiaccontrol.data.RoutedVehicleGateway
+import ai.openclaw.zodiaccontrol.data.playa.AssetsPlayaMapRepository
 import ai.openclaw.zodiaccontrol.data.transport.FakeTransportAdapter
 import ai.openclaw.zodiaccontrol.data.transport.TransportRegistry
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -12,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 class MainActivity : ComponentActivity() {
@@ -23,6 +25,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun zodiacApp() {
+    val context = LocalContext.current
     val gateway =
         remember {
             val registry =
@@ -40,6 +43,7 @@ private fun zodiacApp() {
                 initialTransport = TransportType.BLE,
             )
         }
+    val playaMapRepository = remember { AssetsPlayaMapRepository(context.assets) }
 
     val viewModel: CockpitViewModel =
         viewModel(
@@ -47,6 +51,7 @@ private fun zodiacApp() {
                 CockpitViewModelFactory(
                     telemetryRepository = FakeTelemetryRepository(),
                     vehicleGateway = gateway,
+                    playaMapRepository = playaMapRepository,
                 ),
         )
     crtVectorScreen(viewModel = viewModel)

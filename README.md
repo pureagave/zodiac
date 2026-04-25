@@ -14,9 +14,9 @@ Android tablet cockpit app for the mutant Zodiac vehicle (Judge Dredd taxi-inspi
 
 - CRT-style sci-fi dashboard shell
 - Left subsystem rail + right status/event rail
-- Interactive center wireframe viewport (touch adjusts heading/speed)
-- Scanline overlay + perspective grid
-- Black Rock City map data layer: 2025 GIS bundled in `app/src/main/assets/brc/2025/`, parsed into a `PlayaMap` domain model with an equirectangular projection anchored on the Golden Spike. UI overlay TBD (Phase 2).
+- Center viewport: top-down BRC map (trash fence, streets, plazas, toilets, CPNs) with track-up rotation following vehicle heading; small amber ego triangle at center. Touch on the viewport sets heading (X) and speed (Y).
+- Scanline overlay
+- Black Rock City map data layer: 2025 GIS bundled in `app/src/main/assets/brc/2025/`, parsed into a typed `PlayaMap` and projected via `PlayaProjection` (equirectangular, anchored on the Golden Spike) and `PlayaViewport` (track-up, configurable zoom).
 - Baseline quality tooling (ktlint + detekt)
 - GitHub Actions CI (lint + static analysis + unit tests + debug assemble)
 

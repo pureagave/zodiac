@@ -6,6 +6,27 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-25 — Phase 2 landed: BRC map rendering
+
+The center viewport now draws the playa top-down. Replaced the perspective-grid + 3/4 vehicle wireframe with:
+
+- `core/geo/PlayaViewport` — pure transform with `center`, `headingDeg`, `pixelsPerMeter`, viewport size. Track-up: heading direction is at the top, geographic north is up only when heading=0.
+- `ui/playamap/BrcMapRenderer.drawPlayaMap` — DrawScope extension. Draws back-to-front: street outlines, street centerlines, trash fence (bright green, closed), plazas (amber, closed), toilet centroids (blue dots), CPN points (green dots), then a small amber ego triangle dead-centre.
+- `CockpitUiState.playaMap`, `CockpitViewModel(playaMapRepository)` — VM kicks off `load()` on init and forwards the parsed map into state.
+- `MainActivity` wires `AssetsPlayaMapRepository(context.assets)`.
+
+Visual confirmation captured on emulator (`/tmp/zodiac-phase2.png`): pentagon fence, C-shaped streets converging at the Man, plaza/toilet markers visible. Touch-to-set heading/speed still works on top of the map (touching different X positions visibly rotates the world).
+
+Style/build notes for next phase:
+- Detekt's `LongParameterList` rule **counts the receiver** for extension functions — `DrawScope.foo(a,b,c,d,e,f)` is 7 params for the rule. Bundle related args into a small `RenderCtx` data class to stay under 6.
+- The CRT styling holds up well in track-up mode. The 3/4 wireframe is preserved in git history (`05ebba5`) — reintroduce as a separate "vehicle status" mode if/when wanted.
+
+Tests: 21 unit tests total now (6 projection + 6 viewport + 5 parser + 4 pre-existing); full CI gate clean.
+
+Phase 3 (art layer, iBurn-Data) and Phase 4 (real GPS source) are still queued.
+
+---
+
 ## 2026-04-25 — Phase 1 landed: PlayaMap data layer
 
 Bundled the 2025 BRC GIS GeoJSON in `app/src/main/assets/brc/2025/` (7 files, ~907 KB). New code:
