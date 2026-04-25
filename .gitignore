@@ -1,6 +1,7 @@
 .openclaw/
 .tooling/
 .gradle/
+.claude/
 **/build/
 local.properties
 *.log
