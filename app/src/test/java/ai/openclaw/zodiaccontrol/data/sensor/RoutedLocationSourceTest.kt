@@ -6,6 +6,7 @@ import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -54,6 +55,32 @@ class RoutedLocationSourceTest {
 
             assertEquals(1, fake.startCalls)
             assertEquals(0, fake.stopCalls)
+        }
+
+    @Test
+    fun concurrent_selects_serialize_through_mutex() =
+        runTest(UnconfinedTestDispatcher()) {
+            val fake = StubLocationSource(LocationSourceType.FAKE)
+            val system = StubLocationSource(LocationSourceType.SYSTEM)
+            val ble = StubLocationSource(LocationSourceType.BLE)
+            val routed = newRouted(listOf(fake, system, ble), LocationSourceType.FAKE, this.backgroundScope)
+
+            routed.start()
+            // Two concurrent select() calls — without the Mutex, both could pass
+            // the `type == _selected.value` guard against the initial FAKE and
+            // race on the start/stop sequencing. With the Mutex, they serialize:
+            // FAKE → SYSTEM → BLE, with each transport stopped exactly once.
+            val a = launch { routed.select(LocationSourceType.SYSTEM) }
+            val b = launch { routed.select(LocationSourceType.BLE) }
+            a.join()
+            b.join()
+
+            assertEquals(LocationSourceType.BLE, routed.selected.value)
+            assertEquals(1, fake.startCalls)
+            assertEquals(1, fake.stopCalls)
+            assertEquals(1, system.startCalls)
+            assertEquals(1, system.stopCalls)
+            assertEquals(1, ble.startCalls)
         }
 
     @Test

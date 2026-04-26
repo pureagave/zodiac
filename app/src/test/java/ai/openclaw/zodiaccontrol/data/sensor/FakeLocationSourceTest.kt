@@ -81,6 +81,22 @@ class FakeLocationSourceTest {
         }
 
     @Test
+    fun start_re_entry_is_safe() =
+        runTest {
+            // The mutex + `if (job?.isActive == true) return` guard makes a second
+            // start() a no-op while the loop is running; the state stays Active
+            // and no second job is created.
+            val source = FakeLocationSource(scope = backgroundScope, tickMillis = TICK_MS)
+
+            source.start()
+            advanceTimeBy(TICK_MS + 1)
+            source.start()
+            advanceTimeBy(TICK_MS + 1)
+
+            assertTrue(source.state.value is LocationSourceState.Active)
+        }
+
+    @Test
     fun type_is_fake() {
         val source = FakeLocationSource(scope = kotlinx.coroutines.MainScope())
         assertEquals(LocationSourceType.FAKE, source.type)

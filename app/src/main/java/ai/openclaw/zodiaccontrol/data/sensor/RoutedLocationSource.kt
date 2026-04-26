@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Holds the active [LocationSource] selection and reflects its [state] as a
@@ -28,23 +30,28 @@ class RoutedLocationSource(
     private val _selected = MutableStateFlow(initialType)
     val selected: StateFlow<LocationSourceType> = _selected.asStateFlow()
 
+    private val mutex = Mutex()
+
     val state: StateFlow<LocationSourceState> =
         _selected
             .flatMapLatest { type -> registry.sourceFor(type).state }
             .stateIn(scope, SharingStarted.Eagerly, LocationSourceState.Disconnected)
 
-    suspend fun start() {
-        registry.sourceFor(_selected.value).start()
-    }
+    suspend fun start() =
+        mutex.withLock {
+            registry.sourceFor(_selected.value).start()
+        }
 
-    suspend fun select(type: LocationSourceType) {
-        if (type == _selected.value) return
-        registry.sourceFor(_selected.value).stop()
-        _selected.value = type
-        registry.sourceFor(type).start()
-    }
+    suspend fun select(type: LocationSourceType) =
+        mutex.withLock {
+            if (type == _selected.value) return@withLock
+            registry.sourceFor(_selected.value).stop()
+            _selected.value = type
+            registry.sourceFor(type).start()
+        }
 
-    suspend fun stop() {
-        registry.sourceFor(_selected.value).stop()
-    }
+    suspend fun stop() =
+        mutex.withLock {
+            registry.sourceFor(_selected.value).stop()
+        }
 }

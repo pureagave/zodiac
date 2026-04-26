@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -34,25 +36,28 @@ class FakeLocationSource(
 
     private var job: Job? = null
     private var startTimeMs: Long = 0L
+    private val mutex = Mutex()
 
-    override suspend fun start() {
-        if (job?.isActive == true) return
-        startTimeMs = System.currentTimeMillis()
-        _state.value = LocationSourceState.Searching
-        job =
-            scope.launch {
-                while (true) {
-                    _state.value = LocationSourceState.Active(currentFix())
-                    delay(tickMillis)
+    override suspend fun start() =
+        mutex.withLock {
+            if (job?.isActive == true) return@withLock
+            startTimeMs = System.currentTimeMillis()
+            _state.value = LocationSourceState.Searching
+            job =
+                scope.launch {
+                    while (true) {
+                        _state.value = LocationSourceState.Active(currentFix())
+                        delay(tickMillis)
+                    }
                 }
-            }
-    }
+        }
 
-    override suspend fun stop() {
-        job?.cancel()
-        job = null
-        _state.value = LocationSourceState.Disconnected
-    }
+    override suspend fun stop() =
+        mutex.withLock {
+            job?.cancel()
+            job = null
+            _state.value = LocationSourceState.Disconnected
+        }
 
     private fun currentFix(): GpsFix {
         val elapsedSec = (System.currentTimeMillis() - startTimeMs) / 1_000.0

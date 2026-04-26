@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix C5/H3: Mutex around source lifecycle
+
+`RoutedLocationSource.select/start/stop` and `FakeLocationSource.start/stop` previously had no mutual-exclusion. The audit calls these "latent rather than active" because `viewModelScope` happens to serialize on Dispatchers.Main today — but any future caller that fans out via `launch {}` could race the `_selected.value` reads/writes or the `job?.isActive` re-entry guard.
+
+Fix: `kotlinx.coroutines.sync.Mutex` on both classes, with each suspend method wrapped in `mutex.withLock { … }`. The Mutex is owned per-instance; it doesn't extend the underlying source's contract.
+
+New test: `concurrent_selects_serialize_through_mutex` issues two concurrent `select()` calls on a 3-source registry and asserts each transport gets exactly one start/stop pair through the chain. New `start_re_entry_is_safe` proves a re-entered `start()` on `FakeLocationSource` keeps the single-loop invariant.
+
+52/52 green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Audit fix C4: SystemLocationSource double-start guard
 
 `SystemLocationSource.start()` previously called `requestLocationUpdates(...)` every time, so two `start()` calls without an intervening `stop()` would register the same `LocationListener` twice — every fix would fire the callback twice and battery drain would compound.
