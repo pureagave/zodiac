@@ -48,6 +48,7 @@ class ZodiacApplication : Application() {
         RoutedVehicleGateway(
             transportRegistry = registry,
             initialTransport = TransportType.BLE,
+            scope = applicationScope,
         )
     }
 

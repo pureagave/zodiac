@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix H1: derive RoutedVehicleGateway.connectionState
+
+`RoutedVehicleGateway` previously kept its own `MutableStateFlow<ConnectionState>` and updated it imperatively after every adapter call (`_connectionState.value = currentAdapter().state.value`). The audit notes this works only because `FakeTransportAdapter.send` is synchronous; once the underlying adapter emits `ConnectionState` updates from its own coroutine (the eventual real BLE/USB/WiFi adapters will), the snapshot read lags any state change that happens between the call returning and the read landing.
+
+Fix: drop the manual `MutableStateFlow`. `connectionState` is now derived from the active adapter's state via `_selectedTransport.flatMapLatest { adapter(it).state }.stateIn(scope, Eagerly, …)` — the same shape `RoutedLocationSource` already uses. `connect/disconnect/send/selectTransport` no longer touch `_connectionState`; the underlying adapter's emissions propagate automatically.
+
+Constructor gains a `scope: CoroutineScope` parameter; `ZodiacApplication` passes the process-lifetime `applicationScope` it already owns.
+
+New test: `connection_state_forwards_active_adapter_state` confirms (a) underlying adapter `connect()` propagates to gateway state, (b) `selectTransport` reroutes the forwarding to the new adapter's state. Existing happy-path test updated to pass `backgroundScope`.
+
+53/53 green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Audit fix C1: hoist DI graph into ZodiacApplication
 
 `MainActivity`'s Composable previously built `MainScope()` inside `remember{}` and constructed the entire DI graph (registries, routed sources, gateway, repos) there. The scope was never cancelled — every Activity recreation would leak a fresh MainScope and orphan the prior subscriptions. The audit notes the landscape-only orientation lock has masked this so far; any future config-change handling would expose it.
