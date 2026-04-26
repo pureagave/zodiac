@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
     <application
+        android:name=".ZodiacApplication"
         android:allowBackup="true"
         android:icon="@android:drawable/ic_menu_compass"
         android:label="Zodiac Control"

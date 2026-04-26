@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix C1: hoist DI graph into ZodiacApplication
+
+`MainActivity`'s Composable previously built `MainScope()` inside `remember{}` and constructed the entire DI graph (registries, routed sources, gateway, repos) there. The scope was never cancelled — every Activity recreation would leak a fresh MainScope and orphan the prior subscriptions. The audit notes the landscape-only orientation lock has masked this so far; any future config-change handling would expose it.
+
+Fix: new `ZodiacApplication : Application` owns:
+- `applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)` — process-lifetime
+- `telemetryRepository`, `vehicleGateway`, `playaMapRepository`, `locationSource` as `by lazy` properties
+
+`AndroidManifest.xml` declares `android:name=".ZodiacApplication"`. `MainActivity.kt` shrinks to ~50 LoC: it casts `LocalContext.current.applicationContext` to `ZodiacApplication` and reads the prebuilt deps. Permission launcher logic is unchanged for now (H6 wires the grant-restart hook in a later commit).
+
+No new tests. Robolectric isn't on the classpath, and the change is structural — verified by inspection + a clean `assembleDebug` (the manifest application name is parsed at build time). 52/52 tests still green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Audit fix C5/H3: Mutex around source lifecycle
 
 `RoutedLocationSource.select/start/stop` and `FakeLocationSource.start/stop` previously had no mutual-exclusion. The audit calls these "latent rather than active" because `viewModelScope` happens to serialize on Dispatchers.Main today — but any future caller that fans out via `launch {}` could race the `_selected.value` reads/writes or the `job?.isActive` re-entry guard.
