@@ -88,6 +88,19 @@ class CockpitViewModel(
         viewModelScope.launch { locationSource.select(type) }
     }
 
+    /**
+     * Stop and restart the currently-selected location source. Used after
+     * runtime permission grants — sources that emitted Error before the user
+     * granted permission need to re-attempt their start path to pick up the
+     * new permission state.
+     */
+    fun restartLocationSource() {
+        viewModelScope.launch {
+            locationSource.stop()
+            locationSource.start()
+        }
+    }
+
     fun setMapMode(mode: MapMode) {
         _uiState.update { it.copy(mapMode = mode) }
     }
@@ -130,12 +143,10 @@ class CockpitViewModel(
         viewModelScope.launch { vehicleGateway.selectTransport(type) }
     }
 
-    fun connectTransport() {
-        viewModelScope.launch { vehicleGateway.connect() }
-    }
-
-    fun disconnectTransport() {
-        viewModelScope.launch { vehicleGateway.disconnect() }
+    fun setTransportConnected(connected: Boolean) {
+        viewModelScope.launch {
+            if (connected) vehicleGateway.connect() else vehicleGateway.disconnect()
+        }
     }
 }
 

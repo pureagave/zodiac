@@ -25,19 +25,6 @@ class MainActivity : ComponentActivity() {
 private fun zodiacApp() {
     val app = LocalContext.current.applicationContext as ZodiacApplication
 
-    val permissionLauncher =
-        rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestMultiplePermissions(),
-        ) { /* Sources self-check on start; H6 will wire grant-restart. */ }
-    LaunchedEffect(Unit) {
-        val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            perms += Manifest.permission.BLUETOOTH_CONNECT
-            perms += Manifest.permission.BLUETOOTH_SCAN
-        }
-        permissionLauncher.launch(perms.toTypedArray())
-    }
-
     val viewModel: CockpitViewModel =
         viewModel(
             factory =
@@ -48,5 +35,24 @@ private fun zodiacApp() {
                     locationSource = app.locationSource,
                 ),
         )
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+        ) { results ->
+            // If anything was just granted, kick the active location source so
+            // a previously-Error state (from "permission not granted") flips to
+            // Searching/Active without needing the user to toggle a chip.
+            if (results.values.any { it }) viewModel.restartLocationSource()
+        }
+    LaunchedEffect(Unit) {
+        val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            perms += Manifest.permission.BLUETOOTH_CONNECT
+            perms += Manifest.permission.BLUETOOTH_SCAN
+        }
+        permissionLauncher.launch(perms.toTypedArray())
+    }
+
     crtVectorScreen(viewModel = viewModel)
 }

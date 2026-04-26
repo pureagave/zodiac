@@ -119,6 +119,41 @@ class CockpitViewModelTest {
         }
 
     @Test
+    fun restartLocationSource_stops_then_starts_active_source() =
+        runTest {
+            val stub = StubLocationSource(LocationSourceType.FAKE)
+            val routed =
+                RoutedLocationSource(
+                    registry = LocationSourceRegistry(sources = listOf(stub)),
+                    scope = this.backgroundScope,
+                    initialType = LocationSourceType.FAKE,
+                )
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = routed,
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+                // VM init already issued one start.
+                assertEquals(1, stub.startCalls)
+                assertEquals(0, stub.stopCalls)
+
+                vm.restartLocationSource()
+                advanceUntilIdle()
+
+                assertEquals(2, stub.startCalls)
+                assertEquals(1, stub.stopCalls)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
     fun setTiltDeg_clampsToRange() =
         runTest {
             val store = ViewModelStore()

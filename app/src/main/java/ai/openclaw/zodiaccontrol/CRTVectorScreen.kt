@@ -105,8 +105,8 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                     callbacks =
                         RightRailCallbacks(
                             onSelectTransport = viewModel::selectTransport,
-                            onConnect = viewModel::connectTransport,
-                            onDisconnect = viewModel::disconnectTransport,
+                            onConnect = { viewModel.setTransportConnected(true) },
+                            onDisconnect = { viewModel.setTransportConnected(false) },
                             onSelectLocationSource = viewModel::selectLocationSource,
                             chips =
                                 ChipControls(

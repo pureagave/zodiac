@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix H6: restart location source on permission grant
+
+`MainActivity`'s permission-launcher result callback was a bare comment — `{ /* …no callback action needed */ }`. After the user granted `ACCESS_FINE_LOCATION` (or BT permissions), the active source stayed in its prior `Error("…not granted")` state until the user manually re-toggled a chip or relaunched the app. Surprising UX.
+
+Fix: new `CockpitViewModel.restartLocationSource()` does `locationSource.stop()` then `locationSource.start()`. `MainActivity`'s permission callback now calls it whenever any permission was granted in the result map. The chip toggle path is unchanged.
+
+Detekt's `TooManyFunctions` (limit 11) tripped because adding `restartLocationSource` brought the VM to 12. Combined `connectTransport`/`disconnectTransport` into a single `setTransportConnected(connected: Boolean)` — one less method, same call sites with trivial lambdas at the rail.
+
+New test: `restartLocationSource_stops_then_starts_active_source` constructs the VM with a `StubLocationSource` (counts start/stop), confirms init issued one start, then asserts a `restartLocationSource()` results in stopCalls=1, startCalls=2.
+
+55/55 green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Audit fix H5: clamp pan offset
 
 `CockpitViewModel.panBy` accumulated `panEastM` / `panNorthM` without bound. A stuck finger or runaway drag could shift the camera tens of kilometres off the playa, and the only recovery was the RECENTER MAP chip — which a user who's already lost wouldn't necessarily think to look for.
