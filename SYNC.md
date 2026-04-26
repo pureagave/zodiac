@@ -6,6 +6,16 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix C4: SystemLocationSource double-start guard
+
+`SystemLocationSource.start()` previously called `requestLocationUpdates(...)` every time, so two `start()` calls without an intervening `stop()` would register the same `LocationListener` twice — every fix would fire the callback twice and battery drain would compound.
+
+Fix: track `var listenerRegistered` and gate both `start()` (early-return if true) and `stop()` (only `removeUpdates` if true). Also extracted a `SystemLocationManagerHandle` interface so the source is unit-testable without Robolectric: the production constructor `(Context)` builds the real `AndroidSystemLocationManagerHandle`; the seam constructor `(SystemLocationManagerHandle)` accepts a fake.
+
+4 new tests in `SystemLocationSourceTest`: double-start registers once, stop+start re-registers, no-permission emits Error without registering, stop-without-start is a safe no-op. 50/50 green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Audit fix C2/C3: close BT/USB on connect failure
 
 `BleLocationSource.runConnection()` and `UsbLocationSource.runConnection()` previously caught `IOException` from the connect/open path but never closed the half-allocated socket / port. The next `start()` call would overwrite the field, leaking the prior FD.
