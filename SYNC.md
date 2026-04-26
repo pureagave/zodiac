@@ -6,6 +6,28 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — One-finger drag-pan + SPD SET chips
+
+Replaced the one-finger touch-to-set-heading/speed behavior with one-finger **drag-pan** of the map. Two-finger pinch zoom is unchanged. Now it's:
+
+- 1 finger drag → camera moves so the world point under your finger stays under your finger.
+- 2+ fingers → pinch-zoom (existing).
+- HDG / SPD / TILT chips on the right rail → manual debug control of those values.
+
+Implementation:
+- `cockpitTouchInput` signature changed: `onHeading` + `onSpeed` callbacks replaced by `onPan(dxScreenPx, dyScreenPx)`. Internally tracks `lastPanX/Y` and `hadOneFinger` so the first frame of a touch (no prior position) doesn't snap-pan.
+- `centerViewport` adds two pieces of mutable state — `panEastM`, `panNorthM` — accumulated across drags. The camera center becomes `egoFix + (panEastM, panNorthM)`. The pan callback converts screen-pixel deltas into world-meter deltas using the current heading: `dEast = (-dx*cos(h) + dy*sin(h)) / ppm`, `dNorth = (dx*sin(h) + dy*cos(h)) / ppm`. (Derived by inverting `PlayaViewport.toScreen`'s rotation+scale + a sign flip on Y because screen-Y is down, and a sign flip on the result because moving the finger right means the camera moves left in world.)
+- New `SPD SET: NN kph` row in the right rail with chips `[-10] [-1] [+1] [+10]`, mirroring `HDG SET`. Calls `viewModel.setSpeed` (existing).
+- `RightRailCallbacks` was at 6 params and adding `onSetSpeed` would have hit detekt's 7-param trip. Bundled the three setters into a new `ChipControls(onSetHeading, onSetSpeed, onSetTilt)` data class, so `RightRailCallbacks` is back to 5 fields.
+- `centerViewport` no longer takes `onHeadingChange` / `onSpeedChange`; lost-functionality is fully covered by the chip rows.
+- VM's telemetry collector also drops `speedKph` (heading was already dropped in the previous commit). Telemetry now only drives `thermalC` / `mode` / `linkStable`. User input owns the rest.
+
+Verified on emulator: a 200-px diagonal swipe over the viewport visibly slides the pentagon and grid in the same direction, with HDG staying put. SPD SET chips work; speed no longer drifts back from telemetry.
+
+43/43 unit tests still green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — TILT polish: centered view + adjustable tilt
 
 Two follow-ups after the meter-space-grid work:

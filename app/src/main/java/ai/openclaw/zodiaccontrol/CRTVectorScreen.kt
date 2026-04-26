@@ -52,6 +52,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.cos
+import kotlin.math.sin
 
 private val Bg = Color(0xFF000000)
 private val VectorGreen = Color(0xFF00FF66)
@@ -95,8 +97,6 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                 centerViewport(
                     modifier = Modifier.weight(1f),
                     state = state,
-                    onHeadingChange = viewModel::setHeading,
-                    onSpeedChange = viewModel::setSpeed,
                 )
                 Spacer(Modifier.width(10.dp))
                 rightRail(
@@ -107,8 +107,12 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                             onConnect = viewModel::connectTransport,
                             onDisconnect = viewModel::disconnectTransport,
                             onSelectLocationSource = viewModel::selectLocationSource,
-                            onSetHeading = viewModel::setHeading,
-                            onSetTilt = viewModel::setTiltDeg,
+                            chips =
+                                ChipControls(
+                                    onSetHeading = viewModel::setHeading,
+                                    onSetSpeed = viewModel::setSpeed,
+                                    onSetTilt = viewModel::setTiltDeg,
+                                ),
                         ),
                 )
             }
@@ -193,6 +197,7 @@ private fun leftRail(
 
 private const val MAP_TOGGLE_IDX: Int = 2
 private const val HDG_STEP_BIG: Int = 15
+private const val SPD_STEP_BIG: Int = 10
 private const val TILT_STEP_BIG: Int = 10
 
 data class RightRailCallbacks(
@@ -200,7 +205,12 @@ data class RightRailCallbacks(
     val onConnect: () -> Unit,
     val onDisconnect: () -> Unit,
     val onSelectLocationSource: (LocationSourceType) -> Unit,
+    val chips: ChipControls,
+)
+
+data class ChipControls(
     val onSetHeading: (Int) -> Unit,
+    val onSetSpeed: (Int) -> Unit,
     val onSetTilt: (Int) -> Unit,
 )
 
@@ -304,22 +314,52 @@ private fun rightRail(
             transportChip(
                 label = "-15",
                 selected = false,
-                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg - HDG_STEP_BIG)) },
+                onClick = { callbacks.chips.onSetHeading(wrapHeading(state.headingDeg - HDG_STEP_BIG)) },
             )
             transportChip(
                 label = "-1",
                 selected = false,
-                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg - 1)) },
+                onClick = { callbacks.chips.onSetHeading(wrapHeading(state.headingDeg - 1)) },
             )
             transportChip(
                 label = "+1",
                 selected = false,
-                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg + 1)) },
+                onClick = { callbacks.chips.onSetHeading(wrapHeading(state.headingDeg + 1)) },
             )
             transportChip(
                 label = "+15",
                 selected = false,
-                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg + HDG_STEP_BIG)) },
+                onClick = { callbacks.chips.onSetHeading(wrapHeading(state.headingDeg + HDG_STEP_BIG)) },
+            )
+        }
+
+        Text(
+            text = "> SPD SET: ${state.speedKph} kph",
+            color = Amber,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            transportChip(
+                label = "-10",
+                selected = false,
+                onClick = { callbacks.chips.onSetSpeed(state.speedKph - SPD_STEP_BIG) },
+            )
+            transportChip(
+                label = "-1",
+                selected = false,
+                onClick = { callbacks.chips.onSetSpeed(state.speedKph - 1) },
+            )
+            transportChip(
+                label = "+1",
+                selected = false,
+                onClick = { callbacks.chips.onSetSpeed(state.speedKph + 1) },
+            )
+            transportChip(
+                label = "+10",
+                selected = false,
+                onClick = { callbacks.chips.onSetSpeed(state.speedKph + SPD_STEP_BIG) },
             )
         }
 
@@ -334,22 +374,22 @@ private fun rightRail(
             transportChip(
                 label = "-10",
                 selected = false,
-                onClick = { callbacks.onSetTilt(state.tiltDeg - TILT_STEP_BIG) },
+                onClick = { callbacks.chips.onSetTilt(state.tiltDeg - TILT_STEP_BIG) },
             )
             transportChip(
                 label = "-1",
                 selected = false,
-                onClick = { callbacks.onSetTilt(state.tiltDeg - 1) },
+                onClick = { callbacks.chips.onSetTilt(state.tiltDeg - 1) },
             )
             transportChip(
                 label = "+1",
                 selected = false,
-                onClick = { callbacks.onSetTilt(state.tiltDeg + 1) },
+                onClick = { callbacks.chips.onSetTilt(state.tiltDeg + 1) },
             )
             transportChip(
                 label = "+10",
                 selected = false,
-                onClick = { callbacks.onSetTilt(state.tiltDeg + TILT_STEP_BIG) },
+                onClick = { callbacks.chips.onSetTilt(state.tiltDeg + TILT_STEP_BIG) },
             )
         }
 
@@ -432,12 +472,12 @@ private fun actionChip(
 private fun centerViewport(
     modifier: Modifier,
     state: CockpitUiState,
-    onHeadingChange: (Int) -> Unit,
-    onSpeedChange: (Int) -> Unit,
 ) {
     val map = state.playaMap
     val projection = remember { PLAYA_PROJECTION }
     var pixelsPerMeter by remember { mutableDoubleStateOf(MAP_INITIAL_ZOOM) }
+    var panEastM by remember { mutableDoubleStateOf(0.0) }
+    var panNorthM by remember { mutableDoubleStateOf(0.0) }
     val tilt = state.mapMode == MapMode.TILT
 
     Box(
@@ -448,8 +488,14 @@ private fun centerViewport(
                 .padding(8.dp)
                 .cockpitTouchInput(
                     currentZoom = { pixelsPerMeter },
-                    onHeading = onHeadingChange,
-                    onSpeed = onSpeedChange,
+                    onPan = { dxScreen, dyScreen ->
+                        val h = Math.toRadians(state.headingDeg.toDouble())
+                        val cosH = cos(h)
+                        val sinH = sin(h)
+                        val ppm = pixelsPerMeter
+                        panEastM += (-dxScreen * cosH + dyScreen * sinH) / ppm
+                        panNorthM += (dxScreen * sinH + dyScreen * cosH) / ppm
+                    },
                     onZoom = { pixelsPerMeter = it },
                 ),
     ) {
@@ -465,9 +511,10 @@ private fun centerViewport(
                     Modifier.fillMaxSize()
                 },
         ) {
-            val cameraCenter =
+            val baseCenter =
                 state.egoFix?.let { projection.project(it.location) }
                     ?: PlayaPoint(0.0, 0.0)
+            val cameraCenter = PlayaPoint(baseCenter.eastM + panEastM, baseCenter.northM + panNorthM)
             val viewport =
                 PlayaViewport(
                     center = cameraCenter,

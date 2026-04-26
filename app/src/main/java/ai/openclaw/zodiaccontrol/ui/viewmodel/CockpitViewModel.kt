@@ -30,11 +30,11 @@ class CockpitViewModel(
     init {
         viewModelScope.launch {
             telemetryRepository.stream().collect { telemetry ->
-                // Heading is owned by the user (touch / debug chips) — do not let
-                // telemetry overwrite it, otherwise the map auto-rotates.
+                // Heading and speed are user-owned (touch / debug chips) — do not let
+                // telemetry overwrite them. Telemetry still drives thermal / mode /
+                // link state for the cockpit-status feel.
                 _uiState.update {
                     it.copy(
-                        speedKph = telemetry.speedKph,
                         thermalC = telemetry.thermalC,
                         mode = telemetry.mode,
                         linkStable = telemetry.linkStable,
