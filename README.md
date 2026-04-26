@@ -2,6 +2,8 @@
 
 Android tablet cockpit app for the mutant Zodiac vehicle (Judge Dredd taxi-inspired).
 
+For the running decision log (architecture choices, audit follow-ups, hardware lessons), see [`SYNC.md`](SYNC.md). Current open items live in [`tasks/open.md`](tasks/open.md).
+
 ## Current build
 
 - **Concept:** B (CRT Vector)
@@ -19,6 +21,7 @@ Android tablet cockpit app for the mutant Zodiac vehicle (Judge Dredd taxi-inspi
 - GPS / location source abstraction: pluggable `LocationSource` with four implementations — synthetic `FakeLocationSource` (default, slow circle around the Spike for testing), Android `LocationManager`, Bluetooth Classic SPP NMEA receivers, and USB serial NMEA dongles via [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android). Source selectable at runtime via the right-rail GPS chips. Map viewport centers on the live ego fix.
 - Scanline overlay
 - Black Rock City map data layer: 2025 GIS bundled in `app/src/main/assets/brc/2025/`, parsed into a typed `PlayaMap` and projected via `PlayaProjection` (equirectangular, anchored on the Golden Spike) and `PlayaViewport` (track-up, configurable zoom).
+- Persisted preferences via `androidx.datastore.preferences` — last-picked GPS source, map mode, tilt angle, and zoom survive a restart.
 - Baseline quality tooling (ktlint + detekt)
 - GitHub Actions CI (lint + static analysis + unit tests + debug assemble)
 

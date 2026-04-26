@@ -6,6 +6,30 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit Medium/Low sweep
+
+Closed every Quick-Win item from `audit.md` plus a handful of nearby Medium/Low items. Eight commits:
+
+- **M5** — `CockpitUiState.egoFix` now a stored val (was a getter recomputed per read).
+- **M3** — `PolygonRing.centroid` precomputed at parse time; renderer reads it for toilet markers.
+- **M1** — deleted `VehicleGateway` (one-method parent of `VehicleConnectionGateway`, no other callers); deleted `VehicleCommand.EmergencyStop` (no callers since `bd926af`); moved `FakeVehicleGateway` to test sources (production wires `RoutedVehicleGateway` + `FakeTransportAdapter`).
+- **M13 / M15** — promoted heading / speed bounds to `CockpitUiState.Companion` constants alongside the existing tilt/pan limits; reset placeholder defaults `42°/28kph/60°C` to `0/0/0` (thermal is overwritten by the first telemetry tick anyway).
+- **M11 / M12** — NMEA: KDoc now reflects what the parser actually accepts (any GGA/RMC talker — GP/GL/GA/GB/GN); checksum reader tolerates the 1-digit form some receivers emit when value < 0x10.
+- **L5** — `PlayaViewport` now `require(anchorYFrac in 0.0..1.0)` at construction.
+- **L1 (partial)** — added tests for `wrapHeading` (zero / in-range / wrap / negative / large) and three new `RoutedVehicleGateway` cases (switch-while-connected leaves old adapter up; double-connect is idempotent; send-after-disconnect propagates ERROR). The `MapTouchInput` pinch-reset test deferred — needs a small refactor to extract a pure `PinchSession` from inside `awaitPointerEventScope`.
+- **M7** — `androidx.datastore:datastore-preferences` plumbed through three phases: (1) added `CockpitPreferences` interface + `DataStoreCockpitPreferences` impl with round-trip tests; (2) wired into the VM for `tilt / mapMode / locationSource`, read on init, write on each user action; (3) lifted `pixelsPerMeter` from `CRTVectorScreen.kt`'s local `mutableDoubleStateOf` into VM-owned state and persisted it. Pan offset stays session-only — it's transient, not preference. Detekt's `TooManyFunctions` threshold bumped 11→12 in `config/detekt/detekt.yml` to accommodate the legitimate twelfth VM operation.
+
+Architectural decisions on the way through:
+- Enums in DataStore are stored by `name`, not ordinal — renaming a constant invalidates the key (read returns default) instead of silently mis-mapping to a different enum value.
+- Tilt and zoom are clamped on read so a tampered prefs file can't seed values the controls can't reach.
+- Snapshot intentionally excludes pan and connection/ego state. Audit only listed source/tilt/zoom/mapMode; pan is more session than preference.
+
+`tasks/open.md` rewritten to reflect what's actually open (the prior content predated everything from BRC-map Phase 1 onwards). New `tasks/done.md` records what shipped. `README.md` gets a one-line cross-link to `SYNC.md` and `tasks/open.md` for new readers landing cold.
+
+61 unit tests green; full CI gate clean across all eight commits.
+
+---
+
 ## 2026-04-26 — Audit fix H7: surface map load failures via MapLoadResult
 
 `AssetsPlayaMapRepository.parseAll()` had no try/catch — a missing or malformed asset would throw `IOException` (or `JSONException` for bad JSON) out of `load()`, get silently swallowed by viewModelScope's exception handler, and the cockpit would render forever with a null map and no diagnosis.
