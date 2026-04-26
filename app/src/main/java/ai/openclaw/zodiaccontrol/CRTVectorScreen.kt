@@ -316,9 +316,12 @@ private fun centerViewport(
                     },
         ) {
             if (map != null) {
+                val cameraCenter =
+                    state.egoFix?.let { projection.project(it.location) }
+                        ?: PlayaPoint(0.0, 0.0)
                 val viewport =
                     PlayaViewport(
-                        center = PlayaPoint(0.0, 0.0),
+                        center = cameraCenter,
                         headingDeg = state.headingDeg.toDouble(),
                         pixelsPerMeter = MAP_PIXELS_PER_METER,
                         widthPx = size.width.toInt(),

@@ -6,6 +6,33 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase 4a landed: LocationSource foundation + Fake
+
+Wired up the GPS-source abstraction, mirroring `TransportAdapter`/`RoutedVehicleGateway`. The cockpit's center viewport now follows the ego: camera stays on the projected fix, world geometry slides past it.
+
+Code shape:
+- `core/sensor/{GpsFix, LocationSourceType, LocationSourceState}` — pure types, no Android deps. `LocationSourceState` is sealed (Disconnected, Searching, Active(GpsFix), Error).
+- `data/sensor/LocationSource` — interface (`type`, `state: StateFlow`, `start()`, `stop()`).
+- `data/sensor/FakeLocationSource` — synthetic. Default = slow circle at 200 m radius around the Spike with 60 s period; passing `pathRadiusMeters = 0.0` gives a stationary fix. Configurable `tickMillis` for emission cadence.
+- `data/sensor/LocationSourceRegistry` — `Map<LocationSourceType, LocationSource>`.
+- `data/sensor/RoutedLocationSource` — owns selection + state forwarding via `_selected.flatMapLatest { registry.sourceFor(it).state }.stateIn(scope, Eagerly, ...)`. `select()` only stop+start when type actually changes.
+- `CockpitUiState.locationState` (+ derived `egoFix`) and `selectedLocationSource`.
+- `CockpitViewModel(locationSource: RoutedLocationSource)` — kicks off `start()` and forwards `selected` + `state`. New public `selectLocationSource(type)`.
+- `MainActivity` registers `FakeLocationSource` against `MainScope()`; routed sets initial type to `FAKE`.
+- Viewport centers on `state.egoFix?.let { projection.project(it.location) } ?: PlayaPoint(0,0)` — falls back to the Spike when no fix.
+
+Tests: 4 routed + 5 fake = 9 new (30/30 total). Visual confirm: emulator screenshots show the world drifting around a static ego triangle as the synthetic path advances. No UI selector yet — that's Phase 4f.
+
+Lessons (kotlinx-coroutines-test 1.9.0):
+- `runTest`'s leftover-coroutine guard treats coroutines launched into the test scope as failures with `UncompletedCoroutinesError`. **Pass `backgroundScope` (not `this`) for any long-lived `stateIn` / collect.** Tests can switch to `runTest(UnconfinedTestDispatcher())` to avoid needing `advanceUntilIdle()` for eager StateFlow propagation; we updated `MainDispatcherRule` to use the unconfined dispatcher too.
+- ViewModelScope's StateFlow.collect coroutines also count as leftover — wrap VM tests with a `ViewModelStore` and call `store.clear()` in `finally` so `onCleared()` cancels viewModelScope.
+- `FakeLocationSource`'s default loop schedules continuous `delay()` ticks on the test scheduler — runTime auto-advance can spin forever. **For VM tests, use the `StubLocationSource` test fixture (state-only, no timers).**
+
+Open follow-ups:
+- `MainScope()` in `MainActivity` is held in `remember`; not lifecycle-cancelled on Activity destroy. Acceptable for a single-Activity, landscape-only app, but worth replacing with the Activity's lifecycleScope or moving DI out of the composition before Phase 4 wraps.
+
+---
+
 ## 2026-04-25 — Phase 3 landed: art layer
 
 Added 2025 art locations from [iBurn-Data](https://github.com/iBurnApp/iBurn-Data) (master, MIT). 332 placements bundled at `app/src/main/assets/brc/2025/art.geojson` (~68 KB).
