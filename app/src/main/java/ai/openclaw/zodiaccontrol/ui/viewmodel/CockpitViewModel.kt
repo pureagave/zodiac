@@ -28,55 +28,59 @@ class CockpitViewModel(
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
 
     init {
+        // One outer launch with sequential child launches: the collectors all
+        // subscribe before locationSource.start() runs, so any transitions the
+        // source emits land on a hot subscriber. (StateFlow still conflates
+        // intermediate emissions — `Searching → Active` may be observed as a
+        // single jump to `Active`. That's intentional; the UI cares about the
+        // latest state, not the path.)
         viewModelScope.launch {
-            telemetryRepository.stream().collect { telemetry ->
-                // Heading and speed are user-owned (touch / debug chips) — do not let
-                // telemetry overwrite them. Telemetry still drives thermal / mode /
-                // link state for the cockpit-status feel.
-                _uiState.update {
-                    it.copy(
-                        thermalC = telemetry.thermalC,
-                        mode = telemetry.mode,
-                        linkStable = telemetry.linkStable,
-                    )
+            launch {
+                telemetryRepository.stream().collect { telemetry ->
+                    // Heading and speed are user-owned (touch / debug chips) — do not let
+                    // telemetry overwrite them. Telemetry still drives thermal / mode /
+                    // link state for the cockpit-status feel.
+                    _uiState.update {
+                        it.copy(
+                            thermalC = telemetry.thermalC,
+                            mode = telemetry.mode,
+                            linkStable = telemetry.linkStable,
+                        )
+                    }
                 }
             }
-        }
-
-        viewModelScope.launch {
-            vehicleGateway.selectedTransport.collect { transport ->
-                _uiState.update { it.copy(selectedTransport = transport) }
-            }
-        }
-
-        viewModelScope.launch {
-            vehicleGateway.connectionState.collect { connection ->
-                _uiState.update {
-                    it.copy(
-                        connectionPhase = connection.phase,
-                        connectionDetail = connection.detail,
-                    )
+            launch {
+                vehicleGateway.selectedTransport.collect { transport ->
+                    _uiState.update { it.copy(selectedTransport = transport) }
                 }
             }
-        }
-
-        viewModelScope.launch { playaMapRepository.load() }
-        viewModelScope.launch {
-            playaMapRepository.map.collect { map ->
-                _uiState.update { it.copy(playaMap = map) }
+            launch {
+                vehicleGateway.connectionState.collect { connection ->
+                    _uiState.update {
+                        it.copy(
+                            connectionPhase = connection.phase,
+                            connectionDetail = connection.detail,
+                        )
+                    }
+                }
             }
-        }
-
-        viewModelScope.launch { locationSource.start() }
-        viewModelScope.launch {
-            locationSource.selected.collect { type ->
-                _uiState.update { it.copy(selectedLocationSource = type) }
+            launch { playaMapRepository.load() }
+            launch {
+                playaMapRepository.map.collect { map ->
+                    _uiState.update { it.copy(playaMap = map) }
+                }
             }
-        }
-        viewModelScope.launch {
-            locationSource.state.collect { state ->
-                _uiState.update { it.copy(locationState = state) }
+            launch {
+                locationSource.selected.collect { type ->
+                    _uiState.update { it.copy(selectedLocationSource = type) }
+                }
             }
+            launch {
+                locationSource.state.collect { state ->
+                    _uiState.update { it.copy(locationState = state) }
+                }
+            }
+            locationSource.start()
         }
     }
 

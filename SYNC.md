@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix H4: consolidate VM init into one ordered launch
+
+`CockpitViewModel.init` previously fired off seven independent `viewModelScope.launch { … }` blocks. The audit observes that the location-source state collector and `locationSource.start()` were ordered nondeterministically — if `start()` raced ahead, the collector could miss the `Searching → Active` transition.
+
+Fix: collapse all seven into a single outer `viewModelScope.launch { … }` whose body launches each child collector in sequence, then calls `locationSource.start()` last. With both `Dispatchers.Main.immediate` (production) and `UnconfinedTestDispatcher` (tests), `launch { collect(…) }` runs eagerly until the first suspend (inside `.collect`), so every collector is subscribed before `start()` runs.
+
+Note that `RoutedLocationSource.state` uses `SharingStarted.Eagerly` and is a `StateFlow`, which conflates intermediate emissions by design. So `Searching → Active` may still be observed as a single jump to `Active` if both happen between two collector ticks. That's acceptable for our use — the UI cares about the latest state, not the path. Documented inline.
+
+Also extracted `MainDispatcherRule` from `CockpitViewModelTest.kt` into its own file so future ViewModel tests (H5/H6 panBy clamping, restart-source) can reuse without duplication.
+
+53/53 green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Audit fix H1: derive RoutedVehicleGateway.connectionState
 
 `RoutedVehicleGateway` previously kept its own `MutableStateFlow<ConnectionState>` and updated it imperatively after every adapter call (`_connectionState.value = currentAdapter().state.value`). The audit notes this works only because `FakeTransportAdapter.send` is synchronous; once the underlying adapter emits `ConnectionState` updates from its own coroutine (the eventual real BLE/USB/WiFi adapters will), the snapshot read lags any state change that happens between the call returning and the read landing.
