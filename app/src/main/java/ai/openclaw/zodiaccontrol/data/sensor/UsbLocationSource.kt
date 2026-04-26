@@ -81,6 +81,8 @@ class UsbLocationSource(
             sp.setParameters(baudRate, DATA_BITS, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             pumpNmea(sp)
         } catch (io: IOException) {
+            runCatching { port?.close() }
+            port = null
             _state.value = LocationSourceState.Error(detail = "USB I/O: ${io.message}")
         }
     }

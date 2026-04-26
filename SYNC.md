@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix C2/C3: close BT/USB on connect failure
+
+`BleLocationSource.runConnection()` and `UsbLocationSource.runConnection()` previously caught `IOException` from the connect/open path but never closed the half-allocated socket / port. The next `start()` call would overwrite the field, leaking the prior FD.
+
+Fix: in the catch block, `runCatching { close() }` and clear the field before transitioning to `Error`. No try/finally needed — the success path's cleanup still flows through `stop()` as before.
+
+No unit test this round — `BluetoothSocket` / `UsbSerialPort` aren't easily faked without Robolectric, which we'll pull in deliberately later. Inspection-grade: the catch block now mirrors the `stop()` cleanup almost line-for-line.
+
+Full CI gate clean; 46/46 tests green.
+
+---
+
 ## 2026-04-26 — Audit fix C6: NMEA hemisphere validation
 
 Starting a sweep of the audit (audit.md, 2026-04-26) — Critical and High issues only, ten commits, in order, each one CI-green. Plan lives at ~/.claude/plans/review-the-critical-and-binary-goose.md.

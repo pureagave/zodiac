@@ -89,6 +89,8 @@ class BleLocationSource(
             sppSocket.connect()
             pumpNmea(sppSocket)
         } catch (io: IOException) {
+            runCatching { socket?.close() }
+            socket = null
             _state.value = LocationSourceState.Error(detail = "BT I/O: ${io.message}")
         }
     }
