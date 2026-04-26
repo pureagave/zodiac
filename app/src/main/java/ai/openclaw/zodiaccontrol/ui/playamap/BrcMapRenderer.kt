@@ -159,7 +159,7 @@ private fun DrawScope.drawCentroidMarker(
     color: Color,
     radius: Float,
 ) {
-    val centroid = polygon.ring.centroid() ?: return
+    val centroid = polygon.centroid ?: return
     val s = ctx.viewport.toScreen(ctx.projection.project(centroid))
     drawCircle(color = color, radius = radius, center = Offset(s.x.toFloat(), s.y.toFloat()))
 }
@@ -206,14 +206,3 @@ private fun List<LatLon>.toScreen(ctx: RenderCtx): List<Offset> =
         val s: ScreenXY = ctx.viewport.toScreen(ctx.projection.project(ll))
         Offset(s.x.toFloat(), s.y.toFloat())
     }
-
-private fun List<LatLon>.centroid(): LatLon? {
-    if (isEmpty()) return null
-    var sx = 0.0
-    var sy = 0.0
-    for (p in this) {
-        sx += p.lon
-        sy += p.lat
-    }
-    return LatLon(lon = sx / size, lat = sy / size)
-}

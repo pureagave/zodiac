@@ -39,5 +39,5 @@ data class CockpitUiState(
         const val MAX_PAN_M: Double = 5_000.0
     }
 
-    val egoFix: GpsFix? get() = (locationState as? LocationSourceState.Active)?.fix
+    val egoFix: GpsFix? = (locationState as? LocationSourceState.Active)?.fix
 }

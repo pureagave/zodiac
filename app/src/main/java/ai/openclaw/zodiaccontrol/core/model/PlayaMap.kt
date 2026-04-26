@@ -14,7 +14,20 @@ data class StreetLine(
 data class PolygonRing(
     val name: String?,
     val ring: List<LatLon>,
-)
+) {
+    val centroid: LatLon? = ring.computeCentroid()
+}
+
+private fun List<LatLon>.computeCentroid(): LatLon? {
+    if (isEmpty()) return null
+    var sx = 0.0
+    var sy = 0.0
+    for (p in this) {
+        sx += p.lon
+        sy += p.lat
+    }
+    return LatLon(lon = sx / size, lat = sy / size)
+}
 
 data class PointFeature(
     val name: String?,
@@ -29,7 +42,7 @@ data class PointFeature(
  *
  * @property year the BRC year these features were sourced from (e.g. "2025")
  * @property toilets currently published as polygons (banks of porta-potties);
- *  centroid for icon rendering is left to the renderer
+ *  the renderer draws each as a single dot at [PolygonRing.centroid]
  */
 data class PlayaMap(
     val year: String,
