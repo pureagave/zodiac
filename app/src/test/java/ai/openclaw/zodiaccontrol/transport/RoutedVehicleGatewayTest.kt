@@ -52,4 +52,61 @@ class RoutedVehicleGatewayTest {
             wifi.connect()
             assertEquals(ConnectionPhase.CONNECTED, gateway.connectionState.value.phase)
         }
+
+    @Test
+    fun switching_transport_while_connected_leaves_old_adapter_connected() =
+        runTest(UnconfinedTestDispatcher()) {
+            val ble = FakeTransportAdapter(TransportType.BLE)
+            val wifi = FakeTransportAdapter(TransportType.WIFI)
+            val registry = TransportRegistry(listOf(ble, wifi))
+            val gateway = RoutedVehicleGateway(registry, TransportType.BLE, this.backgroundScope)
+
+            ble.connect()
+            assertEquals(ConnectionPhase.CONNECTED, gateway.connectionState.value.phase)
+
+            // The gateway routes — it does not own adapter lifecycle. Switching
+            // transports must not silently disconnect the previously-active link;
+            // a user re-selecting BLE later should find it still up.
+            gateway.selectTransport(TransportType.WIFI)
+            assertEquals(ConnectionPhase.CONNECTED, ble.state.value.phase)
+            assertEquals(ConnectionPhase.DISCONNECTED, gateway.connectionState.value.phase)
+
+            gateway.selectTransport(TransportType.BLE)
+            assertEquals(ConnectionPhase.CONNECTED, gateway.connectionState.value.phase)
+        }
+
+    @Test
+    fun double_connect_is_idempotent_for_observers() =
+        runTest(UnconfinedTestDispatcher()) {
+            val ble = FakeTransportAdapter(TransportType.BLE)
+            val registry = TransportRegistry(listOf(ble))
+            val gateway = RoutedVehicleGateway(registry, TransportType.BLE, this.backgroundScope)
+
+            gateway.connect()
+            assertEquals(ConnectionPhase.CONNECTED, gateway.connectionState.value.phase)
+
+            gateway.connect()
+            // Still CONNECTED, still routed to the same transport — no flapping.
+            assertEquals(ConnectionPhase.CONNECTED, gateway.connectionState.value.phase)
+            assertEquals(TransportType.BLE, gateway.connectionState.value.transport)
+        }
+
+    @Test
+    fun send_after_disconnect_propagates_adapter_error_state() =
+        runTest(UnconfinedTestDispatcher()) {
+            val ble = FakeTransportAdapter(TransportType.BLE)
+            val registry = TransportRegistry(listOf(ble))
+            val gateway = RoutedVehicleGateway(registry, TransportType.BLE, this.backgroundScope)
+
+            ble.connect()
+            gateway.disconnect()
+            assertEquals(ConnectionPhase.DISCONNECTED, gateway.connectionState.value.phase)
+
+            gateway.send(VehicleCommand.SetSpeed(50))
+
+            // FakeTransportAdapter flips to ERROR on send-while-disconnected; the
+            // gateway must surface that without the caller having to ask.
+            assertEquals(ConnectionPhase.ERROR, gateway.connectionState.value.phase)
+            assertTrue(ble.commandHistory().isEmpty())
+        }
 }

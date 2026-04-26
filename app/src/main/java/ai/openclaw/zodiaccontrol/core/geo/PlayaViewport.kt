@@ -27,6 +27,10 @@ data class PlayaViewport(
     val heightPx: Int = 0,
     val anchorYFrac: Double = 0.5,
 ) {
+    init {
+        require(anchorYFrac in 0.0..1.0) { "anchorYFrac must be in [0,1], got $anchorYFrac" }
+    }
+
     private val rad = Math.toRadians(headingDeg)
     private val cos = cos(rad)
     private val sin = sin(rad)
