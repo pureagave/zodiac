@@ -6,6 +6,30 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase 4d landed: BLE/Classic SPP NMEA source
+
+`data/sensor/BleLocationSource` — Bluetooth Classic SPP for paired NMEA receivers (Garmin GLO, Bad Elf, Dual XGPS, etc.). On `start()`:
+
+1. Verify `BLUETOOTH_CONNECT` (Android 12+ runtime grant; older APIs install-time).
+2. Enumerate paired devices, pick the first whose name matches `DEFAULT_NAME_PATTERN` (regex covers GPS / Garmin / Bad Elf / XGPS / Holux / Qstarz / GNSS, case-insensitive).
+3. Open RFCOMM socket on the well-known SPP UUID `00001101-0000-1000-8000-00805F9B34FB`.
+4. Read NMEA line-by-line from the socket's input stream, feed each to `NmeaParser.parse`, emit `Active(GpsFix)` on hits.
+
+All failure modes (no permission, adapter off, no matching device, IO error) emit `LocationSourceState.Error` with a short detail string instead of crashing. Cancellation closes the socket on `Dispatchers.IO`.
+
+Manifest additions:
+- `BLUETOOTH_CONNECT` + `BLUETOOTH_SCAN` (no `maxSdkVersion`)
+- `BLUETOOTH` + `BLUETOOTH_ADMIN` constrained to `maxSdkVersion="30"` (legacy Android 11 path)
+
+Wiring: registered in `MainActivity` after the system source. Default selection still FAKE. JVM-untestable for the same reason as 4c — no Robolectric, depends on `BluetoothAdapter`. Will integration-test on a real Fire tablet with a Bad Elf or Garmin GLO once 4f exposes the selector.
+
+Open follow-up:
+- The name-pattern heuristic picks the first match. If a user has multiple GPS devices paired, we pick whichever happens to be first in `bondedDevices` order. UI-driven explicit picker is a Phase-4f-or-later task.
+
+39/39 unit tests still green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Phase 4c landed: SystemLocationSource
 
 `data/sensor/SystemLocationSource` — wraps `android.location.LocationManager` and subscribes to `GPS_PROVIDER`. Converts each `Location` callback to `GpsFix` (lon/lat + bearing → headingDeg, speed m/s → kph, accuracy → fixQualityM).

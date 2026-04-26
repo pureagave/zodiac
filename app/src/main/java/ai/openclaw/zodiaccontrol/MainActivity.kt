@@ -5,6 +5,7 @@ import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.FakeTelemetryRepository
 import ai.openclaw.zodiaccontrol.data.RoutedVehicleGateway
 import ai.openclaw.zodiaccontrol.data.playa.AssetsPlayaMapRepository
+import ai.openclaw.zodiaccontrol.data.sensor.BleLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.LocationSourceRegistry
 import ai.openclaw.zodiaccontrol.data.sensor.RoutedLocationSource
@@ -59,6 +60,10 @@ private fun zodiacApp() {
                         listOf(
                             FakeLocationSource(scope = sensorScope),
                             SystemLocationSource(applicationContext = context.applicationContext),
+                            BleLocationSource(
+                                applicationContext = context.applicationContext,
+                                scope = sensorScope,
+                            ),
                         ),
                 )
             RoutedLocationSource(
