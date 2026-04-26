@@ -6,6 +6,22 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase 4c landed: SystemLocationSource
+
+`data/sensor/SystemLocationSource` — wraps `android.location.LocationManager` and subscribes to `GPS_PROVIDER`. Converts each `Location` callback to `GpsFix` (lon/lat + bearing → headingDeg, speed m/s → kph, accuracy → fixQualityM).
+
+Permissions:
+- Added `ACCESS_FINE_LOCATION` to `AndroidManifest.xml`. minSdk=30 means runtime grant.
+- If permission isn't granted at `start()`, the source emits `LocationSourceState.Error("ACCESS_FINE_LOCATION not granted")` and stays idle. UI for triggering the grant flow is Phase 4f.
+
+Wiring: registered in `MainActivity` alongside `FakeLocationSource`. Default selection still FAKE — switching to SYSTEM is a future user action through the selector chip row.
+
+Important caveat: **Fire tablets do not have a GPS receiver.** Selecting SYSTEM on a Fire HD/Max only works if location is being mocked or forwarded from another app on the device. Real GPS on Fire requires the BLE or USB sources (4d/4e).
+
+No JVM tests for this source — depends on Android `Context` and `LocationManager`. Will integration-test on emulator via Mock Locations once 4f exposes the selector. Existing 39 unit tests still green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Phase 4b landed: NMEA 0183 parser
 
 `data/sensor/nmea/NmeaParser` — pure Kotlin, JVM-testable. Handles `$GPGGA` (lat/lon + HDOP-derived accuracy) and `$GPRMC` (lat/lon + speed-from-knots + course). Returns null for invalid checksums, "no fix" status, sub-minimum field counts, or unsupported sentence types.

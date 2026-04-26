@@ -8,6 +8,7 @@ import ai.openclaw.zodiaccontrol.data.playa.AssetsPlayaMapRepository
 import ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.LocationSourceRegistry
 import ai.openclaw.zodiaccontrol.data.sensor.RoutedLocationSource
+import ai.openclaw.zodiaccontrol.data.sensor.SystemLocationSource
 import ai.openclaw.zodiaccontrol.data.transport.FakeTransportAdapter
 import ai.openclaw.zodiaccontrol.data.transport.TransportRegistry
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -54,7 +55,11 @@ private fun zodiacApp() {
             val sensorScope = MainScope()
             val registry =
                 LocationSourceRegistry(
-                    sources = listOf(FakeLocationSource(scope = sensorScope)),
+                    sources =
+                        listOf(
+                            FakeLocationSource(scope = sensorScope),
+                            SystemLocationSource(applicationContext = context.applicationContext),
+                        ),
                 )
             RoutedLocationSource(
                 registry = registry,
