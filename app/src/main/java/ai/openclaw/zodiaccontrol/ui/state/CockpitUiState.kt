@@ -23,6 +23,8 @@ data class CockpitUiState(
     val locationState: LocationSourceState = LocationSourceState.Disconnected,
     val mapMode: MapMode = MapMode.TOP,
     val tiltDeg: Int = DEFAULT_TILT_DEG,
+    val panEastM: Double = 0.0,
+    val panNorthM: Double = 0.0,
 ) {
     companion object {
         const val DEFAULT_TILT_DEG: Int = 40

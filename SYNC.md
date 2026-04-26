@@ -6,6 +6,26 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — RECENTER MAP chip + pan state lifted to VM
+
+The pan offset (added in the previous commit as local `centerViewport` state) is now in `CockpitUiState.panEastM` / `panNorthM`, which lets a button anywhere reset it. Added a small **RECENTER MAP** action-chip at the bottom of the right-rail control stack (electric-blue style, after the TILT chip row) — tapping it sets pan back to (0, 0), restoring the camera to the ego/Spike position.
+
+VM additions:
+- `panBy(dEastM, dNorthM)` accumulates into state.
+- `recenterPan()` zeroes both.
+
+`centerViewport`'s `onPan` callback now receives world-meter deltas (the screen-px → m conversion stays inside `centerViewport`) and forwards to `viewModel::panBy`. The local pan state is gone.
+
+Cleanup as part of this:
+- `CockpitViewModel.emergencyStop` was unused (no UI binding) — deleted per CLAUDE.md's "delete unused" rule. This kept the VM under detekt's per-class `TooManyFunctions` ceiling after the two new pan methods landed.
+- `ChipControls` gains `onRecenter`.
+
+Verified on emulator: drag the map off-center, tap RECENTER MAP, pentagon snaps back to viewport center. Pan state is shared between drag and recenter via state, no double bookkeeping.
+
+43/43 unit tests still green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — One-finger drag-pan + SPD SET chips
 
 Replaced the one-finger touch-to-set-heading/speed behavior with one-finger **drag-pan** of the map. Two-finger pinch zoom is unchanged. Now it's:

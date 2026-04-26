@@ -93,6 +93,17 @@ class CockpitViewModel(
         _uiState.update { it.copy(tiltDeg = clamped) }
     }
 
+    fun panBy(
+        dEastM: Double,
+        dNorthM: Double,
+    ) {
+        _uiState.update { it.copy(panEastM = it.panEastM + dEastM, panNorthM = it.panNorthM + dNorthM) }
+    }
+
+    fun recenterPan() {
+        _uiState.update { it.copy(panEastM = 0.0, panNorthM = 0.0) }
+    }
+
     fun setHeading(headingDeg: Int) {
         val clamped = headingDeg.coerceIn(0, 359)
         _uiState.update { it.copy(headingDeg = clamped) }
@@ -103,11 +114,6 @@ class CockpitViewModel(
         val clamped = speedKph.coerceIn(0, 160)
         _uiState.update { it.copy(speedKph = clamped) }
         viewModelScope.launch { vehicleGateway.send(VehicleCommand.SetSpeed(clamped)) }
-    }
-
-    fun emergencyStop() {
-        _uiState.update { it.copy(speedKph = 0) }
-        viewModelScope.launch { vehicleGateway.send(VehicleCommand.EmergencyStop) }
     }
 
     fun selectTransport(type: TransportType) {

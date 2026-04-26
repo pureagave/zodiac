@@ -97,6 +97,7 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                 centerViewport(
                     modifier = Modifier.weight(1f),
                     state = state,
+                    onPan = viewModel::panBy,
                 )
                 Spacer(Modifier.width(10.dp))
                 rightRail(
@@ -112,6 +113,7 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                                     onSetHeading = viewModel::setHeading,
                                     onSetSpeed = viewModel::setSpeed,
                                     onSetTilt = viewModel::setTiltDeg,
+                                    onRecenter = viewModel::recenterPan,
                                 ),
                         ),
                 )
@@ -212,6 +214,7 @@ data class ChipControls(
     val onSetHeading: (Int) -> Unit,
     val onSetSpeed: (Int) -> Unit,
     val onSetTilt: (Int) -> Unit,
+    val onRecenter: () -> Unit,
 )
 
 @Composable
@@ -393,6 +396,10 @@ private fun rightRail(
             )
         }
 
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            actionChip(label = "RECENTER MAP", onClick = callbacks.chips.onRecenter)
+        }
+
         listOf(
             modeLine to Amber,
             "> LINK ${if (state.linkStable) "ESTABLISHED" else "LOST"}" to
@@ -472,12 +479,11 @@ private fun actionChip(
 private fun centerViewport(
     modifier: Modifier,
     state: CockpitUiState,
+    onPan: (Double, Double) -> Unit,
 ) {
     val map = state.playaMap
     val projection = remember { PLAYA_PROJECTION }
     var pixelsPerMeter by remember { mutableDoubleStateOf(MAP_INITIAL_ZOOM) }
-    var panEastM by remember { mutableDoubleStateOf(0.0) }
-    var panNorthM by remember { mutableDoubleStateOf(0.0) }
     val tilt = state.mapMode == MapMode.TILT
 
     Box(
@@ -493,8 +499,9 @@ private fun centerViewport(
                         val cosH = cos(h)
                         val sinH = sin(h)
                         val ppm = pixelsPerMeter
-                        panEastM += (-dxScreen * cosH + dyScreen * sinH) / ppm
-                        panNorthM += (dxScreen * sinH + dyScreen * cosH) / ppm
+                        val dE = (-dxScreen * cosH + dyScreen * sinH) / ppm
+                        val dN = (dxScreen * sinH + dyScreen * cosH) / ppm
+                        onPan(dE, dN)
                     },
                     onZoom = { pixelsPerMeter = it },
                 ),
@@ -514,7 +521,7 @@ private fun centerViewport(
             val baseCenter =
                 state.egoFix?.let { projection.project(it.location) }
                     ?: PlayaPoint(0.0, 0.0)
-            val cameraCenter = PlayaPoint(baseCenter.eastM + panEastM, baseCenter.northM + panNorthM)
+            val cameraCenter = PlayaPoint(baseCenter.eastM + state.panEastM, baseCenter.northM + state.panNorthM)
             val viewport =
                 PlayaViewport(
                     center = cameraCenter,
