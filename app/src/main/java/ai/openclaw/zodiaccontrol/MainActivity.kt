@@ -15,10 +15,15 @@ import ai.openclaw.zodiaccontrol.data.transport.FakeTransportAdapter
 import ai.openclaw.zodiaccontrol.data.transport.TransportRegistry
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModelFactory
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -34,6 +39,20 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun zodiacApp() {
     val context = LocalContext.current
+
+    val permissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+        ) { /* Sources self-check on start; no callback action needed. */ }
+    LaunchedEffect(Unit) {
+        val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            perms += Manifest.permission.BLUETOOTH_CONNECT
+            perms += Manifest.permission.BLUETOOTH_SCAN
+        }
+        permissionLauncher.launch(perms.toTypedArray())
+    }
+
     val gateway =
         remember {
             val registry =

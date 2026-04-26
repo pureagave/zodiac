@@ -6,6 +6,33 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase 4f landed: GPS source selector UI + permission flow
+
+Right rail in `CRTVectorScreen` gains a `> GPS` header followed by a row of four chips — `[FAKE] [GPS] [BLE] [USB]` — mirroring the existing TRANSPORT chips. Tapping a chip calls `viewModel.selectLocationSource(type)`. Selected chip is amber, others green; same `transportChip` composable is reused.
+
+A new status line above `TOUCH INPUT ACTIVE` shows the current `LocationSourceState` via a single `locationLine(state)` helper that returns `Pair<String, Color>`:
+- `> GPS: OFFLINE` (amber) when Disconnected
+- `> GPS: SEARCHING` (amber) when Searching
+- `> GPS: 40.78725 -119.20535` (green, live updates) when Active
+- `> GPS: ERR <detail>` (amber) when Error
+
+Permissions: `MainActivity` adds a `LaunchedEffect(Unit) { permissionLauncher.launch(...) }` that requests `ACCESS_FINE_LOCATION` (+ `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` on Android 12+) once at app launch. Sources self-check at `start()` and emit `Error` if a permission is missing, so the UX stays graceful even if the user denies.
+
+Style notes:
+- `CRTVectorScreen.kt` was at 12 functions vs detekt's `TooManyFunctions` threshold of 11 (file-level). Inlined the trivial no-map placeholder; combined the two GPS helpers into one `locationLine`.
+- The chip row is the same `transportChip` composable — visually consistent with the TRANSPORT row, no new components.
+
+Phase 4 is now complete: foundation + parser + 3 real sources + UI selector. SYSTEM/BLE/USB will be integration-tested on a real Fire tablet with hardware (built-in GPS where available, paired Garmin/Bad Elf for BLE, u-blox/Prolific dongle for USB).
+
+39/39 unit tests still green; full CI gate clean.
+
+Open follow-ups:
+- Mock-locations testing for SYSTEM source via `adb emu geo fix` is feasible on the emulator — tracked for next iteration.
+- BLE source uses the first paired device matching a name regex; a real device picker is a future UX improvement.
+- The `LaunchedEffect` permission flow surfaces three dialogs in sequence on first launch. Could be combined into one explainer dialog with deferred grants if it gets annoying.
+
+---
+
 ## 2026-04-26 — Phase 4e landed: USB serial NMEA source
 
 `data/sensor/UsbLocationSource` — uses [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android) v3.9.0 (MIT, ~100 KB AAR via JitPack) to talk to NMEA dongles over USB host. The library handles the chipset-specific bulk-transfer protocols (CH340, FTDI FT232R, CP210x, PL2303, CDC-ACM, u-blox); we feed parsed lines through `NmeaParser`.
