@@ -2,9 +2,10 @@ package ai.openclaw.zodiaccontrol.data
 
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionState
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.model.VehicleCommand
 import kotlinx.coroutines.flow.StateFlow
 
-interface VehicleConnectionGateway : VehicleGateway {
+interface VehicleConnectionGateway {
     val selectedTransport: StateFlow<TransportType>
     val connectionState: StateFlow<ConnectionState>
 
@@ -13,4 +14,6 @@ interface VehicleConnectionGateway : VehicleGateway {
     suspend fun connect()
 
     suspend fun disconnect()
+
+    suspend fun send(command: VehicleCommand)
 }
