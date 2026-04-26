@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase 4b landed: NMEA 0183 parser
+
+`data/sensor/nmea/NmeaParser` — pure Kotlin, JVM-testable. Handles `$GPGGA` (lat/lon + HDOP-derived accuracy) and `$GPRMC` (lat/lon + speed-from-knots + course). Returns null for invalid checksums, "no fix" status, sub-minimum field counts, or unsupported sentence types.
+
+9 unit tests cover: real-world GGA/RMC, southern + western hemispheres, no-fix rejection, void status, bad checksum, unknown sentence types, garbage lines, and trailing CRLF stripping.
+
+Style notes for future phases:
+- Detekt's `ReturnCount` (max=2) and `ComplexCondition` (max=4 operands) both bite on validation-heavy parser code. The clean shape is `if (early-fail) return null` once + a final `return if (further-checks) null else BuiltValue` block. `?: return null` chains push the count over.
+- Top-level constants (sentence indices, conversion factors) are easier to read AND easier on Detekt than inline magic numbers despite `MagicNumber` being disabled — ktlint reads better with named constants too.
+
+No behavior change to the running app; this is a pure-logic prep step for 4c/4d/4e where real receivers feed NMEA into the parser.
+
+---
+
 ## 2026-04-26 — Phase 4a landed: LocationSource foundation + Fake
 
 Wired up the GPS-source abstraction, mirroring `TransportAdapter`/`RoutedVehicleGateway`. The cockpit's center viewport now follows the ego: camera stays on the projected fix, world geometry slides past it.
