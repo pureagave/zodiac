@@ -7,6 +7,7 @@ import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.ui.playamap.cockpitTouchInput
@@ -72,7 +73,14 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
             topHeader(state = state)
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxSize()) {
-                leftRail()
+                leftRail(
+                    mapMode = state.mapMode,
+                    onToggleMapMode = {
+                        viewModel.setMapMode(
+                            if (state.mapMode == MapMode.TOP) MapMode.TILT else MapMode.TOP,
+                        )
+                    },
+                )
                 Spacer(Modifier.width(10.dp))
                 centerViewport(
                     modifier = Modifier.weight(1f),
@@ -132,7 +140,10 @@ private fun headerText(value: String) {
 }
 
 @Composable
-private fun leftRail() {
+private fun leftRail(
+    mapMode: MapMode,
+    onToggleMapMode: () -> Unit,
+) {
     Column(
         modifier =
             Modifier
@@ -143,16 +154,20 @@ private fun leftRail() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         repeat(6) { idx ->
+            val isMapToggle = idx == MAP_TOGGLE_IDX
+            val label = if (isMapToggle) "MAP: ${mapMode.name}" else "SYS-${idx + 1}"
+            val tint = if (isMapToggle && mapMode == MapMode.TILT) Amber else VectorGreen
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .border(1.dp, VectorGreen, RoundedCornerShape(4.dp))
+                    .border(1.dp, tint, RoundedCornerShape(4.dp))
+                    .then(if (isMapToggle) Modifier.clickable(onClick = onToggleMapMode) else Modifier)
                     .padding(8.dp),
             ) {
                 Text(
-                    text = "SYS-${idx + 1}",
-                    color = VectorGreen,
+                    text = label,
+                    color = tint,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                 )
@@ -160,6 +175,8 @@ private fun leftRail() {
         }
     }
 }
+
+private const val MAP_TOGGLE_IDX: Int = 2
 
 @Composable
 private fun rightRail(

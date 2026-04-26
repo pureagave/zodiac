@@ -6,6 +6,21 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase A landed: MAP MODE state + SYS-3 toggle
+
+Wiring-only commit toward the 3D-tilt feature; no visual change yet.
+
+- New `core/model/MapMode.kt` — `enum class MapMode { TOP, TILT }`.
+- `CockpitUiState.mapMode` defaults to `TOP`.
+- `CockpitViewModel.setMapMode(mode)` flips state directly (pure UI concern, no gateway).
+- `leftRail` is now parameterized: `(mapMode, onToggleMapMode)`. SYS-3 (`MAP_TOGGLE_IDX = 2`) becomes a tappable chip labeled `MAP: TOP` / `MAP: TILT`; border + text amber when in TILT, green when in TOP. Reuses the existing border + clickable + Text idiom inline — no new functions added (CRTVectorScreen.kt stays at 10/11).
+
+Tests: new `setMapMode_flipsUiState` confirms TOP → TILT → TOP round-trip. 40/40 unit tests green.
+
+Phase B (the actual graphicsLayer tilt + retro grid backdrop + ego overlay) lands next.
+
+---
+
 ## 2026-04-26 — Pinch-to-zoom on the map viewport
 
 Map is no longer at fixed `0.18 px/m`. Zoom is now Compose state inside `centerViewport`, controlled by a combined gesture handler:

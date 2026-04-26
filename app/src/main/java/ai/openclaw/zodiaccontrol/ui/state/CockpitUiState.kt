@@ -3,6 +3,7 @@ package ai.openclaw.zodiaccontrol.ui.state
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
@@ -20,6 +21,7 @@ data class CockpitUiState(
     val playaMap: PlayaMap? = null,
     val selectedLocationSource: LocationSourceType = LocationSourceType.FAKE,
     val locationState: LocationSourceState = LocationSourceState.Disconnected,
+    val mapMode: MapMode = MapMode.TOP,
 ) {
     val egoFix: GpsFix? get() = (locationState as? LocationSourceState.Active)?.fix
 }

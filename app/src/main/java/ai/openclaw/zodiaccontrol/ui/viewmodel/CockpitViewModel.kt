@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.viewmodel
 
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.VehicleCommand
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
@@ -80,6 +81,10 @@ class CockpitViewModel(
 
     fun selectLocationSource(type: LocationSourceType) {
         viewModelScope.launch { locationSource.select(type) }
+    }
+
+    fun setMapMode(mode: MapMode) {
+        _uiState.update { it.copy(mapMode = mode) }
     }
 
     fun setHeading(headingDeg: Int) {
