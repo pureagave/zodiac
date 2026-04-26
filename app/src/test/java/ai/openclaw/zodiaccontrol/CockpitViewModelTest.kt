@@ -90,6 +90,38 @@ class CockpitViewModelTest {
                 store.clear()
             }
         }
+
+    @Test
+    fun setTiltDeg_clampsToRange() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+
+                vm.setTiltDeg(55)
+                advanceUntilIdle()
+                assertEquals(55, vm.uiState.value.tiltDeg)
+
+                // Below MIN_TILT_DEG (=0) clamps to 0.
+                vm.setTiltDeg(-30)
+                advanceUntilIdle()
+                assertEquals(0, vm.uiState.value.tiltDeg)
+
+                // Above MAX_TILT_DEG (=80) clamps to 80.
+                vm.setTiltDeg(120)
+                advanceUntilIdle()
+                assertEquals(80, vm.uiState.value.tiltDeg)
+            } finally {
+                store.clear()
+            }
+        }
 }
 
 private object NoOpPlayaMapRepository : PlayaMapRepository {

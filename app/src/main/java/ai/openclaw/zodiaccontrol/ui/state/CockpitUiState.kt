@@ -22,6 +22,13 @@ data class CockpitUiState(
     val selectedLocationSource: LocationSourceType = LocationSourceType.FAKE,
     val locationState: LocationSourceState = LocationSourceState.Disconnected,
     val mapMode: MapMode = MapMode.TOP,
+    val tiltDeg: Int = DEFAULT_TILT_DEG,
 ) {
+    companion object {
+        const val DEFAULT_TILT_DEG: Int = 40
+        const val MIN_TILT_DEG: Int = 0
+        const val MAX_TILT_DEG: Int = 80
+    }
+
     val egoFix: GpsFix? get() = (locationState as? LocationSourceState.Active)?.fix
 }

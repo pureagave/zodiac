@@ -59,10 +59,9 @@ private val ElectricBlue = Color(0xFF00BFFF)
 private val Amber = Color(0xFFFFD166)
 
 private const val MAP_INITIAL_ZOOM: Double = 0.18
-private const val TILT_PITCH_DEG: Float = 40f
 private const val TILT_CAMERA_DISTANCE: Float = 8f
 private const val EGO_ANCHOR_TILT: Float = 0.78f
-private const val MAP_ANCHOR_TILT: Double = 0.78
+private const val MAP_ANCHOR_TILT: Double = 0.5
 private const val TILT_ZOOM_BOOST: Double = 1.0
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
@@ -109,6 +108,7 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                             onDisconnect = viewModel::disconnectTransport,
                             onSelectLocationSource = viewModel::selectLocationSource,
                             onSetHeading = viewModel::setHeading,
+                            onSetTilt = viewModel::setTiltDeg,
                         ),
                 )
             }
@@ -193,6 +193,7 @@ private fun leftRail(
 
 private const val MAP_TOGGLE_IDX: Int = 2
 private const val HDG_STEP_BIG: Int = 15
+private const val TILT_STEP_BIG: Int = 10
 
 data class RightRailCallbacks(
     val onSelectTransport: (TransportType) -> Unit,
@@ -200,6 +201,7 @@ data class RightRailCallbacks(
     val onDisconnect: () -> Unit,
     val onSelectLocationSource: (LocationSourceType) -> Unit,
     val onSetHeading: (Int) -> Unit,
+    val onSetTilt: (Int) -> Unit,
 )
 
 @Composable
@@ -321,6 +323,36 @@ private fun rightRail(
             )
         }
 
+        Text(
+            text = "> TILT: ${state.tiltDeg}°",
+            color = Amber,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            transportChip(
+                label = "-10",
+                selected = false,
+                onClick = { callbacks.onSetTilt(state.tiltDeg - TILT_STEP_BIG) },
+            )
+            transportChip(
+                label = "-1",
+                selected = false,
+                onClick = { callbacks.onSetTilt(state.tiltDeg - 1) },
+            )
+            transportChip(
+                label = "+1",
+                selected = false,
+                onClick = { callbacks.onSetTilt(state.tiltDeg + 1) },
+            )
+            transportChip(
+                label = "+10",
+                selected = false,
+                onClick = { callbacks.onSetTilt(state.tiltDeg + TILT_STEP_BIG) },
+            )
+        }
+
         listOf(
             modeLine to Amber,
             "> LINK ${if (state.linkStable) "ESTABLISHED" else "LOST"}" to
@@ -425,7 +457,7 @@ private fun centerViewport(
             modifier =
                 if (tilt) {
                     Modifier.fillMaxSize().graphicsLayer {
-                        rotationX = TILT_PITCH_DEG
+                        rotationX = state.tiltDeg.toFloat()
                         cameraDistance = TILT_CAMERA_DISTANCE * density
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     }

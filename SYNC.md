@@ -6,6 +6,24 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — TILT polish: centered view + adjustable tilt
+
+Two follow-ups after the meter-space-grid work:
+
+- Rob asked to center the grid + map on screen. Changed `MAP_ANCHOR_TILT` from `0.78` → `0.5` so the camera origin (Spike) sits at the canvas midpoint pre-rotation. With the +tilt rotation pivoting around the same midpoint, the Spike (and the city around it) stays at the screen center post-tilt. The ego marker on the non-tilted overlay still anchors at `0.78` for the driving-HUD feel — i.e., the driver is in the foreground and the city is centered ahead.
+- Added an adjustable `TILT: NN°` row to the right rail with `[-10] [-1] [+1] [+10]` chips. Backed by:
+  - `CockpitUiState.tiltDeg` (default 40, with companion-object `MIN_TILT_DEG = 0` / `MAX_TILT_DEG = 80`).
+  - `CockpitViewModel.setTiltDeg(deg)` — clamps via the companion-object limits and updates state.
+  - `RightRailCallbacks.onSetTilt` threading.
+  - `centerViewport`'s `graphicsLayer { rotationX = state.tiltDeg.toFloat() }` consumes state instead of the hardcoded constant.
+- New unit test `setTiltDeg_clampsToRange` confirms 55 stays 55, -30 clamps to 0, 120 clamps to 80.
+
+Verified on emulator: `MAP: TILT` chip → pentagon now sits dead-center with the grid radiating around it; the new `TILT: 40°` row in the right rail responds to chip taps.
+
+43/43 unit tests green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — TILT alignment fix: meter-space grid + lower map anchor
 
 Rob's feedback after Phase B + the pitch flip:

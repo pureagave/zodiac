@@ -88,6 +88,11 @@ class CockpitViewModel(
         _uiState.update { it.copy(mapMode = mode) }
     }
 
+    fun setTiltDeg(deg: Int) {
+        val clamped = deg.coerceIn(CockpitUiState.MIN_TILT_DEG, CockpitUiState.MAX_TILT_DEG)
+        _uiState.update { it.copy(tiltDeg = clamped) }
+    }
+
     fun setHeading(headingDeg: Int) {
         val clamped = headingDeg.coerceIn(0, 359)
         _uiState.update { it.copy(headingDeg = clamped) }
