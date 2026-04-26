@@ -10,9 +10,9 @@ import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 
 data class CockpitUiState(
-    val headingDeg: Int = 42,
-    val speedKph: Int = 28,
-    val thermalC: Int = 60,
+    val headingDeg: Int = 0,
+    val speedKph: Int = 0,
+    val thermalC: Int = 0,
     val mode: CockpitMode = CockpitMode.DIAGNOSTIC,
     val linkStable: Boolean = true,
     val selectedTransport: TransportType = TransportType.BLE,
@@ -31,6 +31,14 @@ data class CockpitUiState(
         const val DEFAULT_TILT_DEG: Int = 40
         const val MIN_TILT_DEG: Int = 0
         const val MAX_TILT_DEG: Int = 80
+
+        // Vehicle command bounds. Heading is full circle exclusive of 360 (which
+        // wraps to 0). Speed cap is a soft limit on what the cockpit will ever
+        // ask the chassis for; the vehicle itself enforces its own hard limit.
+        const val MIN_HEADING_DEG: Int = 0
+        const val MAX_HEADING_DEG: Int = 359
+        const val MIN_SPEED_KPH: Int = 0
+        const val MAX_SPEED_KPH: Int = 160
 
         // Hard cap on how far the camera can drift from ego before recenter is
         // required. Keeps a stuck/dragging finger from sliding the city far

@@ -135,13 +135,13 @@ class CockpitViewModel(
     }
 
     fun setHeading(headingDeg: Int) {
-        val clamped = headingDeg.coerceIn(0, 359)
+        val clamped = headingDeg.coerceIn(CockpitUiState.MIN_HEADING_DEG, CockpitUiState.MAX_HEADING_DEG)
         _uiState.update { it.copy(headingDeg = clamped) }
         viewModelScope.launch { vehicleGateway.send(VehicleCommand.SetHeading(clamped)) }
     }
 
     fun setSpeed(speedKph: Int) {
-        val clamped = speedKph.coerceIn(0, 160)
+        val clamped = speedKph.coerceIn(CockpitUiState.MIN_SPEED_KPH, CockpitUiState.MAX_SPEED_KPH)
         _uiState.update { it.copy(speedKph = clamped) }
         viewModelScope.launch { vehicleGateway.send(VehicleCommand.SetSpeed(clamped)) }
     }
