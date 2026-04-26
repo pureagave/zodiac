@@ -17,6 +17,7 @@ import ai.openclaw.zodiaccontrol.ui.playamap.drawPlayaMap
 import ai.openclaw.zodiaccontrol.ui.playamap.drawRetroGrid
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
+import ai.openclaw.zodiaccontrol.ui.wrapHeading
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -99,10 +100,14 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                 Spacer(Modifier.width(10.dp))
                 rightRail(
                     state = state,
-                    onSelectTransport = viewModel::selectTransport,
-                    onConnect = viewModel::connectTransport,
-                    onDisconnect = viewModel::disconnectTransport,
-                    onSelectLocationSource = viewModel::selectLocationSource,
+                    callbacks =
+                        RightRailCallbacks(
+                            onSelectTransport = viewModel::selectTransport,
+                            onConnect = viewModel::connectTransport,
+                            onDisconnect = viewModel::disconnectTransport,
+                            onSelectLocationSource = viewModel::selectLocationSource,
+                            onSetHeading = viewModel::setHeading,
+                        ),
                 )
             }
         }
@@ -185,14 +190,20 @@ private fun leftRail(
 }
 
 private const val MAP_TOGGLE_IDX: Int = 2
+private const val HDG_STEP_BIG: Int = 15
+
+data class RightRailCallbacks(
+    val onSelectTransport: (TransportType) -> Unit,
+    val onConnect: () -> Unit,
+    val onDisconnect: () -> Unit,
+    val onSelectLocationSource: (LocationSourceType) -> Unit,
+    val onSetHeading: (Int) -> Unit,
+)
 
 @Composable
 private fun rightRail(
     state: CockpitUiState,
-    onSelectTransport: (TransportType) -> Unit,
-    onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
-    onSelectLocationSource: (LocationSourceType) -> Unit,
+    callbacks: RightRailCallbacks,
 ) {
     val modeLine =
         when (state.mode) {
@@ -229,23 +240,23 @@ private fun rightRail(
             transportChip(
                 label = "BLE",
                 selected = state.selectedTransport == TransportType.BLE,
-                onClick = { onSelectTransport(TransportType.BLE) },
+                onClick = { callbacks.onSelectTransport(TransportType.BLE) },
             )
             transportChip(
                 label = "USB",
                 selected = state.selectedTransport == TransportType.USB,
-                onClick = { onSelectTransport(TransportType.USB) },
+                onClick = { callbacks.onSelectTransport(TransportType.USB) },
             )
             transportChip(
                 label = "WIFI",
                 selected = state.selectedTransport == TransportType.WIFI,
-                onClick = { onSelectTransport(TransportType.WIFI) },
+                onClick = { callbacks.onSelectTransport(TransportType.WIFI) },
             )
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            actionChip(label = "CONNECT", onClick = onConnect)
-            actionChip(label = "DISCONNECT", onClick = onDisconnect)
+            actionChip(label = "CONNECT", onClick = callbacks.onConnect)
+            actionChip(label = "DISCONNECT", onClick = callbacks.onDisconnect)
         }
 
         Text(
@@ -259,22 +270,52 @@ private fun rightRail(
             transportChip(
                 label = "FAKE",
                 selected = state.selectedLocationSource == LocationSourceType.FAKE,
-                onClick = { onSelectLocationSource(LocationSourceType.FAKE) },
+                onClick = { callbacks.onSelectLocationSource(LocationSourceType.FAKE) },
             )
             transportChip(
                 label = "GPS",
                 selected = state.selectedLocationSource == LocationSourceType.SYSTEM,
-                onClick = { onSelectLocationSource(LocationSourceType.SYSTEM) },
+                onClick = { callbacks.onSelectLocationSource(LocationSourceType.SYSTEM) },
             )
             transportChip(
                 label = "BLE",
                 selected = state.selectedLocationSource == LocationSourceType.BLE,
-                onClick = { onSelectLocationSource(LocationSourceType.BLE) },
+                onClick = { callbacks.onSelectLocationSource(LocationSourceType.BLE) },
             )
             transportChip(
                 label = "USB",
                 selected = state.selectedLocationSource == LocationSourceType.USB,
-                onClick = { onSelectLocationSource(LocationSourceType.USB) },
+                onClick = { callbacks.onSelectLocationSource(LocationSourceType.USB) },
+            )
+        }
+
+        Text(
+            text = "> HDG SET: ${state.headingDeg}°",
+            color = Amber,
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            transportChip(
+                label = "-15",
+                selected = false,
+                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg - HDG_STEP_BIG)) },
+            )
+            transportChip(
+                label = "-1",
+                selected = false,
+                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg - 1)) },
+            )
+            transportChip(
+                label = "+1",
+                selected = false,
+                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg + 1)) },
+            )
+            transportChip(
+                label = "+15",
+                selected = false,
+                onClick = { callbacks.onSetHeading(wrapHeading(state.headingDeg + HDG_STEP_BIG)) },
             )
         }
 

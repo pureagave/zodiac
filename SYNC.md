@@ -6,6 +6,24 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Stopped auto-rotation + added HDG SET debug control
+
+The map was auto-rotating because `FakeTelemetryRepository` ticks `headingDeg` every 500 ms and the VM was forwarding it into UI state. That made the TILT view impossible to inspect at a steady angle.
+
+Fix:
+- VM's telemetry collector no longer overwrites `headingDeg`. Heading is now owned by user input only — touch on the viewport (X→heading) or the new debug chips. Telemetry continues to drive speed / thermal / mode / linkStable.
+- New right-rail section under the GPS chips: `> HDG SET: NNN°` + a chip row `[-15] [-1] [+1] [+15]`. Each chip wraps `viewModel.setHeading((current ± step + 360) % 360)` so it loops around the compass instead of clamping at 0/359.
+
+Refactor side-effects:
+- `rightRail`'s callback list grew to 6 → trips detekt's `LongParameterList`. Bundled into a new top-level `data class RightRailCallbacks(...)` and pass `state` + `callbacks` (2 params).
+- `wrapHeading(deg)` would have pushed `CRTVectorScreen.kt` to 12 functions (over the 11-per-file ceiling). Lifted to a new tiny file `app/src/main/java/ai/openclaw/zodiaccontrol/ui/Heading.kt`.
+
+Verified on emulator: heading reads 42° at launch and stays put. The chip row works visually (no functional regression — the chips re-use the existing `transportChip` style).
+
+40/40 unit tests still green.
+
+---
+
 ## 2026-04-26 — Pitch direction flipped (+40° instead of -40°)
 
 Initial Phase B used `rotationX = -40f` which tilted the TOP of the canvas TOWARD the viewer — placing the BRC pentagon in the foreground (large) and the deep playa receding away. That's a "looking down at a tabletop tilted toward you" effect. Rob's feedback: *that's upside-down*, the wanted look is Battlezone — retro grid sweeping from the bottom-foreground up to a vanishing point with city features small in the distance.

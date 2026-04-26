@@ -30,9 +30,10 @@ class CockpitViewModel(
     init {
         viewModelScope.launch {
             telemetryRepository.stream().collect { telemetry ->
+                // Heading is owned by the user (touch / debug chips) — do not let
+                // telemetry overwrite it, otherwise the map auto-rotates.
                 _uiState.update {
                     it.copy(
-                        headingDeg = telemetry.headingDeg,
                         speedKph = telemetry.speedKph,
                         thermalC = telemetry.thermalC,
                         mode = telemetry.mode,
