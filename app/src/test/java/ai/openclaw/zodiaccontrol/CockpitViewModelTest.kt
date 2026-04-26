@@ -10,6 +10,8 @@ import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.FakeVehicleGateway
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
 import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
+import ai.openclaw.zodiaccontrol.data.prefs.CockpitPreferences
+import ai.openclaw.zodiaccontrol.data.prefs.CockpitPrefsSnapshot
 import ai.openclaw.zodiaccontrol.data.sensor.LocationSourceRegistry
 import ai.openclaw.zodiaccontrol.data.sensor.RoutedLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.StubLocationSource
@@ -50,6 +52,7 @@ class CockpitViewModelTest {
                         vehicleGateway = gateway,
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 
@@ -73,6 +76,7 @@ class CockpitViewModelTest {
                         vehicleGateway = FakeVehicleGateway(),
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 
@@ -101,6 +105,7 @@ class CockpitViewModelTest {
                         vehicleGateway = FakeVehicleGateway(),
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
                 val cap = CockpitUiState.MAX_PAN_M
@@ -140,6 +145,7 @@ class CockpitViewModelTest {
                         vehicleGateway = FakeVehicleGateway(),
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = routed,
+                        preferences = NoOpCockpitPreferences(),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
                 advanceUntilIdle()
@@ -168,6 +174,7 @@ class CockpitViewModelTest {
                         vehicleGateway = FakeVehicleGateway(),
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 
@@ -204,6 +211,18 @@ private fun newFakeRoutedLocationSource(scope: CoroutineScope): RoutedLocationSo
         scope = scope,
         initialType = LocationSourceType.FAKE,
     )
+}
+
+private class NoOpCockpitPreferences : CockpitPreferences {
+    override suspend fun read(): CockpitPrefsSnapshot = CockpitPrefsSnapshot.DEFAULT
+
+    override suspend fun setLocationSource(type: LocationSourceType) = Unit
+
+    override suspend fun setMapMode(mode: MapMode) = Unit
+
+    override suspend fun setTiltDeg(deg: Int) = Unit
+
+    override suspend fun setPixelsPerMeter(zoom: Double) = Unit
 }
 
 private class StaticTelemetryRepo : TelemetryRepository {

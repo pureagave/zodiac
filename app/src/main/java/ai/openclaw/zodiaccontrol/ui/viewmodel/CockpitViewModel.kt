@@ -8,6 +8,7 @@ import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
 import ai.openclaw.zodiaccontrol.data.VehicleConnectionGateway
 import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
+import ai.openclaw.zodiaccontrol.data.prefs.CockpitPreferences
 import ai.openclaw.zodiaccontrol.data.sensor.RoutedLocationSource
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import androidx.lifecycle.ViewModel
@@ -24,18 +25,28 @@ class CockpitViewModel(
     private val vehicleGateway: VehicleConnectionGateway,
     private val playaMapRepository: PlayaMapRepository,
     private val locationSource: RoutedLocationSource,
+    private val preferences: CockpitPreferences,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CockpitUiState())
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
 
     init {
-        // One outer launch with sequential child launches: the collectors all
+        // One outer launch with sequential child launches: persisted prefs are
+        // applied first so the UI doesn't flash defaults; then collectors all
         // subscribe before locationSource.start() runs, so any transitions the
         // source emits land on a hot subscriber. (StateFlow still conflates
         // intermediate emissions — `Searching → Active` may be observed as a
         // single jump to `Active`. That's intentional; the UI cares about the
         // latest state, not the path.)
         viewModelScope.launch {
+            val saved = preferences.read()
+            _uiState.update {
+                it.copy(
+                    selectedLocationSource = saved.locationSource,
+                    mapMode = saved.mapMode,
+                    tiltDeg = saved.tiltDeg,
+                )
+            }
             launch {
                 telemetryRepository.stream().collect { telemetry ->
                     // Heading and speed are user-owned (touch / debug chips) — do not let
@@ -87,12 +98,20 @@ class CockpitViewModel(
                     _uiState.update { it.copy(locationState = state) }
                 }
             }
+            // select() is a no-op when the saved type matches the registry's
+            // initialType; otherwise it stops FAKE (never started) and starts
+            // the saved source. start() is then a no-op for the saved-source
+            // case (re-entry guarded) and the actual cold start for FAKE.
+            locationSource.select(saved.locationSource)
             locationSource.start()
         }
     }
 
     fun selectLocationSource(type: LocationSourceType) {
-        viewModelScope.launch { locationSource.select(type) }
+        viewModelScope.launch {
+            locationSource.select(type)
+            preferences.setLocationSource(type)
+        }
     }
 
     /**
@@ -110,11 +129,13 @@ class CockpitViewModel(
 
     fun setMapMode(mode: MapMode) {
         _uiState.update { it.copy(mapMode = mode) }
+        viewModelScope.launch { preferences.setMapMode(mode) }
     }
 
     fun setTiltDeg(deg: Int) {
         val clamped = deg.coerceIn(CockpitUiState.MIN_TILT_DEG, CockpitUiState.MAX_TILT_DEG)
         _uiState.update { it.copy(tiltDeg = clamped) }
+        viewModelScope.launch { preferences.setTiltDeg(clamped) }
     }
 
     fun panBy(
@@ -162,6 +183,7 @@ class CockpitViewModelFactory(
     private val vehicleGateway: VehicleConnectionGateway,
     private val playaMapRepository: PlayaMapRepository,
     private val locationSource: RoutedLocationSource,
+    private val preferences: CockpitPreferences,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -171,6 +193,7 @@ class CockpitViewModelFactory(
                 vehicleGateway = vehicleGateway,
                 playaMapRepository = playaMapRepository,
                 locationSource = locationSource,
+                preferences = preferences,
             ) as T
         }
         error("Unknown ViewModel class: ${modelClass.name}")

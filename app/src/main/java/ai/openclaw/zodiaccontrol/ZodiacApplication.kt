@@ -8,6 +8,8 @@ import ai.openclaw.zodiaccontrol.data.TelemetryRepository
 import ai.openclaw.zodiaccontrol.data.VehicleConnectionGateway
 import ai.openclaw.zodiaccontrol.data.playa.AssetsPlayaMapRepository
 import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
+import ai.openclaw.zodiaccontrol.data.prefs.CockpitPreferences
+import ai.openclaw.zodiaccontrol.data.prefs.DataStoreCockpitPreferences
 import ai.openclaw.zodiaccontrol.data.sensor.BleLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.LocationSourceRegistry
@@ -17,6 +19,10 @@ import ai.openclaw.zodiaccontrol.data.sensor.UsbLocationSource
 import ai.openclaw.zodiaccontrol.data.transport.FakeTransportAdapter
 import ai.openclaw.zodiaccontrol.data.transport.TransportRegistry
 import android.app.Application
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.preferencesDataStoreFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +59,16 @@ class ZodiacApplication : Application() {
     }
 
     val playaMapRepository: PlayaMapRepository by lazy { AssetsPlayaMapRepository(assets) }
+
+    private val preferencesDataStore: DataStore<Preferences> by lazy {
+        PreferenceDataStoreFactory.create(scope = applicationScope) {
+            applicationContext.preferencesDataStoreFile("cockpit_prefs")
+        }
+    }
+
+    val preferences: CockpitPreferences by lazy {
+        DataStoreCockpitPreferences(preferencesDataStore)
+    }
 
     val locationSource: RoutedLocationSource by lazy {
         val registry =

@@ -33,6 +33,7 @@ private fun zodiacApp() {
                     vehicleGateway = app.vehicleGateway,
                     playaMapRepository = app.playaMapRepository,
                     locationSource = app.locationSource,
+                    preferences = app.preferences,
                 ),
         )
 
