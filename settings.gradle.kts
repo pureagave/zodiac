@@ -11,6 +11,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // usb-serial-for-android (Phase 4e — USB GPS dongles)
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

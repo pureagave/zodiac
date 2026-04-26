@@ -6,6 +6,26 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase 4e landed: USB serial NMEA source
+
+`data/sensor/UsbLocationSource` — uses [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android) v3.9.0 (MIT, ~100 KB AAR via JitPack) to talk to NMEA dongles over USB host. The library handles the chipset-specific bulk-transfer protocols (CH340, FTDI FT232R, CP210x, PL2303, CDC-ACM, u-blox); we feed parsed lines through `NmeaParser`.
+
+Permission UX: registered an `USB_DEVICE_ATTACHED` intent filter on `MainActivity` plus `res/xml/usb_gps_device_filter.xml` listing common GPS dongle VID/PIDs (u-blox 5446, Prolific PL2303 1659:8963, CH340 6790:29987, FTDI FT232R 1027:24577, CP210x 4292:60000). Android prompts to grant access automatically when a known dongle is plugged in. If the device isn't in the filter or permission isn't granted, the source emits `LocationSourceState.Error` instead of crashing.
+
+Build wiring:
+- `settings.gradle.kts` adds JitPack to `dependencyResolutionManagement.repositories`.
+- `app/build.gradle.kts` adds `implementation("com.github.mik3y:usb-serial-for-android:3.9.0")`.
+
+Default baud is 9600 (almost universal for consumer NMEA receivers); configurable via constructor for the rare 4800 / 38400 receivers.
+
+Notes:
+- `pumpNmea` was originally one tight loop; detekt's `NestedBlockDepth` (max 4) tripped on the inner `when`. Split into `pumpNmea` → `ingestBytes` → `emitLine` for clarity.
+- JVM-untestable like 4c/4d. Will integration-test on a Fire tablet with a real dongle once 4f exposes the selector.
+
+39/39 unit tests still green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Phase 4d landed: BLE/Classic SPP NMEA source
 
 `data/sensor/BleLocationSource` — Bluetooth Classic SPP for paired NMEA receivers (Garmin GLO, Bad Elf, Dual XGPS, etc.). On `start()`:

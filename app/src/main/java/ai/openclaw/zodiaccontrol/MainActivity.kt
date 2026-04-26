@@ -10,6 +10,7 @@ import ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.LocationSourceRegistry
 import ai.openclaw.zodiaccontrol.data.sensor.RoutedLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.SystemLocationSource
+import ai.openclaw.zodiaccontrol.data.sensor.UsbLocationSource
 import ai.openclaw.zodiaccontrol.data.transport.FakeTransportAdapter
 import ai.openclaw.zodiaccontrol.data.transport.TransportRegistry
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -61,6 +62,10 @@ private fun zodiacApp() {
                             FakeLocationSource(scope = sensorScope),
                             SystemLocationSource(applicationContext = context.applicationContext),
                             BleLocationSource(
+                                applicationContext = context.applicationContext,
+                                scope = sensorScope,
+                            ),
+                            UsbLocationSource(
                                 applicationContext = context.applicationContext,
                                 scope = sensorScope,
                             ),
