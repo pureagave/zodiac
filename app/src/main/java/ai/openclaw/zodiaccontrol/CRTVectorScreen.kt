@@ -9,6 +9,7 @@ import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
+import ai.openclaw.zodiaccontrol.ui.playamap.cockpitTouchInput
 import ai.openclaw.zodiaccontrol.ui.playamap.drawPlayaMap
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -30,13 +31,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -48,7 +51,7 @@ private val VectorGreen = Color(0xFF00FF66)
 private val ElectricBlue = Color(0xFF00BFFF)
 private val Amber = Color(0xFFFFD166)
 
-private const val MAP_PIXELS_PER_METER = 0.18
+private const val MAP_INITIAL_ZOOM: Double = 0.18
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
 @Composable
@@ -334,6 +337,7 @@ private fun centerViewport(
 ) {
     val map = state.playaMap
     val projection = remember { PLAYA_PROJECTION }
+    var pixelsPerMeter by remember { mutableDoubleStateOf(MAP_INITIAL_ZOOM) }
 
     Box(
         modifier =
@@ -346,20 +350,12 @@ private fun centerViewport(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: continue
-                                if (change.pressed) {
-                                    val nx = change.position.x / size.width
-                                    val ny = change.position.y / size.height
-                                    onHeadingChange((nx * 359f).toInt())
-                                    onSpeedChange((ny * 120f).toInt())
-                                }
-                            }
-                        }
-                    },
+                    .cockpitTouchInput(
+                        currentZoom = { pixelsPerMeter },
+                        onHeading = onHeadingChange,
+                        onSpeed = onSpeedChange,
+                        onZoom = { pixelsPerMeter = it },
+                    ),
         ) {
             if (map != null) {
                 val cameraCenter =
@@ -369,7 +365,7 @@ private fun centerViewport(
                     PlayaViewport(
                         center = cameraCenter,
                         headingDeg = state.headingDeg.toDouble(),
-                        pixelsPerMeter = MAP_PIXELS_PER_METER,
+                        pixelsPerMeter = pixelsPerMeter,
                         widthPx = size.width.toInt(),
                         heightPx = size.height.toInt(),
                     )

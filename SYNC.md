@@ -6,6 +6,24 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Pinch-to-zoom on the map viewport
+
+Map is no longer at fixed `0.18 px/m`. Zoom is now Compose state inside `centerViewport`, controlled by a combined gesture handler:
+
+- 1 finger pressed → existing X→heading, Y→speed behavior (unchanged).
+- 2+ fingers pressed → pinch zoom. Tracks the inter-finger distance at the start of each pinch session and scales `pixelsPerMeter` by the live distance ratio.
+- Pinch sessions reset whenever the second finger lifts so a fresh pinch starts a new ratio (no jumpy state from stale baselines).
+
+Bounds: `MAP_MIN_ZOOM = 0.05` (whole city + padding) → `MAP_MAX_ZOOM = 5.0` (street-level). Initial = 0.18, same as before, so the default view is identical.
+
+Code shape:
+- New `ui/playamap/MapTouchInput.kt` — `Modifier.cockpitTouchInput(currentZoom, onHeading, onSpeed, onZoom)`. Lives in its own file because `CRTVectorScreen.kt` was already at the 11-function file ceiling.
+- `centerViewport` adds `var pixelsPerMeter by remember { mutableDoubleStateOf(MAP_INITIAL_ZOOM) }` and threads it through to `PlayaViewport`.
+
+Tests still 39/39; full CI gate clean. Visual confirmation requires real multi-touch — verify on the emulator's extended-controls pinch panel or on hardware. The single-finger heading/speed path was unchanged in behavior, so no regression there.
+
+---
+
 ## 2026-04-26 — Phase 4f landed: GPS source selector UI + permission flow
 
 Right rail in `CRTVectorScreen` gains a `> GPS` header followed by a row of four chips — `[FAKE] [GPS] [BLE] [USB]` — mirroring the existing TRANSPORT chips. Tapping a chip calls `viewModel.selectLocationSource(type)`. Selected chip is amber, others green; same `transportChip` composable is reused.
