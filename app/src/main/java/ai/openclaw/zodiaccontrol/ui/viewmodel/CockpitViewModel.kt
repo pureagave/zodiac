@@ -101,7 +101,13 @@ class CockpitViewModel(
         dEastM: Double,
         dNorthM: Double,
     ) {
-        _uiState.update { it.copy(panEastM = it.panEastM + dEastM, panNorthM = it.panNorthM + dNorthM) }
+        val cap = CockpitUiState.MAX_PAN_M
+        _uiState.update {
+            it.copy(
+                panEastM = (it.panEastM + dEastM).coerceIn(-cap, cap),
+                panNorthM = (it.panNorthM + dNorthM).coerceIn(-cap, cap),
+            )
+        }
     }
 
     fun recenterPan() {

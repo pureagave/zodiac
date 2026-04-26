@@ -12,6 +12,7 @@ import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
 import ai.openclaw.zodiaccontrol.data.sensor.LocationSourceRegistry
 import ai.openclaw.zodiaccontrol.data.sensor.RoutedLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.StubLocationSource
+import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModelFactory
 import androidx.lifecycle.ViewModelProvider
@@ -80,6 +81,38 @@ class CockpitViewModelTest {
                 vm.setMapMode(MapMode.TOP)
                 advanceUntilIdle()
                 assertEquals(MapMode.TOP, vm.uiState.value.mapMode)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun panBy_clampsToMaxPanMeters() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                val cap = CockpitUiState.MAX_PAN_M
+
+                // Far past +cap east, far past -cap north — both should clamp.
+                vm.panBy(cap * 10, -cap * 10)
+                advanceUntilIdle()
+                assertEquals(cap, vm.uiState.value.panEastM, 0.0)
+                assertEquals(-cap, vm.uiState.value.panNorthM, 0.0)
+
+                // Within the cap — accumulates normally.
+                vm.recenterPan()
+                vm.panBy(100.0, -50.0)
+                advanceUntilIdle()
+                assertEquals(100.0, vm.uiState.value.panEastM, 0.0)
+                assertEquals(-50.0, vm.uiState.value.panNorthM, 0.0)
             } finally {
                 store.clear()
             }

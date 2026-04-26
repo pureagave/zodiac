@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix H5: clamp pan offset
+
+`CockpitViewModel.panBy` accumulated `panEastM` / `panNorthM` without bound. A stuck finger or runaway drag could shift the camera tens of kilometres off the playa, and the only recovery was the RECENTER MAP chip — which a user who's already lost wouldn't necessarily think to look for.
+
+Fix: new constant `CockpitUiState.MAX_PAN_M = 5_000.0` and a `coerceIn(-cap, cap)` in `panBy()`. 5 km is well past the trash fence, so legitimate pan stays unclipped; runaway pan stops there.
+
+New test: `panBy_clampsToMaxPanMeters` confirms a 10×cap pan in either direction lands at exactly `±MAX_PAN_M`, and a follow-up `recenterPan()` + within-cap `panBy()` still accumulates normally.
+
+54/54 green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Audit fix H4: consolidate VM init into one ordered launch
 
 `CockpitViewModel.init` previously fired off seven independent `viewModelScope.launch { … }` blocks. The audit observes that the location-source state collector and `locationSource.start()` were ordered nondeterministically — if `start()` raced ahead, the collector could miss the `Searching → Active` transition.

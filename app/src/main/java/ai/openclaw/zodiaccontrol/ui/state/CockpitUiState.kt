@@ -30,6 +30,12 @@ data class CockpitUiState(
         const val DEFAULT_TILT_DEG: Int = 40
         const val MIN_TILT_DEG: Int = 0
         const val MAX_TILT_DEG: Int = 80
+
+        // Hard cap on how far the camera can drift from ego before recenter is
+        // required. Keeps a stuck/dragging finger from sliding the city far
+        // off-canvas where the RECENTER chip is the only escape and the user
+        // might not see it.
+        const val MAX_PAN_M: Double = 5_000.0
     }
 
     val egoFix: GpsFix? get() = (locationState as? LocationSourceState.Active)?.fix
