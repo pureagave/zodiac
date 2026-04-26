@@ -23,6 +23,7 @@ data class CockpitUiState(
     val locationState: LocationSourceState = LocationSourceState.Disconnected,
     val mapMode: MapMode = MapMode.TOP,
     val tiltDeg: Int = DEFAULT_TILT_DEG,
+    val pixelsPerMeter: Double = DEFAULT_PIXELS_PER_METER,
     val panEastM: Double = 0.0,
     val panNorthM: Double = 0.0,
     val mapLoadError: String? = null,
@@ -39,6 +40,13 @@ data class CockpitUiState(
         const val MAX_HEADING_DEG: Int = 359
         const val MIN_SPEED_KPH: Int = 0
         const val MAX_SPEED_KPH: Int = 160
+
+        // Map zoom in screen pixels per playa meter. Defaults frame the ~5 km
+        // city radius at the typical Fire-tablet viewport. Mirrors the bounds
+        // enforced by MapTouchInput's pinch handler.
+        const val DEFAULT_PIXELS_PER_METER: Double = 0.18
+        const val MIN_PIXELS_PER_METER: Double = 0.05
+        const val MAX_PIXELS_PER_METER: Double = 5.0
 
         // Hard cap on how far the camera can drift from ego before recenter is
         // required. Keeps a stuck/dragging finger from sliding the city far

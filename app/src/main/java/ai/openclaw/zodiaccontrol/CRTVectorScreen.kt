@@ -36,10 +36,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -60,7 +57,6 @@ private val VectorGreen = Color(0xFF00FF66)
 private val ElectricBlue = Color(0xFF00BFFF)
 private val Amber = Color(0xFFFFD166)
 
-private const val MAP_INITIAL_ZOOM: Double = 0.18
 private const val TILT_CAMERA_DISTANCE: Float = 8f
 private const val EGO_ANCHOR_TILT: Float = 0.78f
 private const val MAP_ANCHOR_TILT: Double = 0.5
@@ -98,6 +94,7 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
                     modifier = Modifier.weight(1f),
                     state = state,
                     onPan = viewModel::panBy,
+                    onZoom = viewModel::setPixelsPerMeter,
                 )
                 Spacer(Modifier.width(10.dp))
                 rightRail(
@@ -480,10 +477,11 @@ private fun centerViewport(
     modifier: Modifier,
     state: CockpitUiState,
     onPan: (Double, Double) -> Unit,
+    onZoom: (Double) -> Unit,
 ) {
     val map = state.playaMap
     val projection = remember { PLAYA_PROJECTION }
-    var pixelsPerMeter by remember { mutableDoubleStateOf(MAP_INITIAL_ZOOM) }
+    val pixelsPerMeter = state.pixelsPerMeter
     val tilt = state.mapMode == MapMode.TILT
 
     Box(
@@ -503,7 +501,7 @@ private fun centerViewport(
                         val dN = (dxScreen * sinH + dyScreen * cosH) / ppm
                         onPan(dE, dN)
                     },
-                    onZoom = { pixelsPerMeter = it },
+                    onZoom = onZoom,
                 ),
     ) {
         Canvas(

@@ -45,6 +45,7 @@ class CockpitViewModel(
                     selectedLocationSource = saved.locationSource,
                     mapMode = saved.mapMode,
                     tiltDeg = saved.tiltDeg,
+                    pixelsPerMeter = saved.pixelsPerMeter,
                 )
             }
             launch {
@@ -136,6 +137,12 @@ class CockpitViewModel(
         val clamped = deg.coerceIn(CockpitUiState.MIN_TILT_DEG, CockpitUiState.MAX_TILT_DEG)
         _uiState.update { it.copy(tiltDeg = clamped) }
         viewModelScope.launch { preferences.setTiltDeg(clamped) }
+    }
+
+    fun setPixelsPerMeter(zoom: Double) {
+        val clamped = zoom.coerceIn(CockpitUiState.MIN_PIXELS_PER_METER, CockpitUiState.MAX_PIXELS_PER_METER)
+        _uiState.update { it.copy(pixelsPerMeter = clamped) }
+        viewModelScope.launch { preferences.setPixelsPerMeter(clamped) }
     }
 
     fun panBy(
