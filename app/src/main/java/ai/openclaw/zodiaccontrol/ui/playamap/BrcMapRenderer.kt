@@ -24,6 +24,7 @@ private val Cpn = Color(0xFF00FF66)
 private val ArtMajor = Color(0xFFFF66CC)
 private val ArtMinor = Color(0xFF80366A)
 private val Ego = Color(0xFFFFD166)
+private val GridGreen = Color(0xFF0A3D1D)
 
 private const val FENCE_STROKE = 2f
 private const val STREET_STROKE = 1f
@@ -35,6 +36,9 @@ private const val ART_MAJOR_RADIUS = 5f
 private const val ART_MINOR_RADIUS = 1.5f
 private const val ART_MAJOR_STROKE = 1.5f
 private const val EGO_SIZE = 14f
+private const val GRID_HORIZON_FRAC = 0.62f
+private const val GRID_RADIAL_HALF = 12
+private const val GRID_RECEDE_DIVS = 9
 
 private val MajorArtPrograms = setOf("Honorarium", "ManPavGrant")
 
@@ -65,7 +69,28 @@ fun DrawScope.drawPlayaMap(
     map.toilets.forEach { drawCentroidMarker(it, ctx, Toilet, TOILET_RADIUS) }
     map.cpns.forEach { drawPointMarker(it, ctx, Cpn, CPN_RADIUS) }
     map.art.forEach { drawArtMarker(it, ctx) }
-    drawEgoMarker(viewport)
+}
+
+/**
+ * Retro-future converging perspective grid: 25 radial lines from the horizon
+ * to the bottom edge plus 9 horizontal recede lines. Color matches the
+ * original Phase-1 grid (#0A3D1D). Drawn under the playa map in TILT mode so
+ * it shares the camera's `graphicsLayer` rotation and recedes toward the
+ * vanishing point with the rest of the scene.
+ */
+fun DrawScope.drawRetroGrid() {
+    val horizon = size.height * GRID_HORIZON_FRAC
+    val midX = size.width / 2f
+    val radialSpacing = size.width / (GRID_RADIAL_HALF * 2f + 2f)
+    for (i in -GRID_RADIAL_HALF..GRID_RADIAL_HALF) {
+        val x = midX + i * radialSpacing
+        drawLine(GridGreen, Offset(midX, horizon), Offset(x, size.height), strokeWidth = 1f)
+    }
+    val recedeStep = (size.height - horizon) / GRID_RECEDE_DIVS.toFloat()
+    for (j in 0..GRID_RECEDE_DIVS) {
+        val y = horizon + j * recedeStep
+        drawLine(GridGreen, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+    }
 }
 
 private fun DrawScope.drawArtMarker(
@@ -143,9 +168,18 @@ private fun DrawScope.drawPointMarker(
     drawCircle(color = color, radius = radius, center = Offset(s.x.toFloat(), s.y.toFloat()))
 }
 
-private fun DrawScope.drawEgoMarker(viewport: PlayaViewport) {
+/**
+ * Triangular ego marker pointing up (forward in track-up terms). Drawn on a
+ * non-tilted overlay above the map so it stays upright in TILT mode. The
+ * caller picks [anchorYFrac] — 0.5f = viewport center (TOP), ~0.78f =
+ * lower-third (TILT, arcade-HUD anchor).
+ */
+fun DrawScope.drawEgoMarker(
+    viewport: PlayaViewport,
+    anchorYFrac: Float = EGO_ANCHOR_CENTER,
+) {
     val cx = viewport.widthPx / 2f
-    val cy = viewport.heightPx / 2f
+    val cy = viewport.heightPx * anchorYFrac
     val tip = Offset(cx, cy - EGO_SIZE)
     val left = Offset(cx - EGO_SIZE * 0.6f, cy + EGO_SIZE * 0.7f)
     val right = Offset(cx + EGO_SIZE * 0.6f, cy + EGO_SIZE * 0.7f)
@@ -158,6 +192,8 @@ private fun DrawScope.drawEgoMarker(viewport: PlayaViewport) {
         }
     drawPath(path = path, color = Ego, style = Stroke(width = 2f))
 }
+
+const val EGO_ANCHOR_CENTER: Float = 0.5f
 
 private fun List<LatLon>.toScreen(ctx: RenderCtx): List<Offset> =
     map { ll ->

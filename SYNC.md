@@ -6,6 +6,35 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Phase B landed: 3D tilt + retro perspective grid
+
+`MAP: TILT` mode is live. Tap SYS-3 in the left rail and the playa pitches ~40° forward, the trash fence narrows toward a vanishing point, streets recede, and a dark-green converging grid sits underneath. The ego triangle stays upright at the lower-third of the viewport (driving-HUD anchor).
+
+Implementation:
+- `centerViewport` is now a two-Canvas stack inside one `Box`:
+  1. **Tilted Canvas** with `Modifier.graphicsLayer { rotationX = -40f; cameraDistance = 8f * density; transformOrigin = (0.5, 0.5) }` (only when `state.mapMode == TILT`). Draws `drawRetroGrid()` first, then `drawPlayaMap(...)`. The renderer no longer draws the ego.
+  2. **Plain overlay Canvas** above it, no transform. Renders only `drawEgoMarker(viewport, anchorYFrac)` — `EGO_ANCHOR_CENTER = 0.5` for TOP, `EGO_ANCHOR_TILT = 0.78` for TILT.
+- Touch handler hoisted from the inner Canvas to the outer Box so pinch and X→heading / Y→speed continue to use untilted screen pixels (avoids `graphicsLayer` foreshortening hit-tests).
+- `BrcMapRenderer` adds public `drawRetroGrid()` and exports `drawEgoMarker(viewport, anchorYFrac)`. Constants for the grid (25 radial lines + 9 receding) match the original Phase-1 grid color `#0A3D1D` for the right retro-future feel.
+
+Style notes / why `graphicsLayer` over hand-rolled pitch:
+- Zero math in `core/geo/` — projection stays pure 2D, no JVM-test churn.
+- The retro grid drawn inside the tilted layer inherits the same perspective for free; that's exactly the Battlezone effect.
+- Ego stays upright because we draw it on a separate untilted Canvas above.
+
+Detekt budget held: `CRTVectorScreen.kt` stays at 10/11 functions (no new functions added — the conditional `Modifier` is an inline `if/else` expression, the second Canvas is part of the existing composable body). `BrcMapRenderer.kt` adds 1 (`drawRetroGrid`) → 10/11.
+
+Verified on emulator: TOP mode unchanged from before; tapping `MAP: TOP` switches to `MAP: TILT` (chip turns amber), the entire map content pitches into a vanishing point, ego marker shifts to the lower portion of the viewport, retro grid is visible as dark green converging lines beneath the playa. Screenshots saved at `/tmp/zodiac-tilt-top.png` and `/tmp/zodiac-tilt-on.png`.
+
+40/40 unit tests still green; full CI gate clean.
+
+Open follow-ups (Phase C polish if desired):
+- Brighten / soften the grid color depending on subjective feel.
+- Animate the TOP↔TILT transition (currently a snap).
+- Hide the topmost ~10% of the tilted canvas (where content disappears past the horizon line) with a fade or solid mask for a cleaner "sky" feel.
+
+---
+
 ## 2026-04-26 — Phase A landed: MAP MODE state + SYS-3 toggle
 
 Wiring-only commit toward the 3D-tilt feature; no visual change yet.

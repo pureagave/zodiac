@@ -10,8 +10,11 @@ import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
+import ai.openclaw.zodiaccontrol.ui.playamap.EGO_ANCHOR_CENTER
 import ai.openclaw.zodiaccontrol.ui.playamap.cockpitTouchInput
+import ai.openclaw.zodiaccontrol.ui.playamap.drawEgoMarker
 import ai.openclaw.zodiaccontrol.ui.playamap.drawPlayaMap
+import ai.openclaw.zodiaccontrol.ui.playamap.drawRetroGrid
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.Canvas
@@ -40,7 +43,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +58,9 @@ private val ElectricBlue = Color(0xFF00BFFF)
 private val Amber = Color(0xFFFFD166)
 
 private const val MAP_INITIAL_ZOOM: Double = 0.18
+private const val TILT_PITCH_DEG: Float = -40f
+private const val TILT_CAMERA_DISTANCE: Float = 8f
+private const val EGO_ANCHOR_TILT: Float = 0.78f
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
 @Composable
@@ -355,25 +363,34 @@ private fun centerViewport(
     val map = state.playaMap
     val projection = remember { PLAYA_PROJECTION }
     var pixelsPerMeter by remember { mutableDoubleStateOf(MAP_INITIAL_ZOOM) }
+    val tilt = state.mapMode == MapMode.TILT
 
     Box(
         modifier =
             modifier
                 .fillMaxHeight()
                 .border(1.dp, VectorGreen)
-                .padding(8.dp),
+                .padding(8.dp)
+                .cockpitTouchInput(
+                    currentZoom = { pixelsPerMeter },
+                    onHeading = onHeadingChange,
+                    onSpeed = onSpeedChange,
+                    onZoom = { pixelsPerMeter = it },
+                ),
     ) {
         Canvas(
             modifier =
-                Modifier
-                    .fillMaxSize()
-                    .cockpitTouchInput(
-                        currentZoom = { pixelsPerMeter },
-                        onHeading = onHeadingChange,
-                        onSpeed = onSpeedChange,
-                        onZoom = { pixelsPerMeter = it },
-                    ),
+                if (tilt) {
+                    Modifier.fillMaxSize().graphicsLayer {
+                        rotationX = TILT_PITCH_DEG
+                        cameraDistance = TILT_CAMERA_DISTANCE * density
+                        transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    }
+                } else {
+                    Modifier.fillMaxSize()
+                },
         ) {
+            if (tilt) drawRetroGrid()
             if (map != null) {
                 val cameraCenter =
                     state.egoFix?.let { projection.project(it.location) }
@@ -395,6 +412,18 @@ private fun centerViewport(
                     style = Stroke(width = 1f),
                 )
             }
+        }
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val viewport =
+                PlayaViewport(
+                    widthPx = size.width.toInt(),
+                    heightPx = size.height.toInt(),
+                )
+            drawEgoMarker(
+                viewport = viewport,
+                anchorYFrac = if (tilt) EGO_ANCHOR_TILT else EGO_ANCHOR_CENTER,
+            )
         }
     }
 }

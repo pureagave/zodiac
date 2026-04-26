@@ -14,7 +14,7 @@ Android tablet cockpit app for the mutant Zodiac vehicle (Judge Dredd taxi-inspi
 
 - CRT-style sci-fi dashboard shell
 - Left subsystem rail + right status/event rail
-- Center viewport: top-down BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading; small amber ego triangle at center. Touch on the viewport sets heading (X) and speed (Y).
+- Center viewport: BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading. Two map modes selectable via the SYS-3 button in the left rail: `TOP` (orthographic, ego at center — default) and `TILT` (~40° pitched 3D with a retro perspective-grid backdrop, ego anchored to the lower third — Battlezone / Out-Run feel). Touch on the viewport sets heading (X) and speed (Y); pinch zooms.
 - Art layer: 332 2025 placements bundled from iBurn-Data; majors (Honorarium + ManPavGrant) drawn larger than self-funded.
 - GPS / location source abstraction: pluggable `LocationSource` with four implementations — synthetic `FakeLocationSource` (default, slow circle around the Spike for testing), Android `LocationManager`, Bluetooth Classic SPP NMEA receivers, and USB serial NMEA dongles via [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android). Source selectable at runtime via the right-rail GPS chips. Map viewport centers on the live ego fix.
 - Scanline overlay
