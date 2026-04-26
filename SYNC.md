@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix C6: NMEA hemisphere validation
+
+Starting a sweep of the audit (audit.md, 2026-04-26) — Critical and High issues only, ten commits, in order, each one CI-green. Plan lives at ~/.claude/plans/review-the-critical-and-binary-goose.md.
+
+This commit, the first of the batch, fixes **C6**. `NmeaParser.parseLatitude/parseLongitude` previously treated any non-S/W hemi value (including the empty string) as North/East — meaning a degraded GPS fix that emits an empty hemi field could shift reported position by 5,000+ km. Now the parser validates hemi against `{"N","S"}` / `{"E","W"}` and returns null when invalid; the GGA/RMC parsers already handle a null lat/lon by rejecting the sentence, so the upstream behavior is "ignore this sentence" — which surfaces as `Searching` rather than a phantom position.
+
+Refactor note: detekt's `ReturnCount` (limit 2) tripped on the obvious `if (hemi !in …) return null` + `value.toDoubleOrNull() ?: return null` shape. Combined into a single guard.
+
+3 new tests covering empty-hemi RMC, "X"-hemi RMC, and empty-hemi GGA. 46/46 green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — RECENTER MAP chip + pan state lifted to VM
 
 The pan offset (added in the previous commit as local `centerViewport` state) is now in `CockpitUiState.panEastM` / `panNorthM`, which lets a button anywhere reset it. Added a small **RECENTER MAP** action-chip at the bottom of the right-rail control stack (electric-blue style, after the TILT chip row) — tapping it sets pan back to (0, 0), restoring the camera to the ego/Spike position.

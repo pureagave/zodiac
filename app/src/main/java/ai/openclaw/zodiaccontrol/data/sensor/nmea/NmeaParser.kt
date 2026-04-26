@@ -63,7 +63,8 @@ object NmeaParser {
         value: String,
         hemi: String,
     ): Double? {
-        val ddmm = value.toDoubleOrNull() ?: return null
+        val ddmm = value.toDoubleOrNull()
+        if (ddmm == null || hemi !in LAT_HEMIS) return null
         val deg = (ddmm / NMEA_LAT_DEG_DIVISOR).toInt()
         val min = ddmm - deg * NMEA_LAT_DEG_DIVISOR
         val signed = deg + min / MINUTES_PER_DEGREE
@@ -74,7 +75,8 @@ object NmeaParser {
         value: String,
         hemi: String,
     ): Double? {
-        val dddmm = value.toDoubleOrNull() ?: return null
+        val dddmm = value.toDoubleOrNull()
+        if (dddmm == null || hemi !in LON_HEMIS) return null
         val deg = (dddmm / NMEA_LAT_DEG_DIVISOR).toInt()
         val min = dddmm - deg * NMEA_LAT_DEG_DIVISOR
         val signed = deg + min / MINUTES_PER_DEGREE
@@ -117,4 +119,7 @@ object NmeaParser {
     private const val CHECKSUM_HEX_LEN = 2
     private const val CHECKSUM_RADIX = 16
     private const val SENTENCE_TYPE_LEN = 3
+
+    private val LAT_HEMIS = setOf("N", "S")
+    private val LON_HEMIS = setOf("E", "W")
 }

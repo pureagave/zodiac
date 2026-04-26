@@ -91,6 +91,35 @@ class NmeaParserTest {
     }
 
     @Test
+    fun rejects_empty_hemisphere_field() {
+        // Degraded GPS fix can emit empty hemi fields. Treating "" as North/East
+        // would produce a 5,000+ km lat/lon error, so the parser must return null.
+        val signed = "\$GPRMC,123519,A,4807.038,,01131.000,E,000.0,000.0,230394,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun rejects_invalid_hemisphere_letter() {
+        val signed = "\$GPRMC,123519,A,4807.038,N,01131.000,X,000.0,000.0,230394,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun rejects_gga_with_empty_hemisphere() {
+        val signed = "\$GPGGA,123519,4807.038,N,01131.000,,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
     fun ignores_non_dollar_lines() {
         assertNull(NmeaParser.parse(""))
         assertNull(NmeaParser.parse("garbage"))
