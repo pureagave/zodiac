@@ -6,6 +6,35 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-25 — Phase 3 landed: art layer
+
+Added 2025 art locations from [iBurn-Data](https://github.com/iBurnApp/iBurn-Data) (master, MIT). 332 placements bundled at `app/src/main/assets/brc/2025/art.geojson` (~68 KB).
+
+Source shape vs ours:
+- iBurn ships proprietary JSON at `data/2025/APIData/APIData.bundle/art.json` (459 KB, includes descriptions/images/URLs/donation links).
+- We strip to a minimal GeoJSON FeatureCollection of `Point` geometries with `{name, program, location_string}` properties — a 6× size reduction with everything we need for cockpit display.
+- Conversion is one-shot Python (recorded in this entry); rerun yearly when iBurn publishes new data.
+
+Filtering "major" vs "minor":
+- Major = `program in {"Honorarium", "ManPavGrant"}` — 87 pieces, the BMOrg-funded large-scale art (incl. the Temple).
+- Minor = the remaining 245 self-funded pieces.
+- Renderer draws majors as 5 px hollow magenta circles, minors as 1.5 px dim magenta dots. Magenta picked to stay distinct from amber (plazas/ego) and the green/blue palette.
+
+Wiring:
+- `PlayaMap` gains `art: List<PointFeature>`.
+- `AssetsPlayaMapRepository.parseAll()` adds one line: `art = GeoJsonParser.parsePoints(read("art"), nameKey = "name", kindKey = "program")`. No new parser — the existing `parsePoints` handled the shape.
+- `BrcMapRenderer.drawPlayaMap` calls `drawArtMarker` for each art point before drawing the ego.
+
+Tests still 21/21 (no new tests — the parser path was already covered, and rendering is visual). Verified on emulator: pentagon fence + C-shaped streets + amber plazas + blue toilet markers + green CPN dots + magenta art markers + amber ego triangle, all coexisting cleanly. Screenshot at `/tmp/zodiac-phase3-now.png`.
+
+Open observations:
+- Self-funded dot cloud near the open playa is dense but readable. If it gets noisier with future years, gate on zoom level or bump the radius down.
+- No labels on art yet. Adding text labels means picking which majors get them at this zoom (probably the top-N by some criterion). Defer until we have a reason.
+
+Phase 4 (real GPS source) is the only Phase remaining.
+
+---
+
 ## 2026-04-25 — Phase 2 landed: BRC map rendering
 
 The center viewport now draws the playa top-down. Replaced the perspective-grid + 3/4 vehicle wireframe with:

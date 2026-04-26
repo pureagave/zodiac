@@ -21,6 +21,8 @@ private val Outline = Color(0xFF0F5C2D)
 private val Plaza = Color(0xFFFFD166)
 private val Toilet = Color(0xFF00BFFF)
 private val Cpn = Color(0xFF00FF66)
+private val ArtMajor = Color(0xFFFF66CC)
+private val ArtMinor = Color(0xFF80366A)
 private val Ego = Color(0xFFFFD166)
 
 private const val FENCE_STROKE = 2f
@@ -29,7 +31,12 @@ private const val OUTLINE_STROKE = 1f
 private const val PLAZA_STROKE = 1f
 private const val TOILET_RADIUS = 3f
 private const val CPN_RADIUS = 2f
+private const val ART_MAJOR_RADIUS = 5f
+private const val ART_MINOR_RADIUS = 1.5f
+private const val ART_MAJOR_STROKE = 1.5f
 private const val EGO_SIZE = 14f
+
+private val MajorArtPrograms = setOf("Honorarium", "ManPavGrant")
 
 /**
  * Bundle of the rendering transforms used at every draw call so individual
@@ -57,7 +64,27 @@ fun DrawScope.drawPlayaMap(
     map.plazas.forEach { drawPolygon(it, ctx, Plaza, PLAZA_STROKE, closed = true) }
     map.toilets.forEach { drawCentroidMarker(it, ctx, Toilet, TOILET_RADIUS) }
     map.cpns.forEach { drawPointMarker(it, ctx, Cpn, CPN_RADIUS) }
+    map.art.forEach { drawArtMarker(it, ctx) }
     drawEgoMarker(viewport)
+}
+
+private fun DrawScope.drawArtMarker(
+    point: PointFeature,
+    ctx: RenderCtx,
+) {
+    val major = point.kind in MajorArtPrograms
+    val s = ctx.viewport.toScreen(ctx.projection.project(point.location))
+    val center = Offset(s.x.toFloat(), s.y.toFloat())
+    if (major) {
+        drawCircle(
+            color = ArtMajor,
+            radius = ART_MAJOR_RADIUS,
+            center = center,
+            style = Stroke(width = ART_MAJOR_STROKE),
+        )
+    } else {
+        drawCircle(color = ArtMinor, radius = ART_MINOR_RADIUS, center = center)
+    }
 }
 
 private fun DrawScope.drawStreet(

@@ -48,6 +48,7 @@ class AssetsPlayaMapRepository(
             plazas = GeoJsonParser.parsePolygons(read("plazas"), nameKey = "Name"),
             toilets = GeoJsonParser.parsePolygons(read("toilets"), nameKey = "ref"),
             cpns = GeoJsonParser.parsePoints(read("cpns"), nameKey = "NAME", kindKey = "TYPE"),
+            art = GeoJsonParser.parsePoints(read("art"), nameKey = "name", kindKey = "program"),
         )
 
     private fun read(name: String): String = assets.open("brc/$year/$name.geojson").bufferedReader().use { it.readText() }

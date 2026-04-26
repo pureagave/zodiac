@@ -14,7 +14,8 @@ Android tablet cockpit app for the mutant Zodiac vehicle (Judge Dredd taxi-inspi
 
 - CRT-style sci-fi dashboard shell
 - Left subsystem rail + right status/event rail
-- Center viewport: top-down BRC map (trash fence, streets, plazas, toilets, CPNs) with track-up rotation following vehicle heading; small amber ego triangle at center. Touch on the viewport sets heading (X) and speed (Y).
+- Center viewport: top-down BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading; small amber ego triangle at center. Touch on the viewport sets heading (X) and speed (Y).
+- Art layer: 332 2025 placements bundled from iBurn-Data; majors (Honorarium + ManPavGrant) drawn larger than self-funded.
 - Scanline overlay
 - Black Rock City map data layer: 2025 GIS bundled in `app/src/main/assets/brc/2025/`, parsed into a typed `PlayaMap` and projected via `PlayaProjection` (equirectangular, anchored on the Golden Spike) and `PlayaViewport` (track-up, configurable zoom).
 - Baseline quality tooling (ktlint + detekt)
@@ -23,6 +24,7 @@ Android tablet cockpit app for the mutant Zodiac vehicle (Judge Dredd taxi-inspi
 ## Data sources
 
 - **Black Rock City GIS** — streets, plazas, blocks, trash fence, toilets, CPNs from [`burningmantech/innovate-GIS-data`](https://github.com/burningmantech/innovate-GIS-data) (master branch, 2025). Subject to the [Innovate Terms of Service](https://innovate.burningman.org/terms-of-service-for-burning-man-apis-and-datasets/).
+- **Art locations** — 2025 placements from [`iBurnApp/iBurn-Data`](https://github.com/iBurnApp/iBurn-Data) (MIT). The bundled `art.geojson` is a stripped subset (name + program + Point) of `data/2025/APIData/APIData.bundle/art.json`.
 
 ## CI
 

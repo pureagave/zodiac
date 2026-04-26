@@ -40,4 +40,5 @@ data class PlayaMap(
     val plazas: List<PolygonRing>,
     val toilets: List<PolygonRing>,
     val cpns: List<PointFeature>,
+    val art: List<PointFeature>,
 )
