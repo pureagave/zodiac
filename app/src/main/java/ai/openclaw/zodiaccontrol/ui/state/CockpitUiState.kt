@@ -25,6 +25,7 @@ data class CockpitUiState(
     val tiltDeg: Int = DEFAULT_TILT_DEG,
     val panEastM: Double = 0.0,
     val panNorthM: Double = 0.0,
+    val mapLoadError: String? = null,
 ) {
     companion object {
         const val DEFAULT_TILT_DEG: Int = 40

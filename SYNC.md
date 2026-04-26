@@ -6,6 +6,29 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Audit fix H7: surface map load failures via MapLoadResult
+
+`AssetsPlayaMapRepository.parseAll()` had no try/catch — a missing or malformed asset would throw `IOException` (or `JSONException` for bad JSON) out of `load()`, get silently swallowed by viewModelScope's exception handler, and the cockpit would render forever with a null map and no diagnosis.
+
+Fix:
+- New `core/model/MapLoadResult` sealed type: `Loading | Loaded(map) | Failed(message)`.
+- `PlayaMapRepository` interface gains `loadResult: StateFlow<MapLoadResult>`. The existing `map: Flow<PlayaMap>` is kept and now derives from `Loaded` results.
+- `AssetsPlayaMapRepository.load()` wraps `parseAll()` in try/catch over `IOException` and `JSONException`, transitioning to `Failed(message)` on either. Detekt's ReturnCount tripped when both catches had `return` statements; refactored to a separate `runLoadAttempt(): MapLoadResult` expression-body fn so `load()` has a single early return.
+- Extracted a `PlayaAssetReader` interface (default `AndroidPlayaAssetReader` wraps `AssetManager`) so the JVM tests can substitute a fake without Robolectric. The audit/prod constructor signature `(AssetManager, year)` is preserved via a secondary ctor.
+- `CockpitUiState` adds `mapLoadError: String? = null`; the VM collects `loadResult` in its consolidated init and copies the message into state. UI rendering of the error is intentionally out of scope for this commit (a later, design-driven follow-up).
+
+Logging via `android.util.Log.e` was tried first but failed JVM tests (Log not mocked). Dropped — the `Failed.message` already carries the diagnostic; full logging belongs with M10's Timber pull-in.
+
+2 new tests in `AssetsPlayaMapRepositoryTest`:
+- `load_with_missing_asset_emits_failed_without_throwing` — `IOException` from the reader → `Failed("art.geojson not found")`, no rethrow.
+- `load_after_failure_does_not_latch` — `Failed` doesn't lock the repo into terminal state; a future retry remains possible.
+
+`NoOpPlayaMapRepository` test stub updated to provide `loadResult`. 57/57 green; full CI gate clean.
+
+This closes the audit's Critical and High batch — all 13 issues from `audit.md` are now addressed (with H2 confirmed not-a-bug per the audit itself). Ready to move to features again.
+
+---
+
 ## 2026-04-26 — Audit fix H6: restart location source on permission grant
 
 `MainActivity`'s permission-launcher result callback was a bare comment — `{ /* …no callback action needed */ }`. After the user granted `ACCESS_FINE_LOCATION` (or BT permissions), the active source stayed in its prior `Error("…not granted")` state until the user manually re-toggled a chip or relaunched the app. Surprising UX.

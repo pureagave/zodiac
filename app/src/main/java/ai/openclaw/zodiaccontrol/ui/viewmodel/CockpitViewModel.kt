@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.viewmodel
 
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.model.MapLoadResult
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.VehicleCommand
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -66,8 +67,14 @@ class CockpitViewModel(
             }
             launch { playaMapRepository.load() }
             launch {
-                playaMapRepository.map.collect { map ->
-                    _uiState.update { it.copy(playaMap = map) }
+                playaMapRepository.loadResult.collect { result ->
+                    _uiState.update {
+                        when (result) {
+                            is MapLoadResult.Loading -> it.copy(mapLoadError = null)
+                            is MapLoadResult.Loaded -> it.copy(playaMap = result.map, mapLoadError = null)
+                            is MapLoadResult.Failed -> it.copy(mapLoadError = result.message)
+                        }
+                    }
                 }
             }
             launch {

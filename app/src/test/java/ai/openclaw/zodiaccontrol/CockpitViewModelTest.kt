@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol
 
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.core.model.MapLoadResult
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import ai.openclaw.zodiaccontrol.core.model.Telemetry
@@ -20,6 +21,9 @@ import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -187,6 +191,7 @@ class CockpitViewModelTest {
 }
 
 private object NoOpPlayaMapRepository : PlayaMapRepository {
+    override val loadResult: StateFlow<MapLoadResult> = MutableStateFlow(MapLoadResult.Loading).asStateFlow()
     override val map: Flow<PlayaMap> = emptyFlow()
 
     override suspend fun load() = Unit
