@@ -6,6 +6,16 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — Pitch direction flipped (+40° instead of -40°)
+
+Initial Phase B used `rotationX = -40f` which tilted the TOP of the canvas TOWARD the viewer — placing the BRC pentagon in the foreground (large) and the deep playa receding away. That's a "looking down at a tabletop tilted toward you" effect. Rob's feedback: *that's upside-down*, the wanted look is Battlezone — retro grid sweeping from the bottom-foreground up to a vanishing point with city features small in the distance.
+
+Fix: `TILT_PITCH_DEG = 40f` (positive). With Compose's `rotationX` semantics (matches `View.setRotationX` — positive tilts the top away from the viewer), the BOTTOM of the canvas now comes forward and the TOP recedes. Result: the retro grid dominates the foreground, the playa map shrinks toward the horizon as a distant target. Ego marker on the non-tilted overlay still anchors at lower-third, which now correctly reads as "in the foreground driving forward."
+
+Trade-off: at the default zoom (`pixelsPerMeter = 0.18`), the city is small in TILT mode because it's projected near the vanishing point. Pinch-out is the answer (Ctrl-drag in the emulator); zoom now serves both modes. If the default zoom feels wrong-sized in TILT, a per-mode default zoom is a Phase-C polish.
+
+---
+
 ## 2026-04-26 — Phase B landed: 3D tilt + retro perspective grid
 
 `MAP: TILT` mode is live. Tap SYS-3 in the left rail and the playa pitches ~40° forward, the trash fence narrows toward a vanishing point, streets recede, and a dark-green converging grid sits underneath. The ego triangle stays upright at the lower-third of the viewport (driving-HUD anchor).

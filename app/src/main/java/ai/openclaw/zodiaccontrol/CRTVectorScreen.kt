@@ -58,7 +58,7 @@ private val ElectricBlue = Color(0xFF00BFFF)
 private val Amber = Color(0xFFFFD166)
 
 private const val MAP_INITIAL_ZOOM: Double = 0.18
-private const val TILT_PITCH_DEG: Float = -40f
+private const val TILT_PITCH_DEG: Float = 40f
 private const val TILT_CAMERA_DISTANCE: Float = 8f
 private const val EGO_ANCHOR_TILT: Float = 0.78f
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
