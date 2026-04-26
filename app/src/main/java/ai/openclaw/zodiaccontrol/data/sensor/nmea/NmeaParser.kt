@@ -4,13 +4,16 @@ import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 
 /**
- * Minimal NMEA 0183 reader for cockpit use. Handles the two sentences every
- * consumer GPS receiver emits — `$GPGGA` (fix + altitude + HDOP) and `$GPRMC`
- * (fix + speed + course). Other sentence types are ignored.
+ * Minimal NMEA 0183 reader for cockpit use. Handles the GGA (fix + altitude
+ * + HDOP) and RMC (fix + speed + course) sentence types from any talker —
+ * `$GPxxx` (GPS), `$GLxxx` (GLONASS), `$GAxxx` (Galileo), `$GBxxx` (BeiDou),
+ * and `$GNxxx` (multi-constellation) all match. Other sentence types are
+ * ignored.
  *
  * Returns null when the sentence is invalid, the checksum doesn't match, or
  * the fix is "no fix" (status V or fix-quality 0). Trailing line endings are
- * stripped before parsing.
+ * stripped before parsing. Accepts both standard 2-digit checksums and the
+ * non-conforming 1-digit form some receivers emit when the value is < 0x10.
  *
  * The parser preserves whichever fields are present in the sentence — a GGA
  * fills lat/lon and approximates accuracy from HDOP; an RMC fills lat/lon,
@@ -85,14 +88,15 @@ object NmeaParser {
 
     private fun checksumValid(sentence: String): Boolean {
         val starIdx = sentence.indexOf('*')
-        if (starIdx < 0 || starIdx + CHECKSUM_HEX_LEN + 1 > sentence.length) return false
+        val checksumStr = if (starIdx < 0) "" else sentence.substring(starIdx + 1)
         val expected =
-            sentence
-                .substring(starIdx + 1, starIdx + 1 + CHECKSUM_HEX_LEN)
-                .toIntOrNull(CHECKSUM_RADIX)
+            checksumStr
+                .takeIf { it.length in CHECKSUM_HEX_MIN_LEN..CHECKSUM_HEX_MAX_LEN }
+                ?.toIntOrNull(CHECKSUM_RADIX)
+                ?: return false
         var actual = 0
         for (i in 1 until starIdx) actual = actual xor sentence[i].code
-        return expected != null && actual == expected
+        return actual == expected
     }
 
     private const val GGA_MIN_FIELDS = 10
@@ -116,7 +120,8 @@ object NmeaParser {
     private const val MINUTES_PER_DEGREE = 60.0
     private const val KNOTS_TO_KPH = 1.852
     private const val HDOP_TO_METERS = 5.0
-    private const val CHECKSUM_HEX_LEN = 2
+    private const val CHECKSUM_HEX_MIN_LEN = 1
+    private const val CHECKSUM_HEX_MAX_LEN = 2
     private const val CHECKSUM_RADIX = 16
     private const val SENTENCE_TYPE_LEN = 3
 

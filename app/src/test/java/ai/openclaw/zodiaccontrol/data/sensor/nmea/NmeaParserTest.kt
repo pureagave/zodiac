@@ -133,6 +133,39 @@ class NmeaParserTest {
         assertNotNull(NmeaParser.parse(line))
     }
 
+    @Test
+    fun accepts_non_gp_talker_ids() {
+        // GLONASS, Galileo, BeiDou, and multi-constellation receivers all use
+        // their own talker prefix on the same GGA / RMC payload shape.
+        for (talker in listOf("GL", "GA", "GB", "GN")) {
+            val signed = "\$${talker}GGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"
+            val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+            val line = "$signed*${"%02X".format(cs)}"
+
+            val fix = NmeaParser.parse(line)
+
+            assertNotNull("expected $talker talker to parse", fix)
+            assertEquals(48.1173, fix!!.location.lat, COORD_TOLERANCE)
+        }
+    }
+
+    @Test
+    fun accepts_one_digit_checksum() {
+        // Some receivers omit the leading zero on checksums < 0x10. The NMEA
+        // spec requires 2 hex digits, but tolerating the short form costs
+        // nothing and matches what real hardware emits.
+        // Synthesize a payload whose XOR-checksum is < 0x10 by varying a tail
+        // character through printable ASCII until one lands.
+        val base = "GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,"
+        val (payload, cs) =
+            (0x20..0x7E).asSequence()
+                .map { c -> "$base${c.toChar()}" to "$base${c.toChar()}".fold(0) { a, ch -> a xor ch.code } }
+                .first { (_, x) -> x < 0x10 }
+        val line = "\$$payload*${"%X".format(cs)}"
+
+        assertNotNull(NmeaParser.parse(line))
+    }
+
     private companion object {
         const val COORD_TOLERANCE = 1e-4
         const val SPEED_TOLERANCE = 1e-3
