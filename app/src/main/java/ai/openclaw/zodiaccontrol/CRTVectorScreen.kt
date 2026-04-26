@@ -62,6 +62,8 @@ private const val MAP_INITIAL_ZOOM: Double = 0.18
 private const val TILT_PITCH_DEG: Float = 40f
 private const val TILT_CAMERA_DISTANCE: Float = 8f
 private const val EGO_ANCHOR_TILT: Float = 0.78f
+private const val MAP_ANCHOR_TILT: Double = 0.78
+private const val TILT_ZOOM_BOOST: Double = 1.0
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
 @Composable
@@ -431,19 +433,20 @@ private fun centerViewport(
                     Modifier.fillMaxSize()
                 },
         ) {
-            if (tilt) drawRetroGrid()
+            val cameraCenter =
+                state.egoFix?.let { projection.project(it.location) }
+                    ?: PlayaPoint(0.0, 0.0)
+            val viewport =
+                PlayaViewport(
+                    center = cameraCenter,
+                    headingDeg = state.headingDeg.toDouble(),
+                    pixelsPerMeter = if (tilt) pixelsPerMeter * TILT_ZOOM_BOOST else pixelsPerMeter,
+                    widthPx = size.width.toInt(),
+                    heightPx = size.height.toInt(),
+                    anchorYFrac = if (tilt) MAP_ANCHOR_TILT else 0.5,
+                )
+            if (tilt) drawRetroGrid(viewport)
             if (map != null) {
-                val cameraCenter =
-                    state.egoFix?.let { projection.project(it.location) }
-                        ?: PlayaPoint(0.0, 0.0)
-                val viewport =
-                    PlayaViewport(
-                        center = cameraCenter,
-                        headingDeg = state.headingDeg.toDouble(),
-                        pixelsPerMeter = pixelsPerMeter,
-                        widthPx = size.width.toInt(),
-                        heightPx = size.height.toInt(),
-                    )
                 drawPlayaMap(map = map, projection = projection, viewport = viewport)
             } else {
                 drawCircle(

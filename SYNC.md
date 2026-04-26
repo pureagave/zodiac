@@ -6,6 +6,32 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — TILT alignment fix: meter-space grid + lower map anchor
+
+Rob's feedback after Phase B + the pitch flip:
+- The grid and the map didn't share a vanishing point.
+- The grid covered <30% of the viewport.
+- The city was barely visible up near the horizon while the grid floated separately in the foreground.
+
+Root cause: the original `drawRetroGrid` was drawn in **canvas pixel-space** (lines from a hardcoded `0.62 * height` horizon to the bottom edge). The map was drawn in **playa-meter space** through `PlayaViewport`. Both got rotated by the same `graphicsLayer { rotationX = 40 }`, but their 2D pre-rotation vanishing points differed, so post-rotation they didn't line up.
+
+Fix:
+
+- `PlayaViewport` gains an `anchorYFrac: Double = 0.5` parameter. The camera origin (where `center` projects on the canvas) is now `heightPx * anchorYFrac` instead of always mid-screen. In TILT mode, the cockpit passes `0.78` so the playa Spike sits in the lower-third of the canvas before tilt — which after the +40° rotation lands the city's foreground in front of the ego and the deep playa receding upward.
+- `drawRetroGrid(viewport)` is rewritten in **meter-space**: a 200 m × 200 m mesh centered on the viewport's `center`, ±5 km in each direction. Each line is projected through the same `viewport.toScreen` the map uses. Grid + map then share one projection, so their vanishing points coincide *by construction*.
+- Brightened `GridGreen` from `#0A3D1D` to `#1F6E37` and bumped stroke to 1.2 px so the grid reads at typical emulator/tablet pixel densities.
+- Added two new `PlayaViewport` tests for the anchor parameter (camera-origin shift, north-offset projection above the anchor).
+
+Side effects:
+- `BrcMapRenderer.kt` was at 9 functions before this change. Adding a new `toOffset()` extension would have pushed it over the 11-fn-per-file ceiling, so the conversion is inlined at the two `drawLine` call sites.
+- `TILT_ZOOM_BOOST` reverted from 2.0 to 1.0 — with the meter-space grid sharing the projection, an extra zoom in TILT broke the grid/map ratio. Pinch zoom still works for both modes uniformly.
+
+Verified on emulator: `MAP: TILT` chip → playa pentagon now sits on the meter grid, both foreshortened identically; the deep playa recedes to a single vanishing point near the upper-third of the viewport. Screenshot at `/tmp/zodiac-tilt-bright.png`.
+
+42/42 unit tests green; full CI gate clean.
+
+---
+
 ## 2026-04-26 — Stopped auto-rotation + added HDG SET debug control
 
 The map was auto-rotating because `FakeTelemetryRepository` ticks `headingDeg` every 500 ms and the VM was forwarding it into UI state. That made the TILT view impossible to inspect at a steady angle.

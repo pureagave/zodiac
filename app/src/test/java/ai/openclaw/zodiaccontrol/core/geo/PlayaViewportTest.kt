@@ -66,6 +66,36 @@ class PlayaViewportTest {
         assertEquals(300.0, s.y, EPSILON)
     }
 
+    @Test
+    fun anchor_y_frac_shifts_camera_origin_vertically() {
+        // anchorYFrac = 0.78 puts the camera origin at 78% down the canvas.
+        val v =
+            PlayaViewport(
+                widthPx = 800,
+                heightPx = 600,
+                pixelsPerMeter = 1.0,
+                anchorYFrac = 0.78,
+            )
+        val s = v.toScreen(PlayaPoint(0.0, 0.0))
+        assertEquals(400.0, s.x, EPSILON)
+        assertEquals(0.78 * 600, s.y, EPSILON)
+    }
+
+    @Test
+    fun north_offset_lifts_above_anchor() {
+        // With anchor at 0.78 and 100 m north of origin, the projected point
+        // should be 100 px above the anchor (smaller screen Y).
+        val v =
+            PlayaViewport(
+                widthPx = 800,
+                heightPx = 600,
+                pixelsPerMeter = 1.0,
+                anchorYFrac = 0.78,
+            )
+        val s = v.toScreen(PlayaPoint(eastM = 0.0, northM = 100.0))
+        assertEquals(0.78 * 600 - 100.0, s.y, EPSILON)
+    }
+
     private companion object {
         const val EPSILON = 1e-9
     }

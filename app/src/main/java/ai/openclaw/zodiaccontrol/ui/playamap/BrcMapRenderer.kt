@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.playamap
 
 import ai.openclaw.zodiaccontrol.core.geo.LatLon
+import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.geo.ScreenXY
@@ -24,7 +25,7 @@ private val Cpn = Color(0xFF00FF66)
 private val ArtMajor = Color(0xFFFF66CC)
 private val ArtMinor = Color(0xFF80366A)
 private val Ego = Color(0xFFFFD166)
-private val GridGreen = Color(0xFF0A3D1D)
+private val GridGreen = Color(0xFF1F6E37)
 
 private const val FENCE_STROKE = 2f
 private const val STREET_STROKE = 1f
@@ -36,9 +37,9 @@ private const val ART_MAJOR_RADIUS = 5f
 private const val ART_MINOR_RADIUS = 1.5f
 private const val ART_MAJOR_STROKE = 1.5f
 private const val EGO_SIZE = 14f
-private const val GRID_HORIZON_FRAC = 0.62f
-private const val GRID_RADIAL_HALF = 12
-private const val GRID_RECEDE_DIVS = 9
+private const val GRID_SPACING_M = 200.0
+private const val GRID_HALF_RANGE_M = 5_000.0
+private const val GRID_STROKE_PX = 1.2f
 
 private val MajorArtPrograms = setOf("Honorarium", "ManPavGrant")
 
@@ -72,24 +73,29 @@ fun DrawScope.drawPlayaMap(
 }
 
 /**
- * Retro-future converging perspective grid: 25 radial lines from the horizon
- * to the bottom edge plus 9 horizontal recede lines. Color matches the
- * original Phase-1 grid (#0A3D1D). Drawn under the playa map in TILT mode so
- * it shares the camera's `graphicsLayer` rotation and recedes toward the
- * vanishing point with the rest of the scene.
+ * Retro-future ground-plane grid drawn in **playa meters** through the same
+ * [viewport] used for the map. Lines spaced every [GRID_SPACING_M] meters,
+ * extending [GRID_HALF_RANGE_M] in each direction from the camera. Because the
+ * grid shares the projection with the map, their vanishing points coincide —
+ * the city's geometry sits naturally on top of the grid in TILT mode rather
+ * than floating above an unrelated 2D pattern.
  */
-fun DrawScope.drawRetroGrid() {
-    val horizon = size.height * GRID_HORIZON_FRAC
-    val midX = size.width / 2f
-    val radialSpacing = size.width / (GRID_RADIAL_HALF * 2f + 2f)
-    for (i in -GRID_RADIAL_HALF..GRID_RADIAL_HALF) {
-        val x = midX + i * radialSpacing
-        drawLine(GridGreen, Offset(midX, horizon), Offset(x, size.height), strokeWidth = 1f)
+fun DrawScope.drawRetroGrid(viewport: PlayaViewport) {
+    val centerEast = viewport.center.eastM
+    val centerNorth = viewport.center.northM
+    var east = -GRID_HALF_RANGE_M
+    while (east <= GRID_HALF_RANGE_M) {
+        val a = viewport.toScreen(PlayaPoint(centerEast + east, centerNorth - GRID_HALF_RANGE_M))
+        val b = viewport.toScreen(PlayaPoint(centerEast + east, centerNorth + GRID_HALF_RANGE_M))
+        drawLine(GridGreen, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), GRID_STROKE_PX)
+        east += GRID_SPACING_M
     }
-    val recedeStep = (size.height - horizon) / GRID_RECEDE_DIVS.toFloat()
-    for (j in 0..GRID_RECEDE_DIVS) {
-        val y = horizon + j * recedeStep
-        drawLine(GridGreen, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+    var north = -GRID_HALF_RANGE_M
+    while (north <= GRID_HALF_RANGE_M) {
+        val a = viewport.toScreen(PlayaPoint(centerEast - GRID_HALF_RANGE_M, centerNorth + north))
+        val b = viewport.toScreen(PlayaPoint(centerEast + GRID_HALF_RANGE_M, centerNorth + north))
+        drawLine(GridGreen, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), GRID_STROKE_PX)
+        north += GRID_SPACING_M
     }
 }
 

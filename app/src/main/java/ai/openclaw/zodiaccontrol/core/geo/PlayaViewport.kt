@@ -14,6 +14,10 @@ import kotlin.math.sin
  * @param pixelsPerMeter zoom; e.g. 0.15 fits the ~5 km city diameter into ~750 px
  * @param widthPx viewport width in pixels
  * @param heightPx viewport height in pixels
+ * @param anchorYFrac vertical fraction (0..1) where [center] projects on the
+ *  canvas. 0.5 = midway (default — top-down view). Higher values push the
+ *  camera origin toward the bottom of the canvas, which is how TILT mode keeps
+ *  the ego in the foreground while the playa extends "ahead" toward the top.
  */
 data class PlayaViewport(
     val center: PlayaPoint = PlayaPoint(0.0, 0.0),
@@ -21,12 +25,13 @@ data class PlayaViewport(
     val pixelsPerMeter: Double = 0.15,
     val widthPx: Int = 0,
     val heightPx: Int = 0,
+    val anchorYFrac: Double = 0.5,
 ) {
     private val rad = Math.toRadians(headingDeg)
     private val cos = cos(rad)
     private val sin = sin(rad)
     private val cx = widthPx / 2.0
-    private val cy = heightPx / 2.0
+    private val cy = heightPx * anchorYFrac
 
     /**
      * Project a playa-meters point to screen pixels (origin top-left, +Y down).
