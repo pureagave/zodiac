@@ -38,6 +38,16 @@ CI runs all four checks (ktlint, detekt, unit tests, assembleDebug) on push/PR t
 
 **DI is manual** in `MainActivity.kt` — no Hilt/Dagger. Dependencies are created and wired up directly.
 
+## GPS sourcing
+
+Fire tablets have no built-in GNSS. Architecture is a pluggable `LocationSource` (FAKE / SYSTEM / BLE / USB / NET — NET is planned), parallel to the transport adapter pattern. Fleet target is 8-10 tablets in one vehicle, so the production path is a single shared GPS source on the car's local WiFi rather than per-tablet receivers:
+
+- **Bring-up:** iPhone running GPS2IP broadcasts NMEA over UDP `10110` on the car's existing travel-router WiFi.
+- **Production:** Pi Zero 2 W + u-blox USB GNSS + roof antenna, running `gpsd` + UDP NMEA broadcaster on the same WiFi. Pi only does GPS; the travel router keeps the AP/DHCP role.
+- Tablet side: `NetworkLocationSource` listens on UDP `10110`, feeds lines into the existing `NmeaParser`, emits `LocationSourceState` like every other source. Same selector chip pattern.
+
+The phone bring-up exists specifically to prove `NetworkLocationSource` end-to-end before any hardware is bought.
+
 ## UI Structure (CRTVectorScreen.kt)
 
 Three-rail layout: left rail (system cards), center viewport (Canvas wireframe + touch input), right rail (transport selector + status). Full-screen scanline overlay. Touch on center viewport maps X→heading, Y→speed.

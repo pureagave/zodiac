@@ -6,6 +6,32 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-26 — GPS fleet sourcing plan (8-10 tablets, one vehicle)
+
+Decided how to feed GPS to the fleet without per-tablet receivers.
+
+**Ruled out:**
+- Per-tablet BLE pairing (Garmin GLO, Bad Elf, Dual XGPS150). Most BT GPS pucks cap at 1-2 active connections; even the multi-client units (Dual XGPS160, Bad Elf Pro+) cap at 5 BT clients — and pairing 10 tablets is a maintenance nightmare. Also: BT inside a metal vehicle with 10 tablets is RF-noisy.
+- "One tablet broadcasts from internal GPS." Fire tablets have no GPS, so the host tablet would need external hardware anyway — might as well skip the tablet middleman.
+- Dual XGPS160 WiFi mode. **Correction to earlier guess: the XGPS160 does NOT have a WiFi mode — it's BT-only with a 5-device cap.** The off-the-shelf WiFi-NMEA category is mostly marine (Quark-Elec QK-A027 ~$130 is the closest fit if going off-the-shelf).
+
+**Plan:**
+1. **Bring-up (weekend):** spare iPhone running GPS2IP (paid ~$8 — needed for background-location mode that keeps it broadcasting with screen locked) joins the car's existing travel-router WiFi. UDP broadcast on port 10110 (de facto NMEA-over-IP). Build a new `NetworkLocationSource` that listens on UDP 10110 and feeds lines into the existing `NmeaParser`. Add a `[NET]` chip in the right-rail GPS selector. iOS works the same as Android for this — same app, same protocol. Same caveats (thermal, app-killing, internal antenna) make it a stopgap, not the answer.
+2. **Production:** Pi Zero 2 W + USB u-blox GNSS (NEO-M9N preferred; BU-353-S4 a fine first cut) + roof-mounted active GPS antenna. Pi runs `gpsd` plus a small UDP NMEA broadcaster (Python or Go, ~20 lines) on the same WiFi. Power: 12V → 5V buck on switched ignition.
+
+**Why not Pi Zero 2 W as both AP and GPS:** its WiFi is 2.4 GHz only (CYW43438), single antenna, and the AP-mode firmware is reliable up to ~5-6 clients before hostapd starts dropping clients. 8-10 tablets in a metal car needs proper RF design — let the existing travel router (better chip, dual-band, real antennas, OpenWrt) do AP/DHCP and let the Pi be a single-purpose GPS node. If we ever wanted one box, Pi 4 (dual-band CYW43455) is the right choice, not Zero 2 W.
+
+**Hardware pricing context:** legit u-blox modules are $40-80 right now (M8/M9 channel supply has thinned as u-blox shifted focus to automotive/F9-F10). Sub-$25 "NEO-M8N" boards on Amazon are mostly counterfeit with older firmware and worse sensitivity. Used Garmin GLO (~$20-40 on eBay) or new BU-353-S4 (~$30) are perfectly fine fallbacks for first integration — for a road vehicle at normal speeds, M9N-grade accuracy isn't required.
+
+**Architecture impact:** adds a 5th `LocationSource` implementation alongside FAKE/SYSTEM/BLE/USB. Same `state: StateFlow<LocationSourceState>` contract, same `NmeaParser`, same selector chip pattern. The phone bring-up is purely to prove `NetworkLocationSource` end-to-end before any hardware purchase — once it's working with the phone, swapping to the Pi is just "different IP broadcasting on the same port."
+
+Open follow-ups:
+- Implement `NetworkLocationSource` (UDP listener on 10110, parse via `NmeaParser`, emit `LocationSourceState`).
+- Add `LocationSourceType.NET` and wire a `[NET]` chip into `CRTVectorScreen` right rail.
+- Source-of-truth question: when multiple sources are available (e.g. NET + USB on the same tablet), what's the priority? Probably explicit user selection (existing pattern) — but document it.
+
+---
+
 ## 2026-04-26 — Audit Medium/Low sweep
 
 Closed every Quick-Win item from `audit.md` plus a handful of nearby Medium/Low items. Eight commits:

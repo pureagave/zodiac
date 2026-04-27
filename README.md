@@ -30,6 +30,15 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 - **Black Rock City GIS** — streets, plazas, blocks, trash fence, toilets, CPNs from [`burningmantech/innovate-GIS-data`](https://github.com/burningmantech/innovate-GIS-data) (master branch, 2025). Subject to the [Innovate Terms of Service](https://innovate.burningman.org/terms-of-service-for-burning-man-apis-and-datasets/).
 - **Art locations** — 2025 placements from [`iBurnApp/iBurn-Data`](https://github.com/iBurnApp/iBurn-Data) (MIT). The bundled `art.geojson` is a stripped subset (name + program + Point) of `data/2025/APIData/APIData.bundle/art.json`.
 
+## GPS sourcing plan (8-10 tablets, single vehicle)
+
+Fire tablets have no built-in GNSS, and per-tablet receivers don't scale (Bluetooth GPS pucks cap at ~5 simultaneous clients). Plan is a **single shared GPS source on the car's local WiFi**, with every tablet reading the same UDP NMEA stream:
+
+- **Bring-up:** spare iPhone running [GPS2IP](https://capsicumdreams.com/iphone/gps2ip/) joins the car's travel-router WiFi and broadcasts NMEA over UDP port `10110` (de facto NMEA-over-IP). The paid version's background-location mode keeps it broadcasting with the screen locked. Validates the tablet-side `NetworkLocationSource` end-to-end before any hardware purchase.
+- **Production:** Raspberry Pi Zero 2 W + USB u-blox GNSS receiver (NEO-M9N preferred; BU-353-S4 acceptable) with a roof-mounted active antenna, running `gpsd` plus a small UDP NMEA broadcaster on the same WiFi. The Pi only does GPS — the existing travel router stays as the AP/DHCP source (Pi Zero 2 W's 2.4 GHz-only radio is not viable as the fleet AP for 8-10 clients).
+
+Tablets gain a 5th `LocationSource` implementation (`NET`) alongside FAKE / SYSTEM / BLE / USB, listening on UDP `10110` and feeding lines into the existing `NmeaParser`. Same `state: StateFlow<LocationSourceState>` contract as the other sources, same right-rail selector chip pattern.
+
 ## CI
 
 Workflow: `.github/workflows/android-ci.yml`
