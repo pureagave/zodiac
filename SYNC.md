@@ -6,6 +6,65 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-04-29 — BRC map integration into B/C/D + zoom-gated labels
+
+Pulled the real Black Rock City map (streets, plazas, art, CPNs, toilets, fence) out of concept A and into B/C/D as well, with concept-specific palettes, GPS tracking, pinch-zoom, drag-pan, and a TOP/TILT toggle on the rail. Concept A is intentionally untouched per the directive to leave it as-is.
+
+**Renderer changes (`BrcMapRenderer.kt`):**
+- `drawPlayaMap` now takes a `MapPalette` (default = legacy A colours, so A's call site is identity). Each concept supplies its own palette, including a `pointStyle` (DOT for the canonical look, BLOCK for D's chunky orange-on-black tile aesthetic).
+- Ego markers split out to `EgoMarkers.kt` — adds `drawHexEgoMarker` (concept B's faceted polyhedron) alongside the original triangle. Both accept a colour so the marker reads in the host concept's palette.
+
+**Shared map panel (`ui/concepts/PlayaMapPanel.kt`):**
+- New `playaMapPanel` Composable bundles touch input, projection, viewport build, optional tilt graphicsLayer, optional retro-grid backdrop, ego overlay, and an optional `SweepOverlay` (concept C). Configuration via a `PlayaMapPanelStyle` data class — keeps the call site under detekt's parameter cap.
+- Concept C's sweep illuminates the map by re-drawing it inside the wedge clip with a brighter `litPalette` — proper M41A "ping over a real city" effect rather than static blips.
+- B honours the TOP/TILT toggle; C is always top-down (canonical M41A); D map tile honours TOP/TILT for the centre tile only.
+
+**Labels (`ui/playamap/MapLabels.kt`):**
+- `MapPalette.labelsEnabled` flag (off by default → A unchanged) wires a label pass into `drawPlayaMap`. Zoom-gated reveal: plazas at ≥0.20 px/m, major art (Honorarium/ManPavGrant — incl. The Temple, The Man) at ≥0.30, streets at ≥0.45, CPNs at ≥0.65, minor self-funded art at ≥1.10.
+- BRC source data has each block of a logical street as a separate `LineString` feature (599 segments → ~30 unique names). Naive midpoint-per-segment stamps "4:30" at every intersection; the implementation now groups by name, picks the source point closest to the group's centroid, and draws one label per logical street (radials land on a middle block, arcs sit near the top of the curve).
+- Toilets stay marker-only, recoloured BRC porta-potty purple (`#B266FF`) in B and D — the source has no per-bank name (every toilet feature is just `ref: "toilet"`), so colour carries the meaning.
+- Labels off in C: the M41A look is intentionally low-info / blip-driven, and bright text would fight the dim-base / lit-wedge contrast.
+
+**Shared control strip (`ui/concepts/ConceptControls.kt`):**
+- Added `ZOOM-` / `ZOOM+` chips and a `TOP` / `TILT` mode toggle (suppressible per concept — C hides it). `ZOOM±` step is 1.4×. The same chip set is now reachable from B/C/D rails so the user can drive any concept without pinch-zoom on a cramped tile (D's map is small).
+
+**Untouched on purpose:**
+- Concept A. Same colours, same TOP/TILT toggle behaviour, same controls.
+- Toilet colour in A (still electric blue). One-line change if we ever want to apply BRC purple universally.
+
+CI gates green: ktlint, detekt, testDebugUnitTest, assembleDebug.
+
+Open follow-ups:
+- Toilet labels never (no per-bank name in source); could synthesize from nearest CPN/intersection if the team wants them.
+- Street label rotation along the radial / arc tangent — current labels are horizontal. Looks fine at moderate zoom; would read better still with rotation.
+- Label collision avoidance: dedupe handles the worst case but at very high zoom art + street labels can overlap. A drawn-rect collision check would help.
+- Concept C lit-wedge: currently a single bright wedge at the leading edge. Adding a fading trail would make features stay lit briefly after the sweep passes, more authentic to the M41A persistence-of-vision look.
+
+---
+
+## 2026-04-29 — Four cockpit concepts (A/B/C/D) + runtime switcher
+
+Took five Alien-franchise / 80s-vector mockups (`design/mockups/map_concept_*.html`) down to three picks plus the existing CRT Vector. Now wired all four into the app as live screens with a tap-to-cycle pill in the top-right corner of every concept.
+
+- **A — CRT VECTOR** (existing): unchanged; just added the cycle pill.
+- **B — PERSPECTIVE GRID** (Lukas Uhlitz / Europa lift): green palette, receding floor grid that creeps forward when speed > 0, faceted polyhedron vehicle that pivots with heading, left-side altitude/distance ladder, right-side control rail.
+- **C — MOTION TRACKER** (Aliens '86 M41A): concentric range rings, rotating sweep arm, forward detection cone aligned to heading, big BEARING/SPEED/CONTACTS readouts, scanline overlay. Contacts are static decorative blips for now — real BRC POI proximity is a follow-up.
+- **D — INSTRUMENT BAY** (Nostromo dense gauge wall): tile grid with map at center plus heading dial, half-arc speed gauge, throttle waveform, two cell bars, hazard chevron footer.
+
+Architecture:
+- New `CockpitConcept` enum (A/B/C/D) with `next()` for cycling.
+- `CockpitUiState.concept` + `CockpitViewModel.cycleConcept()` + `CockpitPreferences.setConcept()` so the choice persists across launches.
+- New top-level `cockpitScreen()` dispatcher in `CockpitScreen.kt` swapped in for `crtVectorScreen` from `MainActivity`.
+- Shared `ui/concepts/` package: `ConceptTheme` (palette per concept), `conceptSwitcher` (the pill), `conceptControlStrip` (transport / GPS / heading / speed / recenter chips, themed). Each new screen is ~200-300 LoC because the chip layout is shared.
+
+`thresholdInClasses` in `detekt.yml` bumped 12 → 13 to fit `cycleConcept`. Cycle pill is a normal `clickable` Box so it works in any concept's chrome without extra wiring.
+
+CI gates green: ktlint, detekt, testDebugUnitTest, assembleDebug.
+
+Mockups 1 (Deorbital Globe) and 2 (Echo Probe) are still in `design/mockups/` for reference but are not built into the app — kept in case we want to revisit.
+
+---
+
 ## 2026-04-26 — GPS fleet sourcing plan (8-10 tablets, one vehicle)
 
 Decided how to feed GPS to the fleet without per-tablet receivers.

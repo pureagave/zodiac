@@ -10,6 +10,8 @@ import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
+import ai.openclaw.zodiaccontrol.ui.concepts.ThemeCrtVector
+import ai.openclaw.zodiaccontrol.ui.concepts.conceptSwitcher
 import ai.openclaw.zodiaccontrol.ui.playamap.EGO_ANCHOR_CENTER
 import ai.openclaw.zodiaccontrol.ui.playamap.cockpitTouchInput
 import ai.openclaw.zodiaccontrol.ui.playamap.drawEgoMarker
@@ -64,7 +66,10 @@ private const val TILT_ZOOM_BOOST: Double = 1.0
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
 @Composable
-fun crtVectorScreen(viewModel: CockpitViewModel) {
+fun crtVectorScreen(
+    viewModel: CockpitViewModel,
+    onCycleConcept: () -> Unit = {},
+) {
     val state = viewModel.uiState.collectAsStateWithLifecycle().value
 
     Box(
@@ -123,6 +128,13 @@ fun crtVectorScreen(viewModel: CockpitViewModel) {
             fontSize = 15.sp,
             fontFamily = FontFamily.Monospace,
             modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+        )
+
+        conceptSwitcher(
+            current = state.concept,
+            onCycle = onCycleConcept,
+            accent = ThemeCrtVector.accent,
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
         )
     }
 }

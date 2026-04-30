@@ -1,0 +1,80 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>MAP 2 — ECHO PROBE</title>
+<style>
+  html,body{margin:0;background:#0a0500;color:#ffaa33;font-family:"Courier New",monospace}
+  #stage{width:1600px;height:900px;position:relative;
+    background:repeating-linear-gradient(0deg,#0a0500 0 2px,#140803 2px 3px)}
+  .outer{position:absolute;inset:18px;border:3px solid #ff8a00;border-radius:2px}
+  .topbar{position:absolute;left:40px;right:40px;top:40px;height:46px;border:2px solid #ff8a00;display:flex;align-items:center;padding:0 18px;font-size:24px;letter-spacing:6px;color:#ffd166}
+  .topbar .right{margin-left:auto;font-size:18px;letter-spacing:3px;color:#ffd166}
+  .map{position:absolute;left:40px;top:108px;right:40px;bottom:120px;border:2px solid #ff8a00}
+  .footer{position:absolute;left:40px;right:40px;bottom:40px;height:64px;border:2px solid #ff8a00;display:flex;font-size:18px;color:#ffd166}
+  .footer .cell{padding:8px 14px;border-right:2px solid #ff8a00;display:flex;align-items:center;letter-spacing:3px}
+  .footer .cell:last-child{border-right:none;margin-left:auto}
+  .lock{display:inline-block;width:14px;height:14px;background:#ff5500;margin-left:8px}
+  .lockoff{display:inline-block;width:14px;height:14px;border:2px solid #ff8a00;margin-left:8px;box-sizing:border-box}
+  .label{position:absolute;left:140px;top:120px;font-size:14px;color:#ffd166;letter-spacing:2px}
+</style></head><body>
+<div id="stage">
+  <div class="outer"></div>
+  <div class="topbar">ROUTE&nbsp;PROBE&nbsp;01<div class="right">RENAISSANCE 04 &nbsp; ZD2 RETICULI &nbsp; 42 003 749</div></div>
+  <div class="map">
+    <svg viewBox="0 0 1520 632" width="100%" height="100%">
+      <!-- coordinate grid: thin orange dotted -->
+      <defs>
+        <pattern id="grid" x="0" y="0" width="80" height="80" patternUnits="userSpaceOnUse">
+          <path d="M80 0H0V80" fill="none" stroke="#5a3000" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <rect width="1520" height="632" fill="url(#grid)"/>
+      <!-- orbital ring overlays -->
+      <g fill="none" stroke="#ff8a00" stroke-width="1.6" opacity="0.85">
+        <ellipse cx="760" cy="316" rx="320" ry="280"/>
+        <ellipse cx="760" cy="316" rx="220" ry="180"/>
+        <ellipse cx="760" cy="316" rx="120" ry="90"/>
+        <ellipse cx="380" cy="240" rx="180" ry="150"/>
+        <ellipse cx="1180" cy="380" rx="220" ry="180"/>
+      </g>
+      <!-- radial picket spokes (dotted) -->
+      <g stroke="#ff8a00" stroke-width="1.4" stroke-dasharray="2 6">
+        <line x1="760" y1="316" x2="60" y2="50"/>
+        <line x1="760" y1="316" x2="1460" y2="50"/>
+        <line x1="760" y1="316" x2="60" y2="582"/>
+        <line x1="760" y1="316" x2="1460" y2="582"/>
+        <line x1="760" y1="316" x2="760" y2="20"/>
+        <line x1="760" y1="316" x2="760" y2="612"/>
+      </g>
+      <!-- center vehicle dot inside reticle -->
+      <g>
+        <circle cx="760" cy="316" r="9" fill="#ffd166"/>
+        <!-- bracket reticle -->
+        <g fill="none" stroke="#fff" stroke-width="2.4">
+          <polyline points="700,256 700,276 720,276"/>
+          <polyline points="820,256 820,276 800,276"/>
+          <polyline points="700,376 700,356 720,356"/>
+          <polyline points="820,376 820,356 800,356"/>
+        </g>
+        <text x="836" y="296" fill="#fff" font-family="Courier New" font-size="20" letter-spacing="2">MISSION TARGET</text>
+        <text x="836" y="318" fill="#fff" font-family="Courier New" font-size="20" letter-spacing="2">IN&nbsp;RANGE</text>
+        <text x="836" y="346" fill="#ffd166" font-family="Courier New" font-size="14" letter-spacing="2">010 0240        X 1 010</text>
+      </g>
+      <!-- bogey waypoints -->
+      <g font-family="Courier New" font-size="14" fill="#ffd166">
+        <circle cx="380" cy="240" r="5" fill="#ffd166"/><text x="392" y="232">o A234</text>
+        <circle cx="1180" cy="220" r="5" fill="#ffd166"/><text x="1192" y="212">o A165</text>
+        <circle cx="1180" cy="380" r="5" fill="#ffd166"/><text x="1192" y="372">o A294</text>
+        <circle cx="540" cy="500" r="5" fill="#ffd166"/><text x="552" y="492">o A107</text>
+        <circle cx="980" cy="540" r="5" fill="#ffd166"/><text x="992" y="532">o A704</text>
+      </g>
+      <text x="40" y="616" fill="#ffd166" font-family="Courier New" font-size="12" letter-spacing="2">00 35 11859  &nbsp;C  &nbsp;0080424 12.916559P 309 23  &nbsp;033</text>
+    </svg>
+  </div>
+  <div class="footer">
+    <div class="cell">LOCK <span class="lock"></span><span class="lock"></span><span class="lockoff"></span></div>
+    <div class="cell">RANGE 010.240</div>
+    <div class="cell">BEARING 010</div>
+    <div class="cell">ETA 00:14:22</div>
+    <div class="cell">ECHO PROBE 203</div>
+  </div>
+</div>
+</body></html>

@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.data.prefs
 
+import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -33,12 +34,14 @@ class DataStoreCockpitPreferencesTest {
             prefs.setMapMode(MapMode.TILT)
             prefs.setTiltDeg(55)
             prefs.setPixelsPerMeter(0.42)
+            prefs.setConcept(CockpitConcept.C)
 
             val snapshot = prefs.read()
             assertEquals(LocationSourceType.BLE, snapshot.locationSource)
             assertEquals(MapMode.TILT, snapshot.mapMode)
             assertEquals(55, snapshot.tiltDeg)
             assertEquals(0.42, snapshot.pixelsPerMeter, ZOOM_TOLERANCE)
+            assertEquals(CockpitConcept.C, snapshot.concept)
         }
 
     @Test

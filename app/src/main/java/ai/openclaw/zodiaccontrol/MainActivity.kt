@@ -55,5 +55,5 @@ private fun zodiacApp() {
         permissionLauncher.launch(perms.toTypedArray())
     }
 
-    crtVectorScreen(viewModel = viewModel)
+    cockpitScreen(viewModel = viewModel)
 }

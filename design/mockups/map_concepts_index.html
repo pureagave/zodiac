@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Zodiac — Map Concepts</title>
+<style>
+  html,body{margin:0;background:#000;color:#7eff62;font-family:"Courier New",monospace}
+  header{padding:20px 30px;border-bottom:2px solid #00ff66;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+  h1{margin:0;font-size:22px;letter-spacing:6px;color:#9dff7a}
+  .sub{font-size:14px;color:#5fae4d}
+  nav{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto}
+  nav button{background:#000;color:#9dff7a;border:2px solid #00ff66;padding:8px 14px;font-family:"Courier New";letter-spacing:2px;cursor:pointer}
+  nav button.on{background:#00ff66;color:#001a08;font-weight:bold}
+  iframe{display:block;width:1600px;height:900px;border:none;margin:20px auto;background:#000;box-shadow:0 0 0 2px #00ff66}
+  .note{padding:14px 30px;font-size:14px;color:#bdf3c8;line-height:1.6;border-top:1px dashed #2c8a4a}
+</style></head><body>
+<header>
+  <h1>ZODIAC&nbsp;//&nbsp;MAP&nbsp;CONCEPTS</h1>
+  <span class="sub">5 alternate ground-track displays. Same vehicle, same data, different visual language.</span>
+  <nav>
+    <button class="on" data-src="map_concept_1_deorbital_globe.html"  data-note="Concept 1 — DEORBITAL GLOBE. Direct lift of Alien (1979) Nostromo descent screen. Cyan UI chrome, green graticule, red contour overlays, yellow vehicle reticle. Right rail is a column of bracketed labelled values. Best when you want the cinematic 'we are coming in to land' vibe.">1&nbsp;DEORBITAL&nbsp;GLOBE</button>
+    <button data-src="map_concept_2_echo_probe.html"  data-note="Concept 2 — ECHO PROBE. Romulus amber palette. Concentric range rings centred on you, dotted radial pickets, bracket reticle locked on next waypoint, footer LOCK / RANGE / BEARING / ETA. Best for waypoint-following: you always see what's next.">2&nbsp;ECHO&nbsp;PROBE</button>
+    <button data-src="map_concept_3_perspective_grid.html"  data-note="Concept 3 — PERSPECTIVE GRID. Lukas Uhlitz / Europa. Nuclear green. Vehicle as a faceted polyhedron flying into a receding floor grid; left altitude/distance ladder; right rail with Manual/Auto, IFF profile, X/Y/Z hot-key cells. Best for forward-looking driving where you want a sense of motion, not a top-down map.">3&nbsp;PERSPECTIVE&nbsp;GRID</button>
+    <button data-src="map_concept_4_motion_tracker.html"  data-note="Concept 4 — MOTION TRACKER. Aliens (1986) M41A. Concentric rings, sweeping detection cone, blip contacts, huge bearing/speed/contact-count readouts on the rails, distance ladder along the bottom, heavy CRT grain. Best for proximity awareness — 'what's around me right now.'">4&nbsp;MOTION&nbsp;TRACKER</button>
+    <button data-src="map_concept_5_instrument_bay.html"  data-note="Concept 5 — INSTRUMENT BAY. The dense Nostromo gauge wall — map is just one tile alongside heading dial, speed gauge, throttle trace, attitude, cell bars, hazard chevrons. Best when the cockpit needs to feel like a working ship, not a single hero display. Also the easiest to information-pack.">5&nbsp;INSTRUMENT&nbsp;BAY</button>
+  </nav>
+</header>
+<iframe id="frame" src="map_concept_1_deorbital_globe.html"></iframe>
+<div id="note" class="note">Concept 1 — DEORBITAL GLOBE. Direct lift of Alien (1979) Nostromo descent screen. Cyan UI chrome, green graticule, red contour overlays, yellow vehicle reticle. Right rail is a column of bracketed labelled values. Best when you want the cinematic 'we are coming in to land' vibe.</div>
+<script>
+  const buttons = document.querySelectorAll('nav button');
+  const frame = document.getElementById('frame');
+  const note  = document.getElementById('note');
+  buttons.forEach(b => b.addEventListener('click', () => {
+    buttons.forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    frame.src = b.dataset.src;
+    note.textContent = b.dataset.note;
+  }));
+</script>
+</body></html>

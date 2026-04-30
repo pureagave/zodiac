@@ -2,6 +2,7 @@ package ai.openclaw.zodiaccontrol.ui.state
 
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
@@ -27,6 +28,7 @@ data class CockpitUiState(
     val panEastM: Double = 0.0,
     val panNorthM: Double = 0.0,
     val mapLoadError: String? = null,
+    val concept: CockpitConcept = CockpitConcept.A,
 ) {
     companion object {
         const val DEFAULT_TILT_DEG: Int = 40

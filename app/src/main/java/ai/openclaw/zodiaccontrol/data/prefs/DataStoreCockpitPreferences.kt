@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.data.prefs
 
+import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
@@ -31,6 +32,7 @@ class DataStoreCockpitPreferences(
             pixelsPerMeter =
                 (prefs[KEY_PIXELS_PER_METER] ?: default.pixelsPerMeter)
                     .coerceIn(MIN_ZOOM, MAX_ZOOM),
+            concept = prefs[KEY_CONCEPT]?.toConceptOrNull() ?: default.concept,
         )
     }
 
@@ -50,15 +52,22 @@ class DataStoreCockpitPreferences(
         dataStore.edit { it[KEY_PIXELS_PER_METER] = zoom }
     }
 
+    override suspend fun setConcept(concept: CockpitConcept) {
+        dataStore.edit { it[KEY_CONCEPT] = concept.name }
+    }
+
     private fun String.toLocationSourceOrNull(): LocationSourceType? = runCatching { LocationSourceType.valueOf(this) }.getOrNull()
 
     private fun String.toMapModeOrNull(): MapMode? = runCatching { MapMode.valueOf(this) }.getOrNull()
+
+    private fun String.toConceptOrNull(): CockpitConcept? = runCatching { CockpitConcept.valueOf(this) }.getOrNull()
 
     private companion object {
         val KEY_LOCATION_SOURCE = stringPreferencesKey("location_source")
         val KEY_MAP_MODE = stringPreferencesKey("map_mode")
         val KEY_TILT_DEG = intPreferencesKey("tilt_deg")
         val KEY_PIXELS_PER_METER = doublePreferencesKey("pixels_per_meter")
+        val KEY_CONCEPT = stringPreferencesKey("cockpit_concept")
 
         // Mirror MapTouchInput.MAP_MIN_ZOOM / MAX_ZOOM so a tampered preferences
         // file can't seed the UI with an out-of-range zoom that would then need

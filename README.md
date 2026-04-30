@@ -6,7 +6,11 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 
 ## Current build
 
-- **Concept:** B (CRT Vector)
+- **Concepts:** four cockpit aesthetics shipped together, runtime-switchable via the `[X] NAME >` pill in the top-right of every screen. The choice persists across launches.
+  - **A** — CRT VECTOR (Concept B "CRT Vector" carried forward from the original Concepts A/B/C exploration)
+  - **B** — PERSPECTIVE GRID (Lukas Uhlitz / *Alien: Europa*)
+  - **C** — MOTION TRACKER (*Aliens* '86 M41A)
+  - **D** — INSTRUMENT BAY (*Alien* '79 Nostromo gauge wall)
 - **Package:** `ai.openclaw.zodiaccontrol`
 - **minSdk:** 30 (Android 11)
 - **targetSdk / compileSdk:** 35
@@ -14,10 +18,12 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 
 ## What is implemented
 
-- CRT-style sci-fi dashboard shell
-- Left subsystem rail + right status/event rail
-- Center viewport: BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading. Two map modes selectable via the SYS-3 button in the left rail: `TOP` (orthographic, ego at center — default) and `TILT` (~40° pitched 3D with a retro perspective-grid backdrop, ego anchored to the lower third — Battlezone / Out-Run feel). Touch on the viewport sets heading (X) and speed (Y); pinch zooms.
-- Art layer: 332 2025 placements bundled from iBurn-Data; majors (Honorarium + ManPavGrant) drawn larger than self-funded.
+- Four runtime-switchable cockpit concepts (A/B/C/D — see Current build) sharing the same underlying state (heading, speed, transport, GPS source, telemetry, BRC map, ego fix); only presentation differs. Tap the corner pill to cycle.
+- BRC map rendered into all four concepts with concept-specific palettes (green CRT for A, neon perspective for B, dim/lit sweep palette for C, blocky orange tiles for D). Pinch-zoom, drag-pan, recenter, and a TOP/TILT mode toggle are wired to every concept's rail.
+- Concept C's M41A-style sweep arm illuminates the real BRC map — features brighten as the wedge passes over them rather than as static blips.
+- Zoom-gated map labels in concepts B and D: plazas, named arcs and clock-position radials, CPNs, and art (major art like The Temple and The Man come in earlier than self-funded). Street labels are deduplicated across the BRC source's per-segment features so each logical street draws once. Toilets are unlabelled but recoloured BRC porta-potty purple as the type indicator.
+- Center viewport: BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading. Two map modes: `TOP` (orthographic, ego at center — default) and `TILT` (~40° pitched 3D with a retro perspective-grid backdrop, ego anchored to the lower third — Battlezone / Out-Run feel). Touch on the viewport sets heading (X) and speed (Y); pinch zooms.
+- Art layer: 332 2025 placements bundled from iBurn-Data; majors (Honorarium + ManPavGrant) drawn larger than self-funded and labelled at lower zoom.
 - GPS / location source abstraction: pluggable `LocationSource` with four implementations — synthetic `FakeLocationSource` (default, slow circle around the Spike for testing), Android `LocationManager`, Bluetooth Classic SPP NMEA receivers, and USB serial NMEA dongles via [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android). Source selectable at runtime via the right-rail GPS chips. Map viewport centers on the live ego fix.
 - Scanline overlay
 - Black Rock City map data layer: 2025 GIS bundled in `app/src/main/assets/brc/2025/`, parsed into a typed `PlayaMap` and projected via `PlayaProjection` (equirectangular, anchored on the Golden Spike) and `PlayaViewport` (track-up, configurable zoom).

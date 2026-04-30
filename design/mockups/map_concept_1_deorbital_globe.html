@@ -1,0 +1,87 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>MAP 1 — DEORBITAL GLOBE</title>
+<style>
+  html,body{margin:0;background:#000;color:#7fd9ff;font-family:"Courier New",monospace}
+  #stage{width:1600px;height:900px;position:relative;
+    background:repeating-linear-gradient(0deg,#000 0 2px,#040b0e 2px 3px)}
+  .outer{position:absolute;inset:18px;border:3px solid #1cb5ff;border-radius:2px}
+  .inner{position:absolute;left:40px;top:96px;right:340px;bottom:40px;border:2px solid #1cb5ff}
+  .title{position:absolute;left:60px;top:42px;font-size:32px;letter-spacing:6px;color:#7fd9ff}
+  .sysline{position:absolute;left:740px;top:42px;font-size:20px;color:#7fd9ff;border:2px solid #1cb5ff;padding:4px 12px}
+  .sysline2{position:absolute;left:740px;top:78px;font-size:18px;color:#7fd9ff;border:2px solid #1cb5ff;padding:2px 12px}
+  .rail{position:absolute;right:40px;top:96px;width:280px;bottom:40px;border:2px solid #1cb5ff;padding:14px;box-sizing:border-box;font-size:20px;line-height:1.7}
+  .rail h{display:block;color:#7fd9ff;margin-top:8px}
+  .rail .v{border:2px solid #1cb5ff;padding:2px 8px;margin-top:4px;display:inline-block;color:#bdeaff}
+  .corner{position:absolute;color:#1cb5ff;font-size:26px;font-weight:bold}
+  .c1{left:60px;top:120px}.c2{right:360px;top:120px}.c3{left:60px;bottom:60px}.c4{right:360px;bottom:60px}
+  svg{display:block}
+  .veh{fill:none;stroke:#fff700;stroke-width:2}
+  .vehdot{fill:#fff700}
+</style></head><body>
+<div id="stage">
+  <div class="outer"></div>
+  <div class="title">GROUND&nbsp;TRACK</div>
+  <div class="sysline">COMMENCE TRANSIT</div>
+  <div class="sysline2">SYSTEM :ZD: 76.75 :OB:</div>
+  <div class="inner">
+    <svg viewBox="0 0 1180 720" width="100%" height="100%">
+      <!-- lat/long graticule, curved like a globe segment -->
+      <g fill="none" stroke="#3ce06b" stroke-width="1.6" opacity="0.95">
+        <!-- vertical (longitude) arcs sweeping from upper-left to lower-left, anchored off-canvas right -->
+        <path d="M 1500 -200 Q 700 360 1500 920"/>
+        <path d="M 1700 -300 Q 600 360 1700 1020"/>
+        <path d="M 1900 -400 Q 480 360 1900 1120"/>
+        <path d="M 2100 -500 Q 320 360 2100 1220"/>
+        <!-- horizontal (latitude) arcs -->
+        <path d="M -200 80 Q 800 -120 1600 80"/>
+        <path d="M -200 220 Q 800 60 1600 220"/>
+        <path d="M -200 360 Q 800 220 1600 360"/>
+        <path d="M -200 500 Q 800 380 1600 500"/>
+        <path d="M -200 640 Q 800 540 1600 640"/>
+      </g>
+      <!-- terrain contour lines (red) - irregular polylines -->
+      <g fill="none" stroke="#ff2a2a" stroke-width="1.8">
+        <polyline points="540,90 600,140 580,200 640,260 600,330 660,380 620,450 700,510 660,580 720,640"/>
+        <polyline points="600,90 660,150 640,210 700,270 670,340 730,390 690,460 760,520 720,590 770,650"/>
+        <polyline points="660,90 720,160 700,220 760,280 730,350 790,400 750,470 820,530 780,600 830,660"/>
+        <polyline points="720,90 780,170 760,230 820,290 790,360 850,410 810,480 880,540 840,610 890,670"/>
+      </g>
+      <!-- coastline-ish polyline (green, brighter) -->
+      <g fill="none" stroke="#aaff66" stroke-width="2.4">
+        <polyline points="780,120 850,180 920,170 980,220 950,290 1010,330 980,400 1040,440 1000,510 1060,560 1020,640"/>
+        <polyline points="320,200 380,260 350,320 410,360 390,430 450,470"/>
+      </g>
+      <!-- vehicle position (yellow, blinking-ish) -->
+      <g class="veh">
+        <circle cx="850" cy="380" r="14"/>
+        <line x1="826" y1="380" x2="874" y2="380"/>
+        <line x1="850" y1="356" x2="850" y2="404"/>
+      </g>
+      <circle class="vehdot" cx="850" cy="380" r="3"/>
+      <text x="864" y="376" fill="#fff700" font-family="Courier New" font-size="16">ZODIAC</text>
+      <text x="864" y="394" fill="#fff700" font-family="Courier New" font-size="14">/Z 1</text>
+    </svg>
+  </div>
+  <div class="corner c1">+</div><div class="corner c2">+</div>
+  <div class="corner c3">+</div><div class="corner c4">+</div>
+  <div class="rail">
+    <h>TIME FROM #7</h>
+    <div class="v">19:38:23:34</div>
+    <h style="margin-top:18px">PRESENT</h>
+    <h>P.O.R.</h>
+    <h>ZODIAC</h>
+    <div class="v">/Z 1</div>
+    <h style="margin-top:18px">HEADING</h>
+    <div class="v">N .36</div> <div class="v">E .18</div>
+    <h style="margin-top:18px">GROUND</h>
+    <div class="v">SPEED 78.26</div>
+    <h>CONDITION</h>
+    <h>CODE</h>
+    <div class="v">16 S=C75C</div>
+    <div class="v">PAST=8</div>
+    <h style="margin-top:18px">SYSTEM #&nbsp;&nbsp;4</h>
+    <h style="margin-top:18px">AUTODECOUNT</h>
+    <div class="v">3454.94#</div>
+  </div>
+</div>
+</body></html>

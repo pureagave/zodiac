@@ -1,0 +1,177 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>MAP 5 — INSTRUMENT BAY</title>
+<style>
+  html,body{margin:0;background:#0a0500;color:#ffaa33;font-family:"Courier New",monospace}
+  #stage{width:1600px;height:900px;position:relative;
+    background:repeating-linear-gradient(0deg,#0a0500 0 2px,#170804 2px 3px)}
+  .outer{position:absolute;inset:18px;border:3px solid #ff8a00;border-radius:2px}
+  .grid{position:absolute;inset:36px;display:grid;
+    grid-template-columns:repeat(12,1fr);
+    grid-template-rows:repeat(8,1fr);
+    gap:14px}
+  .tile{border:2px solid #ff8a00;padding:10px;box-sizing:border-box;color:#ffd166;font-size:14px;letter-spacing:2px;display:flex;flex-direction:column;position:relative}
+  .tile h{font-size:13px;color:#ffd166;display:block;letter-spacing:3px;margin-bottom:4px}
+  .span2c{grid-column:span 2}.span3c{grid-column:span 3}.span4c{grid-column:span 4}.span5c{grid-column:span 5}.span6c{grid-column:span 6}
+  .span2r{grid-row:span 2}.span3r{grid-row:span 3}.span4r{grid-row:span 4}.span5r{grid-row:span 5}.span6r{grid-row:span 6}
+  .map{justify-content:stretch}
+  .big{font-size:48px;color:#ffae3a;letter-spacing:6px;font-weight:bold;text-align:center;margin-top:8px}
+  svg{display:block;flex:1;width:100%;height:100%}
+  .hazard{height:30px;background:repeating-linear-gradient(135deg,#ff8a00 0 14px,#0a0500 14px 28px);border:2px solid #ff8a00;display:flex;align-items:center;justify-content:center;color:#0a0500;font-weight:bold;letter-spacing:6px}
+  .alert{display:inline-block;width:18px;height:18px;background:#ff3300;margin-right:6px;clip-path:polygon(50% 0,100% 100%,0 100%)}
+</style></head><body>
+<div id="stage">
+  <div class="outer"></div>
+  <div class="grid">
+
+    <!-- Title bar -->
+    <div class="tile span6c" style="grid-row:span 1">
+      <h>NOSTROMO &nbsp;//&nbsp; ZODIAC INSTRUMENT BAY &nbsp;//&nbsp; STATION 04</h>
+      <div style="font-size:11px;color:#a36000">SYS:ZD :BL: 76.75 :OB:</div>
+    </div>
+    <div class="tile span3c" style="grid-row:span 1"><h>UTC</h><div class="big" style="font-size:24px;margin-top:0">19:38:23</div></div>
+    <div class="tile span3c" style="grid-row:span 1"><h>STATION 04 &nbsp; OK</h><div style="display:flex;gap:6px;margin-top:6px"><span class="alert"></span><span class="alert" style="background:#ffae3a"></span><span class="alert" style="background:#ffae3a"></span><span class="alert" style="background:#ffae3a"></span></div></div>
+
+    <!-- Heading dial -->
+    <div class="tile span2c span3r"><h>HEADING</h>
+      <svg viewBox="0 0 200 200">
+        <circle cx="100" cy="100" r="86" fill="none" stroke="#ff8a00" stroke-width="1.6"/>
+        <circle cx="100" cy="100" r="68" fill="none" stroke="#ff8a00" stroke-width="1"/>
+        <g stroke="#ff8a00" stroke-width="1.4">
+          <line x1="100" y1="14" x2="100" y2="28"/>
+          <line x1="100" y1="186" x2="100" y2="172"/>
+          <line x1="14" y1="100" x2="28" y2="100"/>
+          <line x1="186" y1="100" x2="172" y2="100"/>
+        </g>
+        <g font-family="Courier New" font-size="14" fill="#ffd166" text-anchor="middle">
+          <text x="100" y="40">N</text><text x="100" y="170">S</text>
+          <text x="32" y="106">W</text><text x="172" y="106">E</text>
+        </g>
+        <polygon points="100,30 92,100 108,100" fill="#fff700"/>
+        <circle cx="100" cy="100" r="5" fill="#fff700"/>
+      </svg>
+      <div class="big" style="font-size:28px">036&deg;</div>
+    </div>
+
+    <!-- Speed gauge -->
+    <div class="tile span2c span3r"><h>SPEED&nbsp;KPH</h>
+      <svg viewBox="0 0 200 200">
+        <path d="M 30 160 A 80 80 0 1 1 170 160" fill="none" stroke="#ff8a00" stroke-width="1.6"/>
+        <g stroke="#ff8a00" stroke-width="1.4">
+          <line x1="30" y1="160" x2="40" y2="155"/>
+          <line x1="60" y1="98" x2="68" y2="105"/>
+          <line x1="100" y1="80" x2="100" y2="92"/>
+          <line x1="140" y1="98" x2="132" y2="105"/>
+          <line x1="170" y1="160" x2="160" y2="155"/>
+        </g>
+        <line x1="100" y1="160" x2="138" y2="98" stroke="#fff700" stroke-width="3"/>
+        <circle cx="100" cy="160" r="6" fill="#fff700"/>
+      </svg>
+      <div class="big" style="font-size:28px">078</div>
+    </div>
+
+    <!-- THE MAP — central panel, big -->
+    <div class="tile map span5c span5r"><h>GROUND&nbsp;TRACK&nbsp;//&nbsp;LOCAL&nbsp;050m</h>
+      <svg viewBox="0 0 600 460">
+        <!-- coordinate grid -->
+        <defs>
+          <pattern id="g5" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0H0V40" fill="none" stroke="#5a3000" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="600" height="460" fill="url(#g5)"/>
+        <!-- road network -->
+        <g fill="none" stroke="#ffae3a" stroke-width="2.6">
+          <path d="M 40 360 Q 200 320 280 240 T 540 80"/>
+          <path d="M 60 80  L 280 240"/>
+          <path d="M 280 240 L 480 380"/>
+          <path d="M 440 200 L 540 240"/>
+        </g>
+        <!-- buildings/POIs as outlined polys -->
+        <g fill="none" stroke="#ff8a00" stroke-width="1.6">
+          <rect x="120" y="160" width="60" height="40"/>
+          <rect x="380" y="120" width="50" height="60"/>
+          <polygon points="200,360 240,348 250,378 210,388"/>
+          <rect x="460" y="300" width="44" height="36"/>
+        </g>
+        <!-- planned route (yellow dotted) -->
+        <path d="M 280 240 Q 360 200 420 160 T 540 80" fill="none" stroke="#fff700" stroke-width="3" stroke-dasharray="6 6"/>
+        <!-- vehicle reticle at center -->
+        <g>
+          <circle cx="280" cy="240" r="11" fill="#fff700"/>
+          <g fill="none" stroke="#fff" stroke-width="2">
+            <polyline points="252,212 252,228 268,228"/>
+            <polyline points="308,212 308,228 292,228"/>
+            <polyline points="252,268 252,252 268,252"/>
+            <polyline points="308,268 308,252 292,252"/>
+          </g>
+        </g>
+        <!-- corner crosshairs -->
+        <g stroke="#ff8a00" stroke-width="1.6" fill="none">
+          <path d="M 8 8 h 16 M 16 0 v 16"/>
+          <path d="M 576 8 h 16 M 584 0 v 16"/>
+          <path d="M 8 444 h 16 M 16 436 v 16"/>
+          <path d="M 576 444 h 16 M 584 436 v 16"/>
+        </g>
+      </svg>
+    </div>
+
+    <!-- Throttle waveform -->
+    <div class="tile span3c span2r"><h>THROTTLE&nbsp;TRACE</h>
+      <svg viewBox="0 0 400 100" preserveAspectRatio="none">
+        <polyline points="0,80 20,70 40,76 60,40 80,50 100,18 120,32 140,24 160,60 180,44 200,30 220,12 240,28 260,36 280,18 300,42 320,30 340,54 360,40 380,62 400,30" fill="none" stroke="#ffae3a" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <!-- Compass mini -->
+    <div class="tile span2c span2r"><h>ATTITUDE</h>
+      <svg viewBox="0 0 200 100">
+        <line x1="0" y1="50" x2="200" y2="50" stroke="#ff8a00" stroke-width="2"/>
+        <g stroke="#ff8a00" stroke-width="1.4">
+          <line x1="20" y1="44" x2="20" y2="56"/>
+          <line x1="60" y1="44" x2="60" y2="56"/>
+          <line x1="100" y1="40" x2="100" y2="60"/>
+          <line x1="140" y1="44" x2="140" y2="56"/>
+          <line x1="180" y1="44" x2="180" y2="56"/>
+        </g>
+        <polygon points="100,30 92,50 108,50" fill="#fff700"/>
+        <text x="100" y="86" text-anchor="middle" fill="#ffd166" font-family="Courier New" font-size="14">PITCH +02</text>
+      </svg>
+    </div>
+
+    <!-- Fuel/cell bar -->
+    <div class="tile span3c span2r"><h>CELL&nbsp;A</h>
+      <svg viewBox="0 0 400 60" preserveAspectRatio="none">
+        <rect x="0" y="0" width="400" height="60" fill="none" stroke="#ff8a00" stroke-width="1.6"/>
+        <rect x="2" y="2" width="280" height="56" fill="#ffae3a" opacity="0.85"/>
+        <g fill="#0a0500" font-family="Courier New" font-size="20" font-weight="bold">
+          <text x="14" y="38">CELL A &nbsp; 70%</text>
+        </g>
+      </svg>
+      <h style="margin-top:8px">CELL&nbsp;B</h>
+      <svg viewBox="0 0 400 60" preserveAspectRatio="none">
+        <rect x="0" y="0" width="400" height="60" fill="none" stroke="#ff8a00" stroke-width="1.6"/>
+        <rect x="2" y="2" width="180" height="56" fill="#ffae3a" opacity="0.85"/>
+        <g fill="#ffae3a" font-family="Courier New" font-size="20" font-weight="bold">
+          <text x="200" y="38">CELL B &nbsp; 45%</text>
+        </g>
+      </svg>
+    </div>
+
+    <!-- Glyph block (decorative density) -->
+    <div class="tile span2c span2r"><h>NAV&nbsp;BUS</h>
+      <div style="font-size:14px;line-height:1.4;color:#ffae3a;font-family:'Courier New';white-space:pre">CHTOPMA YBR
+KOPABL KCMUEC
+KAPAHTUH AAPM
+DESTRUCT 6OPT
+EMEPGENCY OK
+LOCK A234 &gt;</div>
+    </div>
+
+    <!-- Hazard footer band -->
+    <div class="tile hazard span12c" style="grid-row:span 1">
+      &#9888;&nbsp;&nbsp;CAUTION&nbsp;&nbsp;ZODIAC&nbsp;TRANSIT&nbsp;ACTIVE&nbsp;&nbsp;&#9888;
+    </div>
+
+  </div>
+</div>
+</body></html>

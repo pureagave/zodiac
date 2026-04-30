@@ -1,0 +1,113 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>MAP 3 — PERSPECTIVE GRID</title>
+<style>
+  html,body{margin:0;background:#000;color:#33ff66;font-family:"Courier New",monospace}
+  #stage{width:1600px;height:900px;position:relative;
+    background:repeating-linear-gradient(0deg,#000 0 2px,#031003 2px 3px)}
+  .outer{position:absolute;inset:18px;border:3px solid #00ff66;border-radius:2px}
+  .topbar{position:absolute;left:40px;right:40px;top:40px;height:50px;background:#00cc55;color:#000;display:flex;align-items:center;padding:0 22px;font-size:30px;letter-spacing:8px;font-weight:bold}
+  .topbar .right{margin-left:auto;font-size:14px;color:#003311;letter-spacing:2px}
+  .ladder{position:absolute;left:40px;top:108px;width:140px;bottom:40px;border:2px solid #00ff66;padding:14px 8px;box-sizing:border-box;font-size:13px;line-height:1.7;color:#bdf3c8}
+  .ladder .obj{margin-bottom:6px;color:#bdf3c8}
+  .ladder .tick{display:flex;justify-content:space-between;border-top:1px solid #2c8a4a;padding-top:4px;margin-top:6px}
+  .map{position:absolute;left:200px;top:108px;right:340px;bottom:40px;border:2px solid #00ff66;overflow:hidden}
+  .rail{position:absolute;right:40px;top:108px;width:280px;bottom:40px;border:2px solid #00ff66;padding:18px;box-sizing:border-box;font-size:18px;line-height:1.7;color:#bdf3c8}
+  .rail h{display:block;color:#bdf3c8;margin-top:6px}
+  .rail .v{padding:4px 8px;display:block;margin-top:4px;color:#33ff66;letter-spacing:2px}
+  .rail .btn{display:block;border:2px solid #00ff66;padding:8px 14px;margin-top:10px;letter-spacing:6px;text-align:center}
+  .rail .btn.on{background:#00ff66;color:#001a08;font-weight:bold}
+  .rail .row{display:flex;align-items:center;margin-top:8px;gap:8px}
+  .rail .key{border:2px solid #00ff66;width:36px;height:30px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#33ff66}
+  .corner{position:absolute;color:#00ff66;font-size:24px}
+  .c1{left:212px;top:120px}.c2{right:354px;top:120px}.c3{left:212px;bottom:54px}.c4{right:354px;bottom:54px}
+</style></head><body>
+<div id="stage">
+  <div class="outer"></div>
+  <div class="topbar">ENV:&nbsp;ZODIAC<div class="right">1: DATA &nbsp; 3: DESTINATION<br>2: COURSE &nbsp; 4: FREIGHT</div></div>
+  <div class="ladder">
+    <div class="obj">Object Z:430</div>
+    <div class="obj">Interval</div>
+    <div class="obj">Distance</div>
+    <div class="tick"><span>&mdash;</span><span>500&nbsp;000</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>400&nbsp;000</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>&nbsp;</span></div>
+    <div class="tick"><span>&mdash;</span><span>300&nbsp;000</span></div>
+  </div>
+  <div class="map">
+    <svg viewBox="0 0 1060 730" width="100%" height="100%" preserveAspectRatio="none">
+      <!-- perspective grid: receding floor -->
+      <g fill="none" stroke="#00ff66" stroke-width="1.6">
+        <!-- horizontal floor lines (perspective squash) -->
+        <path d="M -200 700 L 1260 700"/>
+        <path d="M  -50 600 L 1110 600"/>
+        <path d="M   80 510 L  980 510"/>
+        <path d="M  180 430 L  880 430"/>
+        <path d="M  260 360 L  800 360"/>
+        <path d="M  320 305 L  740 305"/>
+        <path d="M  370 260 L  690 260"/>
+        <path d="M  410 224 L  650 224"/>
+        <path d="M  442 196 L  618 196"/>
+        <!-- vanishing-point verticals -->
+        <path d="M 530 196 L 530 700"/>
+        <path d="M 480 196 L  -200 700"/>
+        <path d="M 580 196 L 1260 700"/>
+        <path d="M 430 196 L -650 700"/>
+        <path d="M 630 196 L 1710 700"/>
+        <path d="M 380 196 L -1100 700"/>
+        <path d="M 680 196 L 2160 700"/>
+      </g>
+      <!-- hex/circle planet diagram on right -->
+      <g fill="none" stroke="#00ff66" stroke-width="1.6">
+        <polygon points="780,200 850,160 920,200 920,280 850,320 780,280" />
+        <polygon points="800,210 858,178 916,210 916,270 858,302 800,270" />
+        <polygon points="820,222 866,196 912,222 912,258 866,284 820,258" />
+        <circle cx="866" cy="240" r="60"/>
+        <circle cx="866" cy="240" r="38"/>
+      </g>
+      <!-- vehicle: faceted polyhedron pointing forward into the grid -->
+      <g fill="none" stroke="#9aff9a" stroke-width="2.2">
+        <polygon points="240,260 320,236 380,278 360,330 280,346 220,310"/>
+        <polygon points="320,236 380,278 360,330"/>
+        <polygon points="280,346 360,330 380,420 300,440"/>
+        <polygon points="220,310 280,346 300,440 240,420"/>
+        <line x1="240" y1="260" x2="280" y2="346"/>
+        <line x1="380" y1="278" x2="360" y2="330"/>
+      </g>
+      <!-- forward path: small arrow chevrons receding -->
+      <g fill="none" stroke="#fff700" stroke-width="2.4">
+        <polyline points="500,540 540,520 580,540"/>
+        <polyline points="520,460 550,446 580,460"/>
+        <polyline points="535,400 555,390 575,400"/>
+        <polyline points="544,358 559,352 574,358"/>
+      </g>
+      <!-- corner crosshairs -->
+      <g stroke="#00ff66" stroke-width="2" fill="none">
+        <path d="M 30 30 h 22 M 41 19 v 22"/>
+        <path d="M 1030 30 h 22 M 1041 19 v 22"/>
+        <path d="M 30 700 h 22 M 41 689 v 22"/>
+        <path d="M 1030 700 h 22 M 1041 689 v 22"/>
+      </g>
+    </svg>
+  </div>
+  <div class="rail">
+    <h>IFF&#x2011;NET&nbsp;Profile:</h>
+    <div class="v">Zodiac Corp</div>
+    <div class="v">Standart Protocoll</div>
+    <h style="margin-top:14px">Course Status:</h>
+    <div class="v">Direct</div>
+    <div class="v">Impossible</div>
+    <div class="btn">Manual</div>
+    <div class="btn on">Auto</div>
+    <div class="row"><div class="key">X</div>F8 &nbsp; Optional</div>
+    <div class="row"><div class="key">Y</div>F4 &nbsp; Optional</div>
+    <div class="row"><div class="key">Z</div>F3 &nbsp; Engaged</div>
+  </div>
+</div>
+</body></html>

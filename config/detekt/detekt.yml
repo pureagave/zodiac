@@ -9,9 +9,10 @@ complexity:
     active: false
   TooManyFunctions:
     # Default 11 was tight for CockpitViewModel which exposes one method per
-    # discrete cockpit operation. 12 leaves a little head-room without
-    # signalling that a god-class is fine.
-    thresholdInClasses: 12
+    # discrete cockpit operation. Bumped each time a discrete cockpit action
+    # is added (concept cycling was the latest); kept just above the actual
+    # count so adding a 14th would still require a deliberate decision.
+    thresholdInClasses: 13
 
 naming:
   FunctionNaming:

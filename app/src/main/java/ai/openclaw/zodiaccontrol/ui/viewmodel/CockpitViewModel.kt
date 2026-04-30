@@ -46,6 +46,7 @@ class CockpitViewModel(
                     mapMode = saved.mapMode,
                     tiltDeg = saved.tiltDeg,
                     pixelsPerMeter = saved.pixelsPerMeter,
+                    concept = saved.concept,
                 )
             }
             launch {
@@ -182,6 +183,12 @@ class CockpitViewModel(
         viewModelScope.launch {
             if (connected) vehicleGateway.connect() else vehicleGateway.disconnect()
         }
+    }
+
+    fun cycleConcept() {
+        val next = _uiState.value.concept.next()
+        _uiState.update { it.copy(concept = next) }
+        viewModelScope.launch { preferences.setConcept(next) }
     }
 }
 
