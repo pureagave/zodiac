@@ -2,10 +2,13 @@ package ai.openclaw.zodiaccontrol.ui.state
 
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.core.model.FollowMode
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
+import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -25,10 +28,24 @@ data class CockpitUiState(
     val mapMode: MapMode = MapMode.TOP,
     val tiltDeg: Int = DEFAULT_TILT_DEG,
     val pixelsPerMeter: Double = DEFAULT_PIXELS_PER_METER,
-    val panEastM: Double = 0.0,
-    val panNorthM: Double = 0.0,
+    /**
+     * Absolute camera position in playa metres when [followMode] is
+     * [FollowMode.FREE]. Null in [FollowMode.TRACK_UP] — the renderer
+     * centres on the live GPS fix instead.
+     */
+    val cameraOverride: PlayaPoint? = null,
+    val followMode: FollowMode = FollowMode.TRACK_UP,
+    /**
+     * Compass direction (degrees CW from true north) currently aligned with
+     * the top of the viewport. In [FollowMode.TRACK_UP] this tracks
+     * [headingDeg] so the ego always points up. In [FollowMode.FREE] the
+     * two-finger rotate gesture moves it independently of the ego's
+     * physical heading.
+     */
+    val viewRotationDeg: Double = 0.0,
     val mapLoadError: String? = null,
     val concept: CockpitConcept = CockpitConcept.A,
+    val navCue: NavigationCue = NavigationCue.Unknown,
 ) {
     companion object {
         const val DEFAULT_TILT_DEG: Int = 40
@@ -50,11 +67,10 @@ data class CockpitUiState(
         const val MIN_PIXELS_PER_METER: Double = 0.05
         const val MAX_PIXELS_PER_METER: Double = 5.0
 
-        // Hard cap on how far the camera can drift from ego before recenter is
-        // required. Keeps a stuck/dragging finger from sliding the city far
-        // off-canvas where the RECENTER chip is the only escape and the user
-        // might not see it.
-        const val MAX_PAN_M: Double = 5_000.0
+        // Hard cap on how far the camera can drift from ego in [FollowMode.FREE].
+        // Keeps a stuck/dragging finger from sliding the city far off-canvas
+        // where the recenter button might be the only escape.
+        const val MAX_CAMERA_OFFSET_M: Double = 5_000.0
     }
 
     val egoFix: GpsFix? = (locationState as? LocationSourceState.Active)?.fix

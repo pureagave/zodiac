@@ -88,6 +88,8 @@ fun perspectiveGridScreen(
                 )
             }
 
+            Spacer(Modifier.height(6.dp))
+            navCueBar(cue = state.navCue, theme = theme)
             Spacer(Modifier.height(8.dp))
 
             Row(Modifier.fillMaxSize()) {
@@ -132,6 +134,13 @@ fun perspectiveGridScreen(
             onCycle = onCycleConcept,
             accent = theme.accent,
             modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+        )
+
+        recenterButton(
+            followMode = state.followMode,
+            theme = theme,
+            onClick = viewModel::recenterPan,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
     }
 }

@@ -34,6 +34,7 @@ private fun zodiacApp() {
                     playaMapRepository = app.playaMapRepository,
                     locationSource = app.locationSource,
                     preferences = app.preferences,
+                    fakeLocationSource = app.fakeLocationSource,
                 ),
         )
 

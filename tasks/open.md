@@ -16,7 +16,6 @@ What's worth doing next, drawn from `audit.md` (2026-04-26) and a few items surf
 
 ## Performance (only matters on a real Fire tablet)
 
-- [ ] **M2** — cache projected `Path` per `(heading, zoom, anchorYFrac, panOffset)` in `BrcMapRenderer.drawPolygon`; reuse across frames within the same camera state.
 - [ ] **M4** — same caching for the meter-space grid in `drawRetroGrid`.
 
 ## Testing

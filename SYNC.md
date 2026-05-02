@@ -6,6 +6,92 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-05-02 — Render perf: projected-map cache + draw-call batching (audit M2)
+
+Concept C's rotating sweep was visibly stuttering on the Fire HD 10 — the M41A look re-renders the entire BRC map twice per frame (dim base + lit-clipped wedge), and the per-frame draw load was the bottleneck. Two-pass fix:
+
+1. **Projection cache.** New `ProjectedMap` type and `PlayaMap.project(projection, viewport)` that walks every feature once and pre-builds screen-space geometry. Composables in `playaMapPanel` and `centerViewport` use `Modifier.onSizeChanged` + `remember(playaMap, viewport)` to memoise the projection — within a single GPS tick (every 500 ms), all 60 fps frames reuse the same cached result. Cache invalidates on GPS update, pan, pinch, rotate, or canvas resize.
+2. **Draw-call batching.** Same-style geometry collapses into one Skia call:
+   - All ~600 streets → one `drawPath` with `Stroke(cap = Round, join = Round)`. Previously: ~4000 `drawLine` calls per pass.
+   - Street outlines, plazas → one `drawPath` each (consolidated subpaths).
+   - Toilets / CPNs / minor art → one `drawPoints` each (filled circles via `PointMode.Points` + round cap).
+   - Major art (hollow stroke) stays as ~50 individual `drawCircle` calls — `drawPoints` can't render hollow.
+
+Per-pass call count: ~4400 → ~60. Concept C's double pass: ~9000 → ~120 calls per frame.
+
+Renderer split: `drawProjectedMap(projected, palette, pixelsPerMeter)` is the new pure-raster entry point. `drawPlayaMap` retained as a one-shot wrapper that projects then draws — handy for tests / one-off renders. Old internal helpers (`drawArtMarker`, `drawStreet`, `drawPolygon`, `drawCentroidPoi`, `drawPoi`, `RenderCtx`, `toScreen` extension) deleted.
+
+Closes audit task **M2** ("cache projected `Path` per `(heading, zoom, anchorYFrac, panOffset)`"). Verified visibly smooth on the user's Fire HD 10 13th gen.
+
+CI gates green: ktlint, detekt, testDebugUnitTest, assembleDebug.
+
+---
+
+## 2026-05-01 — Drive-mode fake GPS: chips steer the synthetic ego
+
+Reworked `FakeLocationSource` from a slow-circle / parked-offset hybrid into a proper kinematic sim. Every 500 ms tick:
+
+```
+posEastM  += sin(headingDeg) · (speedKph / 3.6) · dt
+posNorthM += cos(headingDeg) · (speedKph / 3.6) · dt
+```
+
+…and emits a `GpsFix` with the new position + the configured heading + speed. New driver-input methods: `setHeading(deg)`, `setSpeed(kph)`, plus existing `nudgeManualOffset` (teleport) and `resetManualOffset` (zero everything).
+
+VM `setHeading`/`setSpeed` chip handlers now also call into the fake source so the rail acts as a steering wheel + throttle. State `headingDeg` and `speedKph` get re-folded from each subsequent `GpsFix` (the location collector pulls `fix.headingDeg?.toInt()` into state) — i.e. heading is a *physical* property of the ego, sourced from GPS. On real hardware (BLE/USB/SYSTEM) this same path picks up real motion; on the synthetic source the chip→fake→fix round-trip is what makes the cockpit feel like driving.
+
+Initial state is parked at the Spike, heading 0, speed 0 — nothing moves until the user taps a speed chip. The slow-circle default is gone; the sim is more useful for actual debugging.
+
+`FakeLocationSource` constructor lost `pathRadiusMeters` / `periodSeconds` params. Tests rewritten around the new behaviour.
+
+---
+
+## 2026-05-01 — Follow modes: TRACK_UP / FREE + recenter button + auto-revert
+
+The cockpit now models its camera state explicitly. New `FollowMode` enum:
+
+- **TRACK_UP** (default): camera follows the live GPS fix; display rotation tracks the ego's heading; ego marker stays at viewport anchor pointing up.
+- **FREE**: camera holds an *absolute* world position (`CockpitUiState.cameraOverride: PlayaPoint?`); display rotation is independent (`viewRotationDeg: Double`); GPS updates slide the ego marker on screen but the map underneath stays put. Standard map-app feel.
+
+State changes:
+- Dropped `panEastM`/`panNorthM` (they were "offset from ego" — wrong model for FREE).
+- Added `cameraOverride`, `followMode`, `viewRotationDeg`.
+- `MAX_PAN_M` → `MAX_CAMERA_OFFSET_M`; clamps |camera − ego| in FREE.
+
+Behaviour:
+- One-finger pan: switches to FREE, parks `cameraOverride = ego + Δ`.
+- Pinch-zoom: stays in current mode, resets the auto-revert timer when in FREE.
+- Two-finger rotate: spins `viewRotationDeg` only — does *not* touch `headingDeg` (heading is a physical property of the ego, the user is rotating the *display*). Ego marker rotates by `(headingDeg − viewRotationDeg)` so it keeps pointing in the real direction of motion on the rotated display.
+- Recenter button (ego-shaped, bottom-right of every concept, themed per palette): clears `cameraOverride`, syncs `viewRotationDeg = headingDeg`, returns to TRACK_UP, cancels the timer.
+- 60-second auto-revert: any pan / pinch / rotate (re)starts a `viewModelScope.launch { delay(AUTO_RECENTER_MS); recenterPan() }`. If the user is idle past the window the cockpit snaps back on its own.
+
+`MapTouchInput` gained two-finger angle tracking (`atan2` between fingers) and an `onRotate(deltaDeg)` callback. Rotation deadzone of 0.05° suppresses jitter from steady two-finger holds.
+
+---
+
+## 2026-04-30 — Big visible ego + fake-GPS nudge chips for debug
+
+Two debugging quality-of-life additions:
+
+- Ego marker bumped from 14 px → 28 px, filled body + 3 px white outline + halo ring at 1.7× radius. The halo's centre is the actual GPS fix point — i.e. the dead centre of the circle is "you are here." Both triangle and hex variants got the treatment.
+- Ego-marker draws at the projected GPS-fix position rather than a fixed viewport anchor — fixes the "drag the map and the ego stays in the same place" bug. Ego now slides with the map when panned. Fixed in both `playaMapPanel` (B / C / D) and `centerViewport` (A); aligned the TILT-mode `MAP_ANCHOR_TILT` to `EGO_ANCHOR_TILT` (both 0.78) so the arcade lower-third framing is preserved.
+- `FakeLocationSource` exposes a manual offset; new `> FAKE GPS NUDGE` row on the rail (visible only when source is FAKE) gives `N+100`, `S+100`, `E+100`, `W+100` chips plus `GPS RESET`. Useful for jumping the ego to specific positions to verify on-street snap, nav-cue radial detection, etc.
+
+---
+
+## 2026-04-30 — Nav cue bar (phase 2: UI)
+
+Wired the `NavigationCue` from PlayaNavigator into the cockpit. New `NavCueBar` Composable drops into the top of every concept, themed per palette. VM owns a private `cityModel: PlayaCityModel?` (built once when the BRC map loads) and a `recomputeNavCue()` helper called from the heading and location collectors so the cue stays in sync without per-frame work in the renderer. Cue formats:
+
+- `→ 4:42  1240m` — off-street, heading toward city.
+- `← -10:30  3.6km` — deep playa, heading outward (backward ray cast against the trash fence).
+- `4:30 → ESPLANADE` — on a radial, inbound.
+- `4:30 ← ATWOOD` — on a radial, outbound (last-passed arc).
+- `ATWOOD 4:42` — on a named arc, clock ticks as you move along it.
+- `—` — no fix yet.
+
+---
+
 ## 2026-04-29 — BRC map integration into B/C/D + zoom-gated labels
 
 Pulled the real Black Rock City map (streets, plazas, art, CPNs, toilets, fence) out of concept A and into B/C/D as well, with concept-specific palettes, GPS tracking, pinch-zoom, drag-pan, and a TOP/TILT toggle on the rail. Concept A is intentionally untouched per the directive to leave it as-is.

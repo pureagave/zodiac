@@ -1,18 +1,14 @@
 package ai.openclaw.zodiaccontrol.ui.playamap
 
-import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
-import ai.openclaw.zodiaccontrol.core.geo.ScreenXY
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
-import ai.openclaw.zodiaccontrol.core.model.PointFeature
-import ai.openclaw.zodiaccontrol.core.model.PolygonRing
-import ai.openclaw.zodiaccontrol.core.model.StreetLine
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 
@@ -87,22 +83,14 @@ private const val GRID_SPACING_M = 200.0
 private const val GRID_HALF_RANGE_M = 5_000.0
 private const val GRID_STROKE_PX = 1.2f
 
-private val MajorArtPrograms = setOf("Honorarium", "ManPavGrant")
-
 /**
- * Bundle of the rendering transforms used at every draw call so individual
- * helpers stay under the param-count limits.
- */
-private data class RenderCtx(
-    val projection: PlayaProjection,
-    val viewport: PlayaViewport,
-    val palette: MapPalette,
-)
-
-/**
- * Render a [PlayaMap] for the given [viewport]. Draws back-to-front:
- * street outlines, street centerlines, trash fence, plazas, toilet markers,
- * CPN markers, and finally the ego triangle.
+ * Render a [PlayaMap] for the given [viewport]. Convenience wrapper that
+ * projects the map every call — fine for one-shot renders, but the cockpit
+ * draws the same map ~60× per second, so the Composable layer should
+ * [PlayaMap.project] once per camera-state change and call [drawProjectedMap]
+ * with the cached result instead. Concept C in particular renders the map
+ * twice per frame (dim base + lit-clipped sweep), making the cache
+ * difference between "smooth" and "stuttering" on Fire-class devices.
  *
  * Pass a [palette] to re-skin the map per concept; defaulting to
  * [MapPalette.Default] preserves the original concept-A colour set.
@@ -113,15 +101,106 @@ fun DrawScope.drawPlayaMap(
     viewport: PlayaViewport,
     palette: MapPalette = MapPalette.Default,
 ) {
-    val ctx = RenderCtx(projection, viewport, palette)
-    map.streetOutlines.forEach { drawPolygon(it, ctx, palette.streetOutline, OUTLINE_STROKE) }
-    map.streetLines.forEach { drawStreet(it, ctx) }
-    map.trashFence.forEach { drawPolygon(it, ctx, palette.fence, FENCE_STROKE, closed = true) }
-    map.plazas.forEach { drawPolygon(it, ctx, palette.plaza, PLAZA_STROKE, closed = true) }
-    map.toilets.forEach { drawCentroidPoi(it, ctx, palette.toilet, TOILET_RADIUS) }
-    map.cpns.forEach { drawPoi(it, ctx, palette.cpn, CPN_RADIUS) }
-    map.art.forEach { drawArtMarker(it, ctx) }
-    if (palette.labelsEnabled) drawMapLabels(map = map, projection = projection, viewport = viewport, palette = palette)
+    val projected = map.project(projection, viewport)
+    drawProjectedMap(projected, palette, viewport.pixelsPerMeter)
+}
+
+/**
+ * Render a [ProjectedMap] in the supplied [palette]. Pure raster pass —
+ * no per-vertex projection, and every same-style layer collapsed into a
+ * single Skia call (one `drawPath` per stroke style, one `drawPoints`
+ * per marker style). On Fire-class GPUs this drops per-frame cost from
+ * thousands of calls to under a dozen. Pass [pixelsPerMeter] from the
+ * same viewport that produced [projected] so labels gate on the live
+ * zoom level.
+ */
+fun DrawScope.drawProjectedMap(
+    projected: ProjectedMap,
+    palette: MapPalette,
+    pixelsPerMeter: Double,
+) {
+    drawPath(
+        path = projected.streetOutlinePath,
+        color = palette.streetOutline,
+        style = Stroke(width = OUTLINE_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    drawPath(
+        path = projected.streetPath,
+        color = palette.street,
+        style = Stroke(width = STREET_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    drawPath(
+        path = projected.trashFencePath,
+        color = palette.fence,
+        style = Stroke(width = FENCE_STROKE),
+    )
+    drawPath(
+        path = projected.plazaPath,
+        color = palette.plaza,
+        style = Stroke(width = PLAZA_STROKE),
+    )
+    drawPointBatch(projected.toiletPositions, palette.pointStyle, palette.toilet, TOILET_RADIUS)
+    drawPointBatch(projected.cpnPositions, palette.pointStyle, palette.cpn, CPN_RADIUS)
+    drawPointBatch(projected.artMinorPositions, palette.pointStyle, palette.artMinor, ART_MINOR_RADIUS)
+    drawMajorArt(projected.artMajorPositions, palette)
+    if (palette.labelsEnabled) drawProjectedLabels(projected, palette, pixelsPerMeter)
+}
+
+/**
+ * Filled-marker batch — one Skia call for the whole list. `drawPoints`
+ * with [PointMode.Points] + round cap renders each [Offset] as a filled
+ * circle of `strokeWidth` pixels diameter. Used for toilets, CPNs, and
+ * minor self-funded art. Concept D's chunky tile aesthetic falls out of
+ * the batch (squares can't go through `drawPoints`) and walks the list
+ * with per-item `drawRect` instead — D doesn't double-render so the
+ * per-call overhead there isn't on the hot path.
+ */
+private fun DrawScope.drawPointBatch(
+    points: List<Offset>,
+    style: MapPointStyle,
+    color: Color,
+    radius: Float,
+) {
+    if (points.isEmpty()) return
+    when (style) {
+        MapPointStyle.DOT ->
+            drawPoints(
+                points = points,
+                pointMode = PointMode.Points,
+                color = color,
+                strokeWidth = radius * 2f,
+                cap = StrokeCap.Round,
+            )
+        MapPointStyle.BLOCK ->
+            points.forEach { drawBlockMarker(center = it, color = color, radius = radius, hollow = false) }
+    }
+}
+
+/**
+ * Honorarium / ManPavGrant art renders as a hollow stroked circle and
+ * therefore can't go through the filled-point batch. ~50 entries → ~50
+ * `drawCircle` calls per pass; acceptable next to the win from batching
+ * the 330-entry minor-art layer.
+ */
+private fun DrawScope.drawMajorArt(
+    points: List<Offset>,
+    palette: MapPalette,
+) {
+    when (palette.pointStyle) {
+        MapPointStyle.DOT ->
+            points.forEach { pos ->
+                drawCircle(
+                    color = palette.artMajor,
+                    radius = ART_MAJOR_RADIUS,
+                    center = pos,
+                    style = Stroke(width = ART_MAJOR_STROKE),
+                )
+            }
+        MapPointStyle.BLOCK ->
+            points.forEach { pos ->
+                drawBlockMarker(center = pos, color = palette.artMajor, radius = ART_MAJOR_RADIUS, hollow = true)
+            }
+    }
 }
 
 /**
@@ -154,26 +233,6 @@ fun DrawScope.drawRetroGrid(
     }
 }
 
-private fun DrawScope.drawArtMarker(
-    point: PointFeature,
-    ctx: RenderCtx,
-) {
-    val major = point.kind in MajorArtPrograms
-    val s = ctx.viewport.toScreen(ctx.projection.project(point.location))
-    val center = Offset(s.x.toFloat(), s.y.toFloat())
-    val color = if (major) ctx.palette.artMajor else ctx.palette.artMinor
-    val radius = if (major) ART_MAJOR_RADIUS else ART_MINOR_RADIUS
-    when (ctx.palette.pointStyle) {
-        MapPointStyle.DOT ->
-            if (major) {
-                drawCircle(color = color, radius = radius, center = center, style = Stroke(width = ART_MAJOR_STROKE))
-            } else {
-                drawCircle(color = color, radius = radius, center = center)
-            }
-        MapPointStyle.BLOCK -> drawBlockMarker(center = center, color = color, radius = radius, hollow = major)
-    }
-}
-
 /**
  * Concept-D POI: chunky orange-on-black framed rect that sits naturally beside
  * the bay's other instrument tiles. [hollow] = stroked frame for emphasis
@@ -193,77 +252,3 @@ private fun DrawScope.drawBlockMarker(
         drawRect(color = color, topLeft = topLeft, size = androidx.compose.ui.geometry.Size(side, side))
     }
 }
-
-private fun DrawScope.drawStreet(
-    street: StreetLine,
-    ctx: RenderCtx,
-) {
-    val pts = street.points.toScreen(ctx)
-    if (pts.size < 2) return
-    for (i in 0 until pts.size - 1) {
-        drawLine(
-            color = ctx.palette.street,
-            start = pts[i],
-            end = pts[i + 1],
-            strokeWidth = STREET_STROKE,
-            cap = StrokeCap.Round,
-        )
-    }
-}
-
-private fun DrawScope.drawPolygon(
-    polygon: PolygonRing,
-    ctx: RenderCtx,
-    color: Color,
-    stroke: Float,
-    closed: Boolean = false,
-) {
-    val pts = polygon.ring.toScreen(ctx)
-    if (pts.size < 2) return
-    val path =
-        Path().apply {
-            moveTo(pts[0].x, pts[0].y)
-            for (i in 1 until pts.size) lineTo(pts[i].x, pts[i].y)
-            if (closed) close()
-        }
-    drawPath(path = path, color = color, style = Stroke(width = stroke))
-}
-
-private fun DrawScope.drawCentroidPoi(
-    polygon: PolygonRing,
-    ctx: RenderCtx,
-    color: Color,
-    radius: Float,
-) {
-    val centroid = polygon.centroid ?: return
-    val s = ctx.viewport.toScreen(ctx.projection.project(centroid))
-    drawPoiAt(Offset(s.x.toFloat(), s.y.toFloat()), ctx.palette.pointStyle, color, radius)
-}
-
-private fun DrawScope.drawPoi(
-    point: PointFeature,
-    ctx: RenderCtx,
-    color: Color,
-    radius: Float,
-) {
-    val s = ctx.viewport.toScreen(ctx.projection.project(point.location))
-    drawPoiAt(Offset(s.x.toFloat(), s.y.toFloat()), ctx.palette.pointStyle, color, radius)
-}
-
-private fun DrawScope.drawPoiAt(
-    center: Offset,
-    style: MapPointStyle,
-    color: Color,
-    radius: Float,
-) {
-    when (style) {
-        MapPointStyle.DOT -> drawCircle(color = color, radius = radius, center = center)
-        MapPointStyle.BLOCK -> drawBlockMarker(center = center, color = color, radius = radius, hollow = false)
-    }
-}
-
-private fun List<LatLon>.toScreen(ctx: RenderCtx): List<Offset> =
-    map { ll ->
-        val s: ScreenXY = ctx.viewport.toScreen(ctx.projection.project(ll))
-        Offset(s.x.toFloat(), s.y.toFloat())
-    }

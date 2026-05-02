@@ -53,3 +53,4 @@ Medium / Low sweep:
 - [x] M15 — zero placeholder defaults (heading / speed / thermal)
 - [x] L1 (partial) — tests for `wrapHeading` and `RoutedVehicleGateway` switch / double-connect / send-after-disconnect
 - [x] L5 — `require(anchorYFrac in 0.0..1.0)` on `PlayaViewport`
+- [x] M2 — cache projected geometry per camera state, plus draw-call batching (consolidated `Path`s + `drawPoints` for marker layers); fixed the Fire HD 10 stutter on Concept C's lit-wedge sweep

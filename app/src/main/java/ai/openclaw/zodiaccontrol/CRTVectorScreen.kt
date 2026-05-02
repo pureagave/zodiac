@@ -12,11 +12,14 @@ import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.ui.concepts.ThemeCrtVector
 import ai.openclaw.zodiaccontrol.ui.concepts.conceptSwitcher
-import ai.openclaw.zodiaccontrol.ui.playamap.EGO_ANCHOR_CENTER
+import ai.openclaw.zodiaccontrol.ui.concepts.navCueBar
+import ai.openclaw.zodiaccontrol.ui.concepts.recenterButton
+import ai.openclaw.zodiaccontrol.ui.playamap.ProjectedMap
 import ai.openclaw.zodiaccontrol.ui.playamap.cockpitTouchInput
-import ai.openclaw.zodiaccontrol.ui.playamap.drawEgoMarker
-import ai.openclaw.zodiaccontrol.ui.playamap.drawPlayaMap
+import ai.openclaw.zodiaccontrol.ui.playamap.drawEgoMarkerAt
+import ai.openclaw.zodiaccontrol.ui.playamap.drawProjectedMap
 import ai.openclaw.zodiaccontrol.ui.playamap.drawRetroGrid
+import ai.openclaw.zodiaccontrol.ui.playamap.project
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import ai.openclaw.zodiaccontrol.ui.wrapHeading
@@ -38,7 +41,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -46,8 +52,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,8 +68,16 @@ private val ElectricBlue = Color(0xFF00BFFF)
 private val Amber = Color(0xFFFFD166)
 
 private const val TILT_CAMERA_DISTANCE: Float = 8f
-private const val EGO_ANCHOR_TILT: Float = 0.78f
-private const val MAP_ANCHOR_TILT: Double = 0.5
+
+/**
+ * Vertical anchor (fraction of viewport height) where the ego's GPS fix
+ * projects on the canvas. Map and ego use the *same* anchor so the marker
+ * draws exactly where its real-world location sits on the rendered map —
+ * panning slides ego and map together. TILT keeps the arcade-racer
+ * lower-third framing; TOP centres ego in the viewport.
+ */
+private const val TILT_ANCHOR_Y: Double = 0.78
+private const val TOP_ANCHOR_Y: Double = 0.5
 private const val TILT_ZOOM_BOOST: Double = 1.0
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
@@ -84,6 +100,8 @@ fun crtVectorScreen(
 
         Column(Modifier.fillMaxSize()) {
             topHeader(state = state)
+            Spacer(Modifier.height(6.dp))
+            navCueBar(cue = state.navCue, theme = ThemeCrtVector)
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxSize()) {
                 leftRail(
@@ -100,6 +118,7 @@ fun crtVectorScreen(
                     state = state,
                     onPan = viewModel::panBy,
                     onZoom = viewModel::setPixelsPerMeter,
+                    onRotate = viewModel::nudgeViewRotation,
                 )
                 Spacer(Modifier.width(10.dp))
                 rightRail(
@@ -135,6 +154,13 @@ fun crtVectorScreen(
             onCycle = onCycleConcept,
             accent = ThemeCrtVector.accent,
             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+        )
+
+        recenterButton(
+            followMode = state.followMode,
+            theme = ThemeCrtVector,
+            onClick = viewModel::recenterPan,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
         )
     }
 }
@@ -490,11 +516,40 @@ private fun centerViewport(
     state: CockpitUiState,
     onPan: (Double, Double) -> Unit,
     onZoom: (Double) -> Unit,
+    onRotate: (Float) -> Unit,
 ) {
-    val map = state.playaMap
     val projection = remember { PLAYA_PROJECTION }
     val pixelsPerMeter = state.pixelsPerMeter
     val tilt = state.mapMode == MapMode.TILT
+
+    // Cache key plumbing — measure the box at Composable scope, build the
+    // viewport once per state-or-size change, and project the BRC map only
+    // when that viewport (or the map itself) changes. ~600 streets × tens
+    // of vertices each is the dominant frame cost without the cache; with
+    // it, panning at 60 fps reuses the same projection across all frames
+    // in a GPS tick window.
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val viewport: PlayaViewport? =
+        remember(
+            state.egoFix?.location,
+            state.cameraOverride,
+            state.viewRotationDeg,
+            state.pixelsPerMeter,
+            state.tiltDeg,
+            tilt,
+            canvasSize,
+        ) {
+            if (canvasSize.width <= 0 || canvasSize.height <= 0) {
+                null
+            } else {
+                buildViewport(state, projection, tilt, canvasSize.width, canvasSize.height)
+            }
+        }
+    val projected: ProjectedMap? =
+        remember(state.playaMap, viewport) {
+            val map = state.playaMap
+            if (map != null && viewport != null) map.project(projection, viewport) else null
+        }
 
     Box(
         modifier =
@@ -502,10 +557,14 @@ private fun centerViewport(
                 .fillMaxHeight()
                 .border(1.dp, VectorGreen)
                 .padding(8.dp)
+                .onSizeChanged { canvasSize = it }
                 .cockpitTouchInput(
                     currentZoom = { pixelsPerMeter },
                     onPan = { dxScreen, dyScreen ->
-                        val h = Math.toRadians(state.headingDeg.toDouble())
+                        // Use the *display* rotation, not the heading, so a
+                        // pan after a two-finger twist moves the camera
+                        // along the visible axes — standard map-app feel.
+                        val h = Math.toRadians(state.viewRotationDeg)
                         val cosH = cos(h)
                         val sinH = sin(h)
                         val ppm = pixelsPerMeter
@@ -514,6 +573,7 @@ private fun centerViewport(
                         onPan(dE, dN)
                     },
                     onZoom = onZoom,
+                    onRotate = onRotate,
                 ),
     ) {
         Canvas(
@@ -528,22 +588,10 @@ private fun centerViewport(
                     Modifier.fillMaxSize()
                 },
         ) {
-            val baseCenter =
-                state.egoFix?.let { projection.project(it.location) }
-                    ?: PlayaPoint(0.0, 0.0)
-            val cameraCenter = PlayaPoint(baseCenter.eastM + state.panEastM, baseCenter.northM + state.panNorthM)
-            val viewport =
-                PlayaViewport(
-                    center = cameraCenter,
-                    headingDeg = state.headingDeg.toDouble(),
-                    pixelsPerMeter = if (tilt) pixelsPerMeter * TILT_ZOOM_BOOST else pixelsPerMeter,
-                    widthPx = size.width.toInt(),
-                    heightPx = size.height.toInt(),
-                    anchorYFrac = if (tilt) MAP_ANCHOR_TILT else 0.5,
-                )
+            if (viewport == null) return@Canvas
             if (tilt) drawRetroGrid(viewport)
-            if (map != null) {
-                drawPlayaMap(map = map, projection = projection, viewport = viewport)
+            if (projected != null) {
+                drawProjectedMap(projected, ai.openclaw.zodiaccontrol.ui.playamap.MapPalette.Default, viewport.pixelsPerMeter)
             } else {
                 drawCircle(
                     color = VectorGreen,
@@ -555,17 +603,45 @@ private fun centerViewport(
         }
 
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val viewport =
-                PlayaViewport(
-                    widthPx = size.width.toInt(),
-                    heightPx = size.height.toInt(),
-                )
-            drawEgoMarker(
-                viewport = viewport,
-                anchorYFrac = if (tilt) EGO_ANCHOR_TILT else EGO_ANCHOR_CENTER,
-            )
+            if (viewport == null) return@Canvas
+            val ego = state.egoFix?.location?.let { viewport.toScreen(projection.project(it)) }
+            val cx = ego?.x?.toFloat() ?: (size.width / 2f)
+            val cy = ego?.y?.toFloat() ?: (size.height * (if (tilt) TILT_ANCHOR_Y else TOP_ANCHOR_Y).toFloat())
+            // Marker rotation = ego heading − display rotation. 0 in
+            // TRACK_UP (heading at top, marker points up); non-zero in
+            // FREE after a two-finger rotate (display turned independently
+            // of the ego's physical motion direction).
+            val rotationDeg = (state.headingDeg - state.viewRotationDeg).toFloat()
+            drawEgoMarkerAt(cx = cx, cy = cy, rotationDeg = rotationDeg)
         }
     }
+}
+
+/**
+ * Single source of truth for the viewport used by both the map base canvas
+ * and the ego overlay. Camera position comes from [CockpitUiState.cameraOverride]
+ * in [ai.openclaw.zodiaccontrol.core.model.FollowMode.FREE] (an absolute
+ * world point parked by the user) and the live ego fix in
+ * [ai.openclaw.zodiaccontrol.core.model.FollowMode.TRACK_UP]; display
+ * rotation is the user-controllable [CockpitUiState.viewRotationDeg].
+ */
+private fun buildViewport(
+    state: CockpitUiState,
+    projection: PlayaProjection,
+    tilt: Boolean,
+    widthPx: Int,
+    heightPx: Int,
+): PlayaViewport {
+    val ego = state.egoFix?.let { projection.project(it.location) } ?: PlayaPoint(0.0, 0.0)
+    val cameraCenter = state.cameraOverride ?: ego
+    return PlayaViewport(
+        center = cameraCenter,
+        headingDeg = state.viewRotationDeg,
+        pixelsPerMeter = if (tilt) state.pixelsPerMeter * TILT_ZOOM_BOOST else state.pixelsPerMeter,
+        widthPx = widthPx,
+        heightPx = heightPx,
+        anchorYFrac = if (tilt) TILT_ANCHOR_Y else TOP_ANCHOR_Y,
+    )
 }
 
 @Composable

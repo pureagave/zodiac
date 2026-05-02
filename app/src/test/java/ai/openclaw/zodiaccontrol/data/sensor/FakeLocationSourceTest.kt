@@ -10,7 +10,6 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.hypot
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeLocationSourceTest {
@@ -29,43 +28,100 @@ class FakeLocationSourceTest {
         }
 
     @Test
-    fun stationary_mode_returns_origin() =
+    fun parked_at_origin_until_speed_set() =
         runTest {
-            val source =
-                FakeLocationSource(
-                    scope = backgroundScope,
-                    pathRadiusMeters = 0.0,
-                    tickMillis = TICK_MS,
-                )
+            val source = FakeLocationSource(scope = backgroundScope, tickMillis = TICK_MS)
 
             source.start()
-            advanceTimeBy(TICK_MS + 1)
+            advanceTimeBy(TICK_MS * STILL_TICKS)
 
             val fix = (source.state.value as LocationSourceState.Active).fix
             val p = projection.project(fix.location)
             assertEquals(0.0, p.eastM, ORIGIN_EPSILON)
             assertEquals(0.0, p.northM, ORIGIN_EPSILON)
+            assertEquals(0.0, fix.speedKph ?: -1.0, ORIGIN_EPSILON)
         }
 
     @Test
-    fun circular_mode_keeps_radius_within_tolerance() =
+    fun heading_and_speed_drive_position_north_then_east() =
         runTest {
-            val radiusM = 200.0
-            val source =
-                FakeLocationSource(
-                    scope = backgroundScope,
-                    pathRadiusMeters = radiusM,
-                    periodSeconds = PATH_PERIOD_S,
-                    tickMillis = TICK_MS,
-                )
-
+            // 36 km/h = 10 m/s; over four 100 ms ticks → 4 m of motion.
+            val source = FakeLocationSource(scope = backgroundScope, tickMillis = TICK_MS)
             source.start()
-            advanceTimeBy(TICK_MS * SAMPLES)
+            advanceTimeBy(TICK_MS + 1)
+
+            // Drive north (heading = 0) at 36 km/h for 4 ticks.
+            source.setHeading(0.0)
+            source.setSpeed(36.0)
+            advanceTimeBy(TICK_MS * DRIVE_TICKS)
+            val northFix = (source.state.value as LocationSourceState.Active).fix
+            val northPos = projection.project(northFix.location)
+            // Allow ±1 m for one-tick rounding either way.
+            assertEquals(EXPECTED_DRIVE_M.toDouble(), northPos.northM, DRIVE_TOLERANCE_M)
+            assertEquals(0.0, northPos.eastM, ORIGIN_EPSILON)
+
+            // Pivot east (heading = 90) and run another 4 ticks.
+            source.setHeading(90.0)
+            advanceTimeBy(TICK_MS * DRIVE_TICKS)
+            val eastFix = (source.state.value as LocationSourceState.Active).fix
+            val eastPos = projection.project(eastFix.location)
+            assertEquals(EXPECTED_DRIVE_M.toDouble(), eastPos.northM, DRIVE_TOLERANCE_M)
+            assertEquals(EXPECTED_DRIVE_M.toDouble(), eastPos.eastM, DRIVE_TOLERANCE_M)
+        }
+
+    @Test
+    fun setSpeed_zero_parks_ego_in_place() =
+        runTest {
+            val source = FakeLocationSource(scope = backgroundScope, tickMillis = TICK_MS)
+            source.start()
+            advanceTimeBy(TICK_MS + 1)
+
+            source.setSpeed(36.0)
+            advanceTimeBy(TICK_MS * DRIVE_TICKS)
+            val movingPos = projection.project((source.state.value as LocationSourceState.Active).fix.location)
+
+            source.setSpeed(0.0)
+            advanceTimeBy(TICK_MS * DRIVE_TICKS)
+            val parkedPos = projection.project((source.state.value as LocationSourceState.Active).fix.location)
+
+            assertEquals(movingPos.eastM, parkedPos.eastM, ORIGIN_EPSILON)
+            assertEquals(movingPos.northM, parkedPos.northM, ORIGIN_EPSILON)
+        }
+
+    @Test
+    fun nudgeManualOffset_teleports_position_immediately() =
+        runTest {
+            val source = FakeLocationSource(scope = backgroundScope, tickMillis = TICK_MS)
+            source.start()
+            advanceTimeBy(TICK_MS + 1)
+
+            source.nudgeManualOffset(deastM = NUDGE_M.toDouble(), dnorthM = -NUDGE_M.toDouble())
 
             val fix = (source.state.value as LocationSourceState.Active).fix
             val p = projection.project(fix.location)
-            val r = hypot(p.eastM, p.northM)
-            assertEquals(radiusM, r, RADIUS_TOLERANCE_M)
+            assertEquals(NUDGE_M.toDouble(), p.eastM, NUDGE_TOLERANCE_M)
+            assertEquals(-NUDGE_M.toDouble(), p.northM, NUDGE_TOLERANCE_M)
+        }
+
+    @Test
+    fun resetManualOffset_zeroes_position_heading_and_speed() =
+        runTest {
+            val source = FakeLocationSource(scope = backgroundScope, tickMillis = TICK_MS)
+            source.start()
+            advanceTimeBy(TICK_MS + 1)
+
+            source.setHeading(123.0)
+            source.setSpeed(50.0)
+            source.nudgeManualOffset(NUDGE_M.toDouble(), NUDGE_M.toDouble())
+            advanceTimeBy(TICK_MS * DRIVE_TICKS)
+
+            source.resetManualOffset()
+            val fix = (source.state.value as LocationSourceState.Active).fix
+            val p = projection.project(fix.location)
+            assertEquals(0.0, p.eastM, ORIGIN_EPSILON)
+            assertEquals(0.0, p.northM, ORIGIN_EPSILON)
+            assertEquals(0.0, fix.headingDeg ?: -1.0, ORIGIN_EPSILON)
+            assertEquals(0.0, fix.speedKph ?: -1.0, ORIGIN_EPSILON)
         }
 
     @Test
@@ -83,9 +139,6 @@ class FakeLocationSourceTest {
     @Test
     fun start_re_entry_is_safe() =
         runTest {
-            // The mutex + `if (job?.isActive == true) return` guard makes a second
-            // start() a no-op while the loop is running; the state stays Active
-            // and no second job is created.
             val source = FakeLocationSource(scope = backgroundScope, tickMillis = TICK_MS)
 
             source.start()
@@ -104,9 +157,12 @@ class FakeLocationSourceTest {
 
     private companion object {
         const val TICK_MS = 100L
-        const val PATH_PERIOD_S = 10.0
-        const val SAMPLES = 5L
-        const val RADIUS_TOLERANCE_M = 1.0
+        const val STILL_TICKS = 5L
+        const val DRIVE_TICKS = 4L
+        const val EXPECTED_DRIVE_M = 4 // 10 m/s × 4 × 0.1 s
+        const val DRIVE_TOLERANCE_M = 1.0
+        const val NUDGE_M = 250
+        const val NUDGE_TOLERANCE_M = 0.5
         const val ORIGIN_EPSILON = 0.01
     }
 }

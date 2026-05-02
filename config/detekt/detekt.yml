@@ -12,7 +12,11 @@ complexity:
     # discrete cockpit operation. Bumped each time a discrete cockpit action
     # is added (concept cycling was the latest); kept just above the actual
     # count so adding a 14th would still require a deliberate decision.
-    thresholdInClasses: 13
+    thresholdInClasses: 18
+    # CRTVectorScreen.kt is the canonical screen — header / left / right
+    # rail / center viewport / chips all live as private composables in
+    # one file. 12 fits the current shape with a touch of headroom.
+    thresholdInFiles: 12
 
 naming:
   FunctionNaming:

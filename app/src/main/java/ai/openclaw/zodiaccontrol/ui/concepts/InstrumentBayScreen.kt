@@ -71,6 +71,7 @@ fun instrumentBayScreen(
                 .border(2.dp, theme.primary),
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            navCueBar(cue = state.navCue, theme = theme)
             // Top header strip: title + system code
             Row(modifier = Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 tile(theme = theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -206,6 +207,13 @@ fun instrumentBayScreen(
             onCycle = onCycleConcept,
             accent = theme.accent,
             modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+        )
+
+        recenterButton(
+            followMode = state.followMode,
+            theme = theme,
+            onClick = viewModel::recenterPan,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
     }
 }

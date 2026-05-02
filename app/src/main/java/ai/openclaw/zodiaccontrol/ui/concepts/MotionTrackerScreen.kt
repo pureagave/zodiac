@@ -129,6 +129,8 @@ fun motionTrackerScreen(
             }
 
             Spacer(Modifier.height(4.dp))
+            navCueBar(cue = state.navCue, theme = theme)
+            Spacer(Modifier.height(4.dp))
 
             Row(Modifier.fillMaxSize()) {
                 trackerStatColumn(
@@ -219,6 +221,13 @@ fun motionTrackerScreen(
             onCycle = onCycleConcept,
             accent = theme.accent,
             modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+        )
+
+        recenterButton(
+            followMode = state.followMode,
+            theme = theme,
+            onClick = viewModel::recenterPan,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
     }
 }

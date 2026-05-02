@@ -70,12 +70,19 @@ class ZodiacApplication : Application() {
         DataStoreCockpitPreferences(preferencesDataStore)
     }
 
+    /**
+     * The synthetic GPS source, exposed separately from the routed one so
+     * the cockpit's debug nudge chips can drive its manual offset without
+     * having to downcast through the registry.
+     */
+    val fakeLocationSource: FakeLocationSource by lazy { FakeLocationSource(scope = applicationScope) }
+
     val locationSource: RoutedLocationSource by lazy {
         val registry =
             LocationSourceRegistry(
                 sources =
                     listOf(
-                        FakeLocationSource(scope = applicationScope),
+                        fakeLocationSource,
                         SystemLocationSource(applicationContext = this),
                         BleLocationSource(
                             applicationContext = this,

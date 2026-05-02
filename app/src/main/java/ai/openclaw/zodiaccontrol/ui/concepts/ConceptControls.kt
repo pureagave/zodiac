@@ -140,6 +140,39 @@ fun conceptControlStrip(
                 )
             }
         }
+
+        if (state.selectedLocationSource == LocationSourceType.FAKE) {
+            sectionLabel("> FAKE GPS NUDGE", theme.accent)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                themedChip(
+                    label = "N+$NUDGE_STEP_M",
+                    selected = false,
+                    theme = theme,
+                    onClick = { viewModel.nudgeFakeGps(0.0, NUDGE_STEP_M.toDouble()) },
+                )
+                themedChip(
+                    label = "S+$NUDGE_STEP_M",
+                    selected = false,
+                    theme = theme,
+                    onClick = { viewModel.nudgeFakeGps(0.0, -NUDGE_STEP_M.toDouble()) },
+                )
+                themedChip(
+                    label = "E+$NUDGE_STEP_M",
+                    selected = false,
+                    theme = theme,
+                    onClick = { viewModel.nudgeFakeGps(NUDGE_STEP_M.toDouble(), 0.0) },
+                )
+                themedChip(
+                    label = "W+$NUDGE_STEP_M",
+                    selected = false,
+                    theme = theme,
+                    onClick = { viewModel.nudgeFakeGps(-NUDGE_STEP_M.toDouble(), 0.0) },
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                actionChip(label = "GPS RESET", theme = theme, onClick = viewModel::resetFakeGps)
+            }
+        }
     }
 }
 
@@ -205,3 +238,4 @@ fun actionChip(
 private val HEADING_STEPS = listOf(-15, -1, 1, 15)
 private val SPEED_STEPS = listOf(-10, -1, 1, 10)
 private const val ZOOM_STEP: Double = 1.4
+private const val NUDGE_STEP_M: Int = 100

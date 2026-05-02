@@ -53,6 +53,10 @@ class CockpitViewModelTest {
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
                         preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 
@@ -77,6 +81,10 @@ class CockpitViewModelTest {
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
                         preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 
@@ -95,7 +103,7 @@ class CockpitViewModelTest {
         }
 
     @Test
-    fun panBy_clampsToMaxPanMeters() =
+    fun panBy_clampsToMaxOffsetAndSwitchesToFreeMode() =
         runTest {
             val store = ViewModelStore()
             try {
@@ -106,22 +114,29 @@ class CockpitViewModelTest {
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
                         preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
-                val cap = CockpitUiState.MAX_PAN_M
+                advanceUntilIdle() // let VM init settle
+                val cap = CockpitUiState.MAX_CAMERA_OFFSET_M
 
-                // Far past +cap east, far past -cap north — both should clamp.
+                // panBy clamps to ±cap and immediately switches to FREE
+                // (the state update is synchronous; no scheduler advance
+                // here, otherwise the 60 s auto-recenter timer would fire
+                // and put us back in TRACK_UP).
                 vm.panBy(cap * 10, -cap * 10)
-                advanceUntilIdle()
-                assertEquals(cap, vm.uiState.value.panEastM, 0.0)
-                assertEquals(-cap, vm.uiState.value.panNorthM, 0.0)
+                val parked = vm.uiState.value.cameraOverride
+                assertEquals(ai.openclaw.zodiaccontrol.core.model.FollowMode.FREE, vm.uiState.value.followMode)
+                assertEquals(cap, parked!!.eastM, 0.0)
+                assertEquals(-cap, parked.northM, 0.0)
 
-                // Within the cap — accumulates normally.
+                // Recenter clears the override and goes back to TRACK_UP.
                 vm.recenterPan()
-                vm.panBy(100.0, -50.0)
-                advanceUntilIdle()
-                assertEquals(100.0, vm.uiState.value.panEastM, 0.0)
-                assertEquals(-50.0, vm.uiState.value.panNorthM, 0.0)
+                assertEquals(null, vm.uiState.value.cameraOverride)
+                assertEquals(ai.openclaw.zodiaccontrol.core.model.FollowMode.TRACK_UP, vm.uiState.value.followMode)
             } finally {
                 store.clear()
             }
@@ -146,6 +161,10 @@ class CockpitViewModelTest {
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = routed,
                         preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
                 advanceUntilIdle()
@@ -175,6 +194,10 @@ class CockpitViewModelTest {
                         playaMapRepository = NoOpPlayaMapRepository,
                         locationSource = newFakeRoutedLocationSource(this.backgroundScope),
                         preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
                     )
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 
