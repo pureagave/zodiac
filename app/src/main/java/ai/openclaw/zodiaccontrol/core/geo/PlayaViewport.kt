@@ -32,10 +32,10 @@ data class PlayaViewport(
     }
 
     private val rad = Math.toRadians(headingDeg)
-    private val cos = cos(rad)
-    private val sin = sin(rad)
-    private val cx = widthPx / 2.0
-    private val cy = heightPx * anchorYFrac
+    val cosH: Double = cos(rad)
+    val sinH: Double = sin(rad)
+    val cx: Double = widthPx / 2.0
+    val cy: Double = heightPx * anchorYFrac
 
     /**
      * Project a playa-meters point to screen pixels (origin top-left, +Y down).
@@ -44,14 +44,32 @@ data class PlayaViewport(
         val dx = point.eastM - center.eastM
         val dy = point.northM - center.northM
         // Track-up: rotate world by -headingDeg so the heading vector points up.
-        val xRot = dx * cos - dy * sin
-        val yRot = dx * sin + dy * cos
+        val xRot = dx * cosH - dy * sinH
+        val yRot = dx * sinH + dy * cosH
         // North (yRot > 0) maps to screen-top (smaller screen Y), so flip.
         return ScreenXY(
             x = cx + xRot * pixelsPerMeter,
             y = cy - yRot * pixelsPerMeter,
         )
     }
+}
+
+/**
+ * Inline primitive-arg version of [PlayaViewport.toScreen]: meters →
+ * screen pixels yielded as Doubles to the callback, no [ScreenXY]
+ * allocation. Pair with [ai.openclaw.zodiaccontrol.core.geo.projectInline]
+ * to walk a polyline LatLon-to-screen with zero per-vertex allocations.
+ */
+inline fun PlayaViewport.toScreenInline(
+    eastM: Double,
+    northM: Double,
+    out: (sx: Double, sy: Double) -> Unit,
+) {
+    val dx = eastM - center.eastM
+    val dy = northM - center.northM
+    val xRot = dx * cosH - dy * sinH
+    val yRot = dx * sinH + dy * cosH
+    out(cx + xRot * pixelsPerMeter, cy - yRot * pixelsPerMeter)
 }
 
 /**

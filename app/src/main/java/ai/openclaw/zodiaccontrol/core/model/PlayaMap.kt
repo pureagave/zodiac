@@ -9,13 +9,34 @@ data class StreetLine(
     val kind: StreetKind?,
     val widthFeet: Int?,
     val points: List<LatLon>,
-)
+) {
+    /**
+     * `[lon0, lat0, lon1, lat1, ...]` — same vertex sequence as [points],
+     * eagerly flattened into a primitive array so the renderer's per-frame
+     * projection walks contiguous Doubles instead of N separate heap-
+     * resident [LatLon] objects. Cache-friendly and pairs with the
+     * primitive-arg projection helpers in `PlayaProjection`.
+     */
+    val pointsFlat: DoubleArray = points.flatLonLat()
+}
 
 data class PolygonRing(
     val name: String?,
     val ring: List<LatLon>,
 ) {
     val centroid: LatLon? = ring.computeCentroid()
+
+    /** Flattened `[lon0, lat0, ...]` mirror of [ring] — see [StreetLine.pointsFlat]. */
+    val ringFlat: DoubleArray = ring.flatLonLat()
+}
+
+private fun List<LatLon>.flatLonLat(): DoubleArray {
+    val out = DoubleArray(size * 2)
+    for (i in indices) {
+        out[i * 2] = this[i].lon
+        out[i * 2 + 1] = this[i].lat
+    }
+    return out
 }
 
 private fun List<LatLon>.computeCentroid(): LatLon? {

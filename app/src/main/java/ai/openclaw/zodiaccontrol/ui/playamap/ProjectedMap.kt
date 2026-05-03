@@ -3,6 +3,8 @@ package ai.openclaw.zodiaccontrol.ui.playamap
 import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
+import ai.openclaw.zodiaccontrol.core.geo.projectInline
+import ai.openclaw.zodiaccontrol.core.geo.toScreenInline
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import ai.openclaw.zodiaccontrol.core.model.StaticLabel
 import androidx.compose.ui.geometry.Offset
@@ -79,14 +81,14 @@ fun PlayaMap.project(
 
     val fencePath =
         trashFence.firstOrNull()?.let { ring ->
-            Path().apply { appendSubpath(ring.ring, projection, viewport, close = true) }
+            Path().apply { appendSubpath(ring.ringFlat, projection, viewport, close = true) }
         } ?: Path()
 
     return ProjectedMap(
         trashFencePath = fencePath,
-        streetOutlinePath = buildSubpathBundle(streetOutlines, projection, viewport, close = false) { it.ring },
-        streetPath = buildSubpathBundle(streetLines, projection, viewport, close = false) { it.points },
-        plazaPath = buildSubpathBundle(plazas, projection, viewport, close = true) { it.ring },
+        streetOutlinePath = buildSubpathBundle(streetOutlines, projection, viewport, close = false) { it.ringFlat },
+        streetPath = buildSubpathBundle(streetLines, projection, viewport, close = false) { it.pointsFlat },
+        plazaPath = buildSubpathBundle(plazas, projection, viewport, close = true) { it.ringFlat },
         toiletPositions = toilets.mapNotNull { it.centroid?.let(toScreen) },
         cpnPositions = cpns.map { toScreen(it.location) },
         artMajorPositions = majorArt.map { toScreen(it.location) },
@@ -106,40 +108,54 @@ fun PlayaMap.project(
  * outlines), round joins make the corners look identical to a stream of
  * round-cap drawLine segments.
  *
- * Vertex projection is fused into the path build — each LatLon flows
- * straight into [Path.moveTo] / [Path.lineTo] without an intermediate
- * `List<Offset>` per polyline, eliminating ~600 inner ArrayList
- * allocations (and the per-point Offset boxing those force) per cache
- * miss.
+ * Polylines arrive as flat `[lon0, lat0, lon1, lat1, ...]` [DoubleArray]s
+ * (precomputed eagerly on [PlayaMap] load) so the per-vertex walk hits
+ * contiguous primitives instead of N separate heap-resident [LatLon]
+ * objects. Combined with [projectInline] / [toScreenInline] this means
+ * the inner loop allocates nothing — no [LatLon] boxing, no
+ * intermediate [PlayaPoint] / [androidx.compose.ui.graphics.Path]-cursor
+ * objects, no per-point [Offset]. Just doubles in, floats into the
+ * Path's geometry buffer.
  */
 private inline fun <T> buildSubpathBundle(
     items: List<T>,
     projection: PlayaProjection,
     viewport: PlayaViewport,
     close: Boolean,
-    ringOf: (T) -> List<LatLon>,
+    ringOf: (T) -> DoubleArray,
 ): Path =
     Path().apply {
         for (item in items) appendSubpath(ringOf(item), projection, viewport, close)
     }
 
 /**
- * Append a single polyline as a subpath, projecting each LatLon directly
- * into screen-space at the cursor. No intermediate [Offset] list — saves
- * the per-point boxing that `List.map(toScreen)` would force.
+ * Append a single polyline as a subpath, projecting each `(lon, lat)`
+ * pair directly into screen-space and writing scalars into the Path
+ * cursor. Zero allocations in the inner loop.
  */
 private fun Path.appendSubpath(
-    ring: List<LatLon>,
+    flat: DoubleArray,
     projection: PlayaProjection,
     viewport: PlayaViewport,
     close: Boolean,
 ) {
-    if (ring.size < 2) return
-    val first = viewport.toScreen(projection.project(ring[0]))
-    moveTo(first.x.toFloat(), first.y.toFloat())
-    for (i in 1 until ring.size) {
-        val s = viewport.toScreen(projection.project(ring[i]))
-        lineTo(s.x.toFloat(), s.y.toFloat())
+    if (flat.size < MIN_POLYLINE_DOUBLES) return
+    projection.projectInline(flat[0], flat[1]) { e, n ->
+        viewport.toScreenInline(e, n) { sx, sy ->
+            moveTo(sx.toFloat(), sy.toFloat())
+        }
+    }
+    var i = 2
+    while (i < flat.size) {
+        projection.projectInline(flat[i], flat[i + 1]) { e, n ->
+            viewport.toScreenInline(e, n) { sx, sy ->
+                lineTo(sx.toFloat(), sy.toFloat())
+            }
+        }
+        i += 2
     }
     if (close) close()
 }
+
+/** Two `(lon, lat)` pairs = 4 Doubles, the smallest renderable polyline. */
+private const val MIN_POLYLINE_DOUBLES = 4

@@ -11,7 +11,9 @@ import kotlin.math.sqrt
  */
 class PlayaProjection(val origin: LatLon) {
     private val lat0Rad = Math.toRadians(origin.lat)
-    private val cosLat0 = cos(lat0Rad)
+    val cosLat0: Double = cos(lat0Rad)
+    val originLonRad: Double = Math.toRadians(origin.lon)
+    val originLatRad: Double = Math.toRadians(origin.lat)
 
     fun project(point: LatLon): PlayaPoint {
         val dLonRad = Math.toRadians(point.lon - origin.lon)
@@ -45,4 +47,25 @@ class PlayaProjection(val origin: LatLon) {
     companion object {
         const val EARTH_RADIUS_M: Double = 6_371_000.0
     }
+}
+
+/**
+ * Inline primitive-arg projection: takes raw `(lon, lat)` Doubles and
+ * yields raw `(eastM, northM)` Doubles to a callback. Skips the
+ * intermediate [LatLon] / [PlayaPoint] allocations the regular [project]
+ * + [PlayaViewport.toScreen] chain would force per vertex. Use this in
+ * the renderer's polyline walk where the per-frame allocation count
+ * actually matters.
+ */
+inline fun PlayaProjection.projectInline(
+    lon: Double,
+    lat: Double,
+    out: (eastM: Double, northM: Double) -> Unit,
+) {
+    val dLonRad = Math.toRadians(lon - origin.lon)
+    val dLatRad = Math.toRadians(lat - origin.lat)
+    out(
+        PlayaProjection.EARTH_RADIUS_M * cosLat0 * dLonRad,
+        PlayaProjection.EARTH_RADIUS_M * dLatRad,
+    )
 }
