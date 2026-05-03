@@ -78,33 +78,15 @@ fun PlayaMap.project(
     }
 
     val fencePath =
-        trashFence.firstOrNull()?.ring?.let { ring ->
-            buildSubpathBundle(listOf(ring.map(toScreen)), close = true)
+        trashFence.firstOrNull()?.let { ring ->
+            Path().apply { appendSubpath(ring.ring, projection, viewport, close = true) }
         } ?: Path()
-
-    val streetOutlinePath =
-        buildSubpathBundle(
-            polylines = streetOutlines.map { it.ring.map(toScreen) },
-            close = false,
-        )
-
-    val streetPath =
-        buildSubpathBundle(
-            polylines = streetLines.map { it.points.map(toScreen) },
-            close = false,
-        )
-
-    val plazaPath =
-        buildSubpathBundle(
-            polylines = plazas.map { it.ring.map(toScreen) },
-            close = true,
-        )
 
     return ProjectedMap(
         trashFencePath = fencePath,
-        streetOutlinePath = streetOutlinePath,
-        streetPath = streetPath,
-        plazaPath = plazaPath,
+        streetOutlinePath = buildSubpathBundle(streetOutlines, projection, viewport, close = false) { it.ring },
+        streetPath = buildSubpathBundle(streetLines, projection, viewport, close = false) { it.points },
+        plazaPath = buildSubpathBundle(plazas, projection, viewport, close = true) { it.ring },
         toiletPositions = toilets.mapNotNull { it.centroid?.let(toScreen) },
         cpnPositions = cpns.map { toScreen(it.location) },
         artMajorPositions = majorArt.map { toScreen(it.location) },
@@ -123,16 +105,41 @@ fun PlayaMap.project(
  * closed (used for plazas / trash fence); for unclosed strokes (streets,
  * outlines), round joins make the corners look identical to a stream of
  * round-cap drawLine segments.
+ *
+ * Vertex projection is fused into the path build — each LatLon flows
+ * straight into [Path.moveTo] / [Path.lineTo] without an intermediate
+ * `List<Offset>` per polyline, eliminating ~600 inner ArrayList
+ * allocations (and the per-point Offset boxing those force) per cache
+ * miss.
  */
-private fun buildSubpathBundle(
-    polylines: List<List<Offset>>,
+private inline fun <T> buildSubpathBundle(
+    items: List<T>,
+    projection: PlayaProjection,
+    viewport: PlayaViewport,
     close: Boolean,
+    ringOf: (T) -> List<LatLon>,
 ): Path =
     Path().apply {
-        for (poly in polylines) {
-            if (poly.size < 2) continue
-            moveTo(poly[0].x, poly[0].y)
-            for (i in 1 until poly.size) lineTo(poly[i].x, poly[i].y)
-            if (close) close()
-        }
+        for (item in items) appendSubpath(ringOf(item), projection, viewport, close)
     }
+
+/**
+ * Append a single polyline as a subpath, projecting each LatLon directly
+ * into screen-space at the cursor. No intermediate [Offset] list — saves
+ * the per-point boxing that `List.map(toScreen)` would force.
+ */
+private fun Path.appendSubpath(
+    ring: List<LatLon>,
+    projection: PlayaProjection,
+    viewport: PlayaViewport,
+    close: Boolean,
+) {
+    if (ring.size < 2) return
+    val first = viewport.toScreen(projection.project(ring[0]))
+    moveTo(first.x.toFloat(), first.y.toFloat())
+    for (i in 1 until ring.size) {
+        val s = viewport.toScreen(projection.project(ring[i]))
+        lineTo(s.x.toFloat(), s.y.toFloat())
+    }
+    if (close) close()
+}
