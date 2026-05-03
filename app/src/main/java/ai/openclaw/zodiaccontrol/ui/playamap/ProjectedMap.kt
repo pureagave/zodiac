@@ -4,6 +4,7 @@ import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
+import ai.openclaw.zodiaccontrol.core.model.StaticLabel
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 
@@ -54,12 +55,15 @@ data class ProjectedMap(
     val cpnLabels: List<ProjectedLabel>,
 )
 
-private val MajorArtPrograms = setOf("Honorarium", "ManPavGrant")
-
 /**
  * Project every drawable feature in [this] map through [projection] and
- * [viewport] into screen-space geometry. O(N) over total vertices; do this
- * once per camera-state change, not per frame.
+ * [viewport] into screen-space geometry. O(N) over total vertices; do
+ * this once per camera-state change, not per frame.
+ *
+ * Layer partitioning, label-anchor selection, and name-emptiness checks
+ * are precomputed eagerly when [PlayaMap] loads (see its `*Seeds` /
+ * `majorArt` / `minorArt` properties); this projection step only does
+ * the work that actually depends on the live camera.
  */
 fun PlayaMap.project(
     projection: PlayaProjection,
@@ -68,6 +72,9 @@ fun PlayaMap.project(
     val toScreen: (LatLon) -> Offset = { ll ->
         val s = viewport.toScreen(projection.project(ll))
         Offset(s.x.toFloat(), s.y.toFloat())
+    }
+    val toProjectedLabel: (StaticLabel) -> ProjectedLabel = { seed ->
+        ProjectedLabel(text = seed.text, position = toScreen(seed.location), major = seed.major)
     }
 
     val fencePath =
@@ -93,59 +100,19 @@ fun PlayaMap.project(
             close = true,
         )
 
-    val toiletPositions = toilets.mapNotNull { it.centroid?.let(toScreen) }
-    val cpnPositions = cpns.map { toScreen(it.location) }
-
-    val (artMajor, artMinor) =
-        art.partition { it.kind in MajorArtPrograms }
-    val artMajorPositions = artMajor.map { toScreen(it.location) }
-    val artMinorPositions = artMinor.map { toScreen(it.location) }
-
-    val plazaLabels =
-        plazas.mapNotNull { p ->
-            val name = p.name ?: return@mapNotNull null
-            val centroid = p.centroid ?: return@mapNotNull null
-            ProjectedLabel(text = name, position = toScreen(centroid))
-        }
-
-    val artLabels =
-        art.mapNotNull { a ->
-            val name = a.name?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
-            ProjectedLabel(
-                text = name,
-                position = toScreen(a.location),
-                major = a.kind in MajorArtPrograms,
-            )
-        }
-
-    val streetLabels =
-        streetLines
-            .filter { !it.name.isNullOrEmpty() && it.points.isNotEmpty() }
-            .groupBy { it.name!! }
-            .mapNotNull { (name, segments) ->
-                val pool = segments.flatMap { it.points }
-                representativePoint(pool)?.let { ProjectedLabel(text = name, position = toScreen(it)) }
-            }
-
-    val cpnLabels =
-        cpns.mapNotNull { c ->
-            val name = c.name ?: return@mapNotNull null
-            ProjectedLabel(text = name, position = toScreen(c.location))
-        }
-
     return ProjectedMap(
         trashFencePath = fencePath,
         streetOutlinePath = streetOutlinePath,
         streetPath = streetPath,
         plazaPath = plazaPath,
-        toiletPositions = toiletPositions,
-        cpnPositions = cpnPositions,
-        artMajorPositions = artMajorPositions,
-        artMinorPositions = artMinorPositions,
-        plazaLabels = plazaLabels,
-        artLabels = artLabels,
-        streetLabels = streetLabels,
-        cpnLabels = cpnLabels,
+        toiletPositions = toilets.mapNotNull { it.centroid?.let(toScreen) },
+        cpnPositions = cpns.map { toScreen(it.location) },
+        artMajorPositions = majorArt.map { toScreen(it.location) },
+        artMinorPositions = minorArt.map { toScreen(it.location) },
+        plazaLabels = plazaLabelSeeds.map(toProjectedLabel),
+        artLabels = artLabelSeeds.map(toProjectedLabel),
+        streetLabels = streetLabelSeeds.map(toProjectedLabel),
+        cpnLabels = cpnLabelSeeds.map(toProjectedLabel),
     )
 }
 
@@ -169,32 +136,3 @@ private fun buildSubpathBundle(
             if (close) close()
         }
     }
-
-/**
- * Pick the source point closest to the centroid of [pool] — used to anchor
- * a label on the actual street geometry rather than at the geometric centre
- * of an arc (which is inside the bowl of the curve).
- */
-private fun representativePoint(pool: List<LatLon>): LatLon? {
-    if (pool.isEmpty()) return null
-    var sumLat = 0.0
-    var sumLon = 0.0
-    for (p in pool) {
-        sumLat += p.lat
-        sumLon += p.lon
-    }
-    val targetLat = sumLat / pool.size
-    val targetLon = sumLon / pool.size
-    var best = pool[0]
-    var bestSq = Double.MAX_VALUE
-    for (p in pool) {
-        val dLat = p.lat - targetLat
-        val dLon = p.lon - targetLon
-        val sq = dLat * dLat + dLon * dLon
-        if (sq < bestSq) {
-            bestSq = sq
-            best = p
-        }
-    }
-    return best
-}
