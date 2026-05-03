@@ -13,6 +13,7 @@ import ai.openclaw.zodiaccontrol.ui.playamap.drawHexEgoMarkerAt
 import ai.openclaw.zodiaccontrol.ui.playamap.drawProjectedMap
 import ai.openclaw.zodiaccontrol.ui.playamap.drawRetroGrid
 import ai.openclaw.zodiaccontrol.ui.playamap.project
+import ai.openclaw.zodiaccontrol.ui.playamap.projectRetroGrid
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.Canvas
@@ -152,6 +153,8 @@ fun playaMapPanel(
             if (map != null && viewport != null) map.project(projection, viewport) else null
         }
 
+    val retroGrid = rememberRetroGridPath(viewport)
+
     Box(
         modifier =
             modifier
@@ -176,7 +179,16 @@ fun playaMapPanel(
                     onRotate = viewModel::nudgeViewRotation,
                 ),
     ) {
-        mapBaseCanvas(viewport = viewport, projected = projected, style = style, tilt = tilt, tiltDeg = state.tiltDeg)
+        mapBaseCanvas(
+            MapBaseInputs(
+                viewport = viewport,
+                projected = projected,
+                retroGrid = retroGrid,
+                style = style,
+                tilt = tilt,
+                tiltDeg = state.tiltDeg,
+            ),
+        )
         egoOverlayCanvas(
             EgoOverlayInputs(
                 state = state,
@@ -189,6 +201,17 @@ fun playaMapPanel(
         )
         style.sweep?.let { sweepArmCanvas(it) }
     }
+}
+
+/**
+ * Cache the meter-space backdrop grid as a single Path keyed on the
+ * camera viewport. ~50 east/west ticks → one drawPath per frame instead
+ * of 102 drawLine calls. Returns an empty Path until the canvas is sized
+ * so the renderer can blit it unconditionally.
+ */
+@Composable
+private fun rememberRetroGridPath(viewport: PlayaViewport?): Path {
+    return remember(viewport) { viewport?.let(::projectRetroGrid) ?: Path() }
 }
 
 /**
@@ -222,19 +245,25 @@ private fun viewportFor(
     )
 }
 
+/** Bundle so [mapBaseCanvas] stays under detekt's parameter cap. */
+private data class MapBaseInputs(
+    val viewport: PlayaViewport?,
+    val projected: ProjectedMap?,
+    val retroGrid: Path,
+    val style: PlayaMapPanelStyle,
+    val tilt: Boolean,
+    val tiltDeg: Int,
+)
+
 @Composable
-private fun mapBaseCanvas(
-    viewport: PlayaViewport?,
-    projected: ProjectedMap?,
-    style: PlayaMapPanelStyle,
-    tilt: Boolean,
-    tiltDeg: Int,
-) {
+private fun mapBaseCanvas(inputs: MapBaseInputs) {
+    val tilt = inputs.tilt
+    val style = inputs.style
     Canvas(
         modifier =
             if (tilt) {
                 Modifier.fillMaxSize().graphicsLayer {
-                    rotationX = tiltDeg.toFloat()
+                    rotationX = inputs.tiltDeg.toFloat()
                     cameraDistance = TILT_CAMERA_DISTANCE * density
                     transformOrigin = TransformOrigin(0.5f, 0.5f)
                 }
@@ -242,8 +271,9 @@ private fun mapBaseCanvas(
                 Modifier.fillMaxSize()
             },
     ) {
-        if (viewport == null) return@Canvas
-        if (style.showRetroGrid || tilt) drawRetroGrid(viewport, style.palette.grid)
+        val viewport = inputs.viewport ?: return@Canvas
+        if (style.showRetroGrid || tilt) drawRetroGrid(inputs.retroGrid, style.palette.grid)
+        val projected = inputs.projected
         if (projected != null) {
             drawProjectedMap(projected, style.palette, viewport.pixelsPerMeter)
             style.sweep?.let { drawSweptProjectedMap(projected, it, viewport.pixelsPerMeter) }

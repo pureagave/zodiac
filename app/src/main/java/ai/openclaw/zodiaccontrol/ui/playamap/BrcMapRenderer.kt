@@ -6,6 +6,7 @@ import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -204,33 +205,51 @@ private fun DrawScope.drawMajorArt(
 }
 
 /**
- * Retro-future ground-plane grid drawn in **playa meters** through the same
- * [viewport] used for the map. Lines spaced every [GRID_SPACING_M] meters,
- * extending [GRID_HALF_RANGE_M] in each direction from the camera. Because the
- * grid shares the projection with the map, their vanishing points coincide —
- * the city's geometry sits naturally on top of the grid in TILT mode rather
- * than floating above an unrelated 2D pattern.
+ * Project the meter-space grid through [viewport] into a single Path of
+ * subpaths — one per east/west tick — ready for the renderer to stroke in
+ * one Skia call. Build this once per camera-state change at composable
+ * scope and pass the cached result to [drawRetroGrid]; the previous
+ * per-frame implementation projected 51×2 endpoints and emitted ~102
+ * `drawLine` calls every frame, even though the grid is fully determined
+ * by the viewport (and the camera centre cancels in screen space).
+ *
+ * Lines are spaced every [GRID_SPACING_M] meters and extend
+ * [GRID_HALF_RANGE_M] in each direction from the camera so they always
+ * cover the visible canvas at any zoom level. Vanishing points coincide
+ * with the map's because both share the same viewport projection.
  */
-fun DrawScope.drawRetroGrid(
-    viewport: PlayaViewport,
-    color: Color = GridGreen,
-) {
+fun projectRetroGrid(viewport: PlayaViewport): Path {
+    val path = Path()
     val centerEast = viewport.center.eastM
     val centerNorth = viewport.center.northM
     var east = -GRID_HALF_RANGE_M
     while (east <= GRID_HALF_RANGE_M) {
         val a = viewport.toScreen(PlayaPoint(centerEast + east, centerNorth - GRID_HALF_RANGE_M))
         val b = viewport.toScreen(PlayaPoint(centerEast + east, centerNorth + GRID_HALF_RANGE_M))
-        drawLine(color, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), GRID_STROKE_PX)
+        path.moveTo(a.x.toFloat(), a.y.toFloat())
+        path.lineTo(b.x.toFloat(), b.y.toFloat())
         east += GRID_SPACING_M
     }
     var north = -GRID_HALF_RANGE_M
     while (north <= GRID_HALF_RANGE_M) {
         val a = viewport.toScreen(PlayaPoint(centerEast - GRID_HALF_RANGE_M, centerNorth + north))
         val b = viewport.toScreen(PlayaPoint(centerEast + GRID_HALF_RANGE_M, centerNorth + north))
-        drawLine(color, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), GRID_STROKE_PX)
+        path.moveTo(a.x.toFloat(), a.y.toFloat())
+        path.lineTo(b.x.toFloat(), b.y.toFloat())
         north += GRID_SPACING_M
     }
+    return path
+}
+
+/**
+ * Stroke a pre-projected retro grid Path. Pure raster pass — one Skia
+ * call regardless of grid density.
+ */
+fun DrawScope.drawRetroGrid(
+    path: Path,
+    color: Color = GridGreen,
+) {
+    drawPath(path = path, color = color, style = Stroke(width = GRID_STROKE_PX))
 }
 
 /**
