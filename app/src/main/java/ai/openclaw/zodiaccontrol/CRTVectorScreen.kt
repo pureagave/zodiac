@@ -20,6 +20,7 @@ import ai.openclaw.zodiaccontrol.ui.playamap.drawEgoMarkerAt
 import ai.openclaw.zodiaccontrol.ui.playamap.drawProjectedMap
 import ai.openclaw.zodiaccontrol.ui.playamap.drawRetroGrid
 import ai.openclaw.zodiaccontrol.ui.playamap.project
+import ai.openclaw.zodiaccontrol.ui.scanlineOverlay
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import ai.openclaw.zodiaccontrol.ui.wrapHeading
@@ -96,7 +97,7 @@ fun crtVectorScreen(
                 .padding(12.dp)
                 .border(2.dp, VectorGreen),
     ) {
-        scanLineOverlay()
+        scanlineOverlay()
 
         Column(Modifier.fillMaxSize()) {
             topHeader(state = state)
@@ -642,21 +643,4 @@ private fun buildViewport(
         heightPx = heightPx,
         anchorYFrac = if (tilt) TILT_ANCHOR_Y else TOP_ANCHOR_Y,
     )
-}
-
-@Composable
-private fun scanLineOverlay() {
-    Canvas(Modifier.fillMaxSize()) {
-        val step = 4f
-        var y = 0f
-        while (y <= size.height) {
-            drawLine(
-                color = Color(0x1100FF66),
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1f,
-            )
-            y += step
-        }
-    }
 }

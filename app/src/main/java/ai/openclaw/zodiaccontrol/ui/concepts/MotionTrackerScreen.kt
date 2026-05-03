@@ -1,8 +1,8 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
+import ai.openclaw.zodiaccontrol.ui.scanlineOverlay
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +27,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -249,23 +248,6 @@ private fun trackerStatColumn(
         Spacer(Modifier.height(4.dp))
         Text(pair.title2, color = theme.secondary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text(pair.value2, color = theme.accent, fontFamily = FontFamily.Monospace, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-private fun scanlineOverlay() {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val step = 4f
-        var y = 0f
-        while (y <= size.height) {
-            drawLine(
-                color = Color(0x1100FF66),
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1f,
-            )
-            y += step
-        }
     }
 }
 
