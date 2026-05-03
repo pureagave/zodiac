@@ -6,6 +6,24 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-05-03 — Render perf round 2: scanlines, retro grid, static partition, fused projection
+
+Four small follow-on commits hoisting the rest of the obvious invariants out of the per-frame draw path. None changed visuals — pure tightening on top of the M2 cache landed yesterday.
+
+1. **Scanline overlay → single Path.** Concept A and Concept C each stamped ~270 individual `drawLine` calls per frame for the static CRT chrome — and Concept C's `withFrameNanos` ticker meant the cost was paid at 60 fps even when nothing else moved. Extracted a shared `scanlineOverlay()` that uses `Modifier.drawWithCache` to build a multi-subpath `Path` keyed on canvas size, then strokes it in one `drawPath` per frame. The old duplicated `scanLineOverlay` / `scanlineOverlay` Composables in CRTVectorScreen and MotionTrackerScreen are gone.
+
+2. **Retro grid → cached Path (closes audit M4).** `drawRetroGrid` recomputed 102 line endpoints + emitted 102 `drawLine` calls every frame in TILT and Concept B. Camera centre cancels in screen space, so the grid is fully determined by `(headingDeg, ppm, size, anchorYFrac)`. Split into `projectRetroGrid(viewport): Path` + a pure-raster `drawRetroGrid(path, color)`. Both call sites memoise via a `rememberRetroGridPath` helper keyed on the same viewport that already gates the projected-map cache. Per-frame: 102 `drawLine` → 1 `drawPath`.
+
+3. **Pre-partition static map data on load.** `ProjectedMap.project` was running `art.partition { it.kind in MajorArtPrograms }`, `streetLines.filter+groupBy { it.name }`, and `representativePoint()` on every cache miss — pure functions of the static `PlayaMap` with nothing camera-dependent. Moved to `PlayaMap` init: precomputed `majorArt` / `minorArt` `PointFeature` lists plus `*LabelSeeds` carrying `(text, world LatLon, major-flag)` triples for plazas, art, streets, and CPNs (typed as `StaticLabel`). Projection step now only does work that actually depends on the viewport.
+
+4. **Fused projection into path build.** `buildSubpathBundle` previously took `List<List<Offset>>`, forcing the caller to allocate one inner `ArrayList` per polyline (~600 streets + outlines + plazas) and box each `Offset` inline class onto the heap. Replaced with a generic helper that takes the source list + a `ringOf` extractor and walks each polyline once, writing screen-space x/y pairs directly into `Path.moveTo` / `Path.lineTo` — no intermediate `Offset` list, no per-point inline-class boxing in the inner loop. Cuts per-cache-miss allocations by hundreds of `ArrayList`s during pan/zoom gestures.
+
+CI gates green (ktlint / detekt / testDebugUnitTest / assembleDebug) on every phase commit. Verified visibly identical on the user's Fire HD 10 13th gen.
+
+Items 5–10 from the round-2 audit (major-art batched as one Path of `addOval`s, GeoJSON binary cache, `derivedStateOf` for state isolation, wedge-path memoisation, pre-laid-out label TextLayouts, formatter-string memoisation) remain on the table for later.
+
+---
+
 ## 2026-05-02 — Render perf: projected-map cache + draw-call batching (audit M2)
 
 Concept C's rotating sweep was visibly stuttering on the Fire HD 10 — the M41A look re-renders the entire BRC map twice per frame (dim base + lit-clipped wedge), and the per-frame draw load was the bottleneck. Two-pass fix:

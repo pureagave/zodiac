@@ -16,7 +16,14 @@ What's worth doing next, drawn from `audit.md` (2026-04-26) and a few items surf
 
 ## Performance (only matters on a real Fire tablet)
 
-- [ ] **M4** — same caching for the meter-space grid in `drawRetroGrid`.
+Round-2 audit shipped 2026-05-03 (scanlines, retro grid / M4, static-data partition, fused projection — see SYNC). Remaining items from that pass:
+
+- [ ] Major art batched as one `Path` of `addOval`s (~50 `drawCircle` → 1 `drawPath`).
+- [ ] Pre-decode the GeoJSON once, then read a binary cache (skip ~1 MB JSON parse on cold start; switch internal coords to `DoubleArray` to kill per-vertex `LatLon` boxing).
+- [ ] Decouple map-panel recomposition from unrelated state — split `CockpitUiState` (audit A5) or wrap map-only reads in `derivedStateOf` so thermal/link updates don't re-trigger map composables.
+- [ ] Memoise the Concept C wedge `Path` between frames (transform a unit wedge instead of rebuilding 24 trig pairs at 60 fps).
+- [ ] Pre-laid-out `TextLayoutResult`s for labels (alongside `ProjectedMap`) so `drawText` skips per-frame glyph measurement.
+- [ ] Memoise formatter-string allocations (`%.1f`/`%.0f`/`%03d` in `NavCueBar`, stat columns, header).
 
 ## Testing
 

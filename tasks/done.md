@@ -54,3 +54,5 @@ Medium / Low sweep:
 - [x] L1 (partial) — tests for `wrapHeading` and `RoutedVehicleGateway` switch / double-connect / send-after-disconnect
 - [x] L5 — `require(anchorYFrac in 0.0..1.0)` on `PlayaViewport`
 - [x] M2 — cache projected geometry per camera state, plus draw-call batching (consolidated `Path`s + `drawPoints` for marker layers); fixed the Fire HD 10 stutter on Concept C's lit-wedge sweep
+- [x] M4 — cache the meter-space retro grid as one `Path` per viewport; per-frame cost drops from 102 `drawLine` calls to 1 `drawPath`
+- [x] Render perf round 2: scanline overlay cached as a single `Path` (CRT + Tracker), static map data pre-partitioned at load (`majorArt` / `minorArt` / `*LabelSeeds`), projection fused into path build (no intermediate `List<Offset>` per polyline)
