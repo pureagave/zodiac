@@ -13,6 +13,14 @@ data class ConceptTheme(
     val secondary: Color,
     val accent: Color,
     val dim: Color,
+    /**
+     * When true, shared chrome (currently the nav-cue bar) renders text
+     * via [ai.openclaw.zodiaccontrol.ui.vectorText] — outlined glyphs
+     * with a phosphor-bloom halo and a baseline beam trail — to match
+     * the host concept's vector-monitor aesthetic. Off everywhere by
+     * default; concept A opts in.
+     */
+    val useVectorText: Boolean = false,
 )
 
 val ThemeCrtVector =
@@ -22,6 +30,7 @@ val ThemeCrtVector =
         secondary = Color(0xFF00BFFF),
         accent = Color(0xFFFFD166),
         dim = Color(0xFF2C8A4A),
+        useVectorText = true,
     )
 
 val ThemePerspective =

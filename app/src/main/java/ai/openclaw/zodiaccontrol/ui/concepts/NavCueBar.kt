@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
 import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
+import ai.openclaw.zodiaccontrol.ui.vectorText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -13,8 +14,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -48,36 +51,46 @@ fun navCueBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            text = "NAV",
-            color = theme.accent,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-        )
-        Text(
-            text = "·",
-            color = theme.dim,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 14.sp,
-        )
+        themedText("NAV", theme.accent, 12.sp, theme.useVectorText, bold = true)
+        themedText("·", theme.dim, 14.sp, useVector = false, bold = false)
         Box(modifier = Modifier.weight(1f)) {
-            Text(
-                text = rendered.primary,
-                color = theme.primary,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-            )
+            themedText(rendered.primary, theme.primary, 18.sp, theme.useVectorText, bold = true)
         }
         if (rendered.detail.isNotEmpty()) {
-            Text(
-                text = rendered.detail,
-                color = theme.secondary,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-            )
+            themedText(rendered.detail, theme.secondary, 13.sp, theme.useVectorText, bold = false)
         }
+    }
+}
+
+/**
+ * Switch between the regular monospace [Text] and [vectorText] based on
+ * [useVector] — concept A's theme flips this on so its nav cue reads in
+ * the same Atari-vector aesthetic as its top bar; every other concept
+ * keeps its existing solid-glyph monospace look.
+ */
+@Composable
+private fun themedText(
+    text: String,
+    color: Color,
+    fontSize: TextUnit,
+    useVector: Boolean,
+    bold: Boolean,
+) {
+    if (useVector) {
+        vectorText(
+            text = text,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+        )
+    } else {
+        Text(
+            text = text,
+            color = color,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            fontSize = fontSize,
+        )
     }
 }
 
