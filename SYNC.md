@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-05-03 — CRT beam + vectorText: rolled to all concepts, dialed up
+
+After validating the look on Concept A, rolled the same shared chrome treatment to B / C / D (the user's call: "good enough, apply to all"), then a second commit dialed both subsystems up a notch for more pop.
+
+**Rollout (`f9d41cc`):** `MapPalette.crtBeam = true` on `PerspectivePalette` (B), `TrackerBasePalette` and `TrackerLitPalette` (C — both halves of its dim-base + lit-wedge dual setup), and `InstrumentBayPalette` (D). `ConceptTheme.useVectorText = true` on `ThemePerspective` / `ThemeTracker` / `ThemeInstrumentBay` so `NavCueBar` picks up `vectorText` rendering everywhere via the existing dispatch in `themedText`. Concept-specific bespoke text (e.g. Concept C's "MOTION TRACKER" header, Concept D's tile titles) intentionally stays as plain `Text` — the rollout covers shared chrome only.
+
+**Intensity bump (`bb21c8b`):** map halo outer 0.22 α / 6.0× → 0.28 α / 7.5×, inner 0.50 α / 2.6× → 0.62 α / 2.8×; endpoint white-tint 0.5 → 0.6; corner radii up across the board (street 2.6→3.0, plaza 3.0→3.4, fence 3.4→3.8). Text halo 0.40 α / 4.0px → 0.55 α / 5.5px; baseline trail 0.45 α / 0.7px → 0.55 α / 0.8px. Pure constants, no structural diff.
+
+CI gates green on each commit.
+
+---
+
 ## 2026-05-03 — Concept A: punchier CRT beam + vectorText for top bar / nav cue
 
 Follow-up to the morning's CRT-beam landing. Two visual upgrades:
