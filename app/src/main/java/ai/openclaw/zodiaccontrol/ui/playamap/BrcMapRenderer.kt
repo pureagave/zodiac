@@ -62,7 +62,13 @@ data class MapPalette(
     val crtBeam: Boolean = false,
 ) {
     companion object {
-        /** Concept A canonical palette — green/amber/blue/pink, round POIs. */
+        /**
+         * Concept A canonical palette — green/amber/blue/pink, round POIs.
+         * CRT-beam aesthetic: soft phosphor halo around every stroke +
+         * bright endpoint dots at street/polygon corners, like an Atari
+         * Star Wars / Asteroids vector monitor. Labels on by default
+         * with a pale-green tint that reads against the dark background.
+         */
         val Default =
             MapPalette(
                 fence = Fence,
@@ -75,6 +81,9 @@ data class MapPalette(
                 artMinor = ArtMinor,
                 grid = GridGreen,
                 pointStyle = MapPointStyle.DOT,
+                labelsEnabled = true,
+                labelPrimary = Color(0xFFB0FFB0),
+                crtBeam = true,
             )
     }
 }
