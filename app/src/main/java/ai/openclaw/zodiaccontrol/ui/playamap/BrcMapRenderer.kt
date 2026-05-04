@@ -88,6 +88,17 @@ private const val CPN_RADIUS = 2f
 private const val ART_MAJOR_RADIUS = 5f
 private const val ART_MINOR_RADIUS = 1.5f
 private const val ART_MAJOR_STROKE = 1.5f
+
+// CRT-beam aesthetic constants. The halo is the same path re-drawn
+// thicker with low alpha so a soft phosphor glow surrounds every stroke.
+// Endpoint dots get a slightly larger radius than the underlying stroke
+// width — they read as the "stopped beam over-exposing the phosphor"
+// brightening you see at every line corner on a real vector monitor.
+private const val CRT_HALO_ALPHA = 0.22f
+private const val CRT_HALO_WIDTH_MULT = 3.5f
+private const val CRT_ENDPOINT_RADIUS = 2.0f
+private const val CRT_PLAZA_CORNER_RADIUS = 2.5f
+private const val CRT_FENCE_CORNER_RADIUS = 3.0f
 private const val GRID_SPACING_M = 200.0
 private const val GRID_HALF_RANGE_M = 5_000.0
 private const val GRID_STROKE_PX = 1.2f
@@ -138,6 +149,7 @@ fun DrawScope.drawProjectedMap(
     labelLayouts: LabelLayouts = LabelLayouts.Empty,
     pixelsPerMeter: Double = 0.0,
 ) {
+    if (palette.crtBeam) drawCrtHalo(projected, palette)
     drawPath(
         path = projected.streetOutlinePath,
         color = palette.streetOutline,
@@ -162,6 +174,7 @@ fun DrawScope.drawProjectedMap(
     drawPointBatch(projected.cpnPositions, palette.pointStyle, palette.cpn, CPN_RADIUS)
     drawPointBatch(projected.artMinorPositions, palette.pointStyle, palette.artMinor, ART_MINOR_RADIUS)
     drawMajorArt(projected.artMajorPositions, palette)
+    if (palette.crtBeam) drawCrtEndpoints(projected, palette)
     if (palette.labelsEnabled) {
         drawProjectedLabels(projected, labelLayouts, palette.labelPrimary, pixelsPerMeter)
     }
@@ -222,6 +235,71 @@ private fun DrawScope.drawMajorArt(
                 drawBlockMarker(center = pos, color = palette.artMajor, radius = ART_MAJOR_RADIUS, hollow = true)
             }
     }
+}
+
+/**
+ * CRT-beam halo pre-pass: re-draw every stroke layer at [CRT_HALO_WIDTH_MULT]×
+ * its normal width with low alpha, before the sharp core layers go on top.
+ * The wider, dim under-stroke fakes the phosphor bloom you see around
+ * every line on a real vector monitor — same color family, just spread
+ * out and softer. One extra `drawPath` per stroke layer; layered M2
+ * batching keeps it cheap.
+ */
+private fun DrawScope.drawCrtHalo(
+    projected: ProjectedMap,
+    palette: MapPalette,
+) {
+    drawPath(
+        path = projected.streetOutlinePath,
+        color = palette.streetOutline.copy(alpha = CRT_HALO_ALPHA),
+        style = Stroke(width = OUTLINE_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    drawPath(
+        path = projected.streetPath,
+        color = palette.street.copy(alpha = CRT_HALO_ALPHA),
+        style = Stroke(width = STREET_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    drawPath(
+        path = projected.trashFencePath,
+        color = palette.fence.copy(alpha = CRT_HALO_ALPHA),
+        style = Stroke(width = FENCE_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+    drawPath(
+        path = projected.plazaPath,
+        color = palette.plaza.copy(alpha = CRT_HALO_ALPHA),
+        style = Stroke(width = PLAZA_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+    )
+}
+
+/**
+ * CRT-beam endpoint pass: bright filled dots at every place the simulated
+ * electron beam would have decelerated — street polyline endpoints,
+ * plaza polygon corners, fence vertices. Each layer ships as one
+ * `drawPoints` call (filled circle per offset), so even ~1500 dots
+ * cost three Skia calls total.
+ */
+private fun DrawScope.drawCrtEndpoints(
+    projected: ProjectedMap,
+    palette: MapPalette,
+) {
+    drawCornerDots(projected.streetEndpoints, palette.street, CRT_ENDPOINT_RADIUS)
+    drawCornerDots(projected.plazaCorners, palette.plaza, CRT_PLAZA_CORNER_RADIUS)
+    drawCornerDots(projected.fenceCorners, palette.fence, CRT_FENCE_CORNER_RADIUS)
+}
+
+private fun DrawScope.drawCornerDots(
+    points: List<Offset>,
+    color: Color,
+    radius: Float,
+) {
+    if (points.isEmpty()) return
+    drawPoints(
+        points = points,
+        pointMode = PointMode.Points,
+        color = color,
+        strokeWidth = radius * 2f,
+        cap = StrokeCap.Round,
+    )
 }
 
 /**
