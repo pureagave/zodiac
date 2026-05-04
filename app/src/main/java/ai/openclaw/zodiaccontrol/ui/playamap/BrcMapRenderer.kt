@@ -93,6 +93,10 @@ private const val GRID_STROKE_PX = 1.2f
  * twice per frame (dim base + lit-clipped sweep), making the cache
  * difference between "smooth" and "stuttering" on Fire-class devices.
  *
+ * Geometry only — labels are a separate pass via [drawProjectedLabels],
+ * which the cockpit's panels call after `drawProjectedMap` with their
+ * own pre-laid-out [LabelLayouts] cache.
+ *
  * Pass a [palette] to re-skin the map per concept; defaulting to
  * [MapPalette.Default] preserves the original concept-A colour set.
  */
@@ -103,7 +107,7 @@ fun DrawScope.drawPlayaMap(
     palette: MapPalette = MapPalette.Default,
 ) {
     val projected = map.project(projection, viewport)
-    drawProjectedMap(projected, palette, viewport.pixelsPerMeter)
+    drawProjectedMap(projected, palette)
 }
 
 /**
@@ -111,14 +115,20 @@ fun DrawScope.drawPlayaMap(
  * no per-vertex projection, and every same-style layer collapsed into a
  * single Skia call (one `drawPath` per stroke style, one `drawPoints`
  * per marker style). On Fire-class GPUs this drops per-frame cost from
- * thousands of calls to under a dozen. Pass [pixelsPerMeter] from the
- * same viewport that produced [projected] so labels gate on the live
- * zoom level.
+ * thousands of calls to under a dozen.
+ *
+ * Pre-laid-out labels are drawn in the same pass when [palette.labelsEnabled]
+ * is true and a non-empty [labelLayouts] is supplied. Pass
+ * [pixelsPerMeter] from the same viewport that produced [projected] so
+ * the per-layer zoom gates fire on the live zoom level. Concept C's
+ * lit-wedge re-blit calls this with [LabelLayouts.Empty] so labels
+ * don't render twice (and don't get clipped by the wedge).
  */
 fun DrawScope.drawProjectedMap(
     projected: ProjectedMap,
     palette: MapPalette,
-    pixelsPerMeter: Double,
+    labelLayouts: LabelLayouts = LabelLayouts.Empty,
+    pixelsPerMeter: Double = 0.0,
 ) {
     drawPath(
         path = projected.streetOutlinePath,
@@ -144,7 +154,9 @@ fun DrawScope.drawProjectedMap(
     drawPointBatch(projected.cpnPositions, palette.pointStyle, palette.cpn, CPN_RADIUS)
     drawPointBatch(projected.artMinorPositions, palette.pointStyle, palette.artMinor, ART_MINOR_RADIUS)
     drawMajorArt(projected.artMajorPositions, palette)
-    if (palette.labelsEnabled) drawProjectedLabels(projected, palette, pixelsPerMeter)
+    if (palette.labelsEnabled) {
+        drawProjectedLabels(projected, labelLayouts, palette.labelPrimary, pixelsPerMeter)
+    }
 }
 
 /**

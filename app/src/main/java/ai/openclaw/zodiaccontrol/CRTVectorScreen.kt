@@ -22,6 +22,7 @@ import ai.openclaw.zodiaccontrol.ui.playamap.drawProjectedMap
 import ai.openclaw.zodiaccontrol.ui.playamap.drawRetroGrid
 import ai.openclaw.zodiaccontrol.ui.playamap.project
 import ai.openclaw.zodiaccontrol.ui.playamap.projectRetroGrid
+import ai.openclaw.zodiaccontrol.ui.playamap.rememberLabelLayouts
 import ai.openclaw.zodiaccontrol.ui.scanlineOverlay
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -559,6 +560,8 @@ private fun centerViewport(
             if (map != null && viewport != null) map.project(projection, viewport) else null
         }
     val retroGrid = rememberRetroGridPath(viewport)
+    val palette = ai.openclaw.zodiaccontrol.ui.playamap.MapPalette.Default
+    val labelLayouts = rememberLabelLayouts(inputs.playaMap, palette.labelsEnabled)
 
     Box(
         modifier =
@@ -600,7 +603,7 @@ private fun centerViewport(
             if (viewport == null) return@Canvas
             if (tilt) drawRetroGrid(retroGrid)
             if (projected != null) {
-                drawProjectedMap(projected, ai.openclaw.zodiaccontrol.ui.playamap.MapPalette.Default, viewport.pixelsPerMeter)
+                drawProjectedMap(projected, palette, labelLayouts, viewport.pixelsPerMeter)
             } else {
                 drawCircle(
                     color = VectorGreen,
