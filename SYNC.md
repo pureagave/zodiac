@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-05-03 — Concept A: punchier CRT beam + vectorText for top bar / nav cue
+
+Follow-up to the morning's CRT-beam landing. Two visual upgrades:
+
+1. **Stronger phosphor bloom.** First pass was reading too soft on the Fire HD 10. Switched the halo from a single 3.5×-width / 0.22-α pass to a two-pass falloff: outer at 6× / 0.22 (the soft outer bloom) plus inner at 2.6× / 0.50 (the brighter band closer to the beam). Endpoint dots now blend their layer's base colour 50% toward white via `Color.lerp`, so corners read as the over-exposed phosphor "node" you'd actually see on a vector monitor; bumped dot radii too (street 2.6, plaza 3.0, fence 3.4).
+
+2. **`vectorText` for headline chrome.** New `vectorText` Composable in `ui/VectorText.kt` — outlined glyph strokes via Compose's `drawStyle = Stroke(...)`, halo backing pass at 4× width / 0.40 α, plus a faint baseline trail line spanning the rendered text width (the "beam swept across" ghost-line you see on real vector monitors when blanking is imperfect). Text is measured once via `rememberTextMeasurer` keyed on `(text, style)` so unrelated recompositions never re-measure glyphs; colour is applied at draw time.
+
+   Top bar redesigned around it: dropped the small "ZODIAC CONTROL // CRT VECTOR" upper-left label and the MODE / THERM headers; the bar is now just `ZODIAC` (large, vector) + `HDG nnn°` + `VEL nnn` (medium, vector) + the existing concept switcher pulled inline at the right end. NavCueBar gains `useVectorText: Boolean` on `ConceptTheme` (default false) and dispatches its three text reads through a `themedText` helper that picks `vectorText` or plain `Text` based on the flag. Concept A's theme opts in; B / C / D unchanged.
+
+CI gates green on each phase commit.
+
+---
+
 ## 2026-05-03 — Concept A: Atari-vector CRT-beam aesthetic + labels on
 
 Three phase commits to give Concept A the look of Atari Star Wars / Asteroids on a vector monitor — the user's reference. Two visual cues drive the look: a **phosphor bloom halo** around every stroke (the electron beam softly diffuses on the screen), and **bright dots at every place the beam decelerates** (line endpoints / polygon corners over-expose the phosphor and read as little glowing nodes).
