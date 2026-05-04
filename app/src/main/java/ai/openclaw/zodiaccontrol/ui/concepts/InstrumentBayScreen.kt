@@ -55,6 +55,7 @@ private val InstrumentBayPalette =
         pointStyle = MapPointStyle.BLOCK,
         labelsEnabled = true,
         labelPrimary = Color(0xFFFFD9A0),
+        crtBeam = true,
     )
 
 @Composable

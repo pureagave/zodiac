@@ -40,6 +40,7 @@ val ThemePerspective =
         secondary = Color(0xFF9DFF7A),
         accent = Color(0xFFFFF700),
         dim = Color(0xFF2C8A4A),
+        useVectorText = true,
     )
 
 val ThemeTracker =
@@ -49,6 +50,7 @@ val ThemeTracker =
         secondary = Color(0xFF9DFF7A),
         accent = Color(0xFFFFF700),
         dim = Color(0xFF3AAA2C),
+        useVectorText = true,
     )
 
 val ThemeInstrumentBay =
@@ -58,4 +60,5 @@ val ThemeInstrumentBay =
         secondary = Color(0xFFFFAE3A),
         accent = Color(0xFFFFD166),
         dim = Color(0xFFA36000),
+        useVectorText = true,
     )

@@ -47,6 +47,7 @@ private val PerspectivePalette =
         grid = Color(0xFF1F6E37),
         labelsEnabled = true,
         labelPrimary = Color(0xFFB0FFB0),
+        crtBeam = true,
     )
 
 @Composable

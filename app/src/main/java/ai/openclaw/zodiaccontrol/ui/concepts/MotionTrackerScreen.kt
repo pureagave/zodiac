@@ -54,6 +54,7 @@ private val TrackerBasePalette =
         artMajor = Color(0xFF2A5C16),
         artMinor = Color(0xFF124210),
         grid = Color(0xFF0A2A0A),
+        crtBeam = true,
     )
 
 /** Lit palette — what the wedge re-renders inside its clip region. */
@@ -68,6 +69,7 @@ private val TrackerLitPalette =
         artMajor = Color(0xFFFFF700),
         artMinor = Color(0xFF7EFF62),
         grid = Color(0xFF3AAA2C),
+        crtBeam = true,
     )
 
 @Composable
