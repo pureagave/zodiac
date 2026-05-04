@@ -6,6 +6,22 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-05-03 — Concept A: Atari-vector CRT-beam aesthetic + labels on
+
+Three phase commits to give Concept A the look of Atari Star Wars / Asteroids on a vector monitor — the user's reference. Two visual cues drive the look: a **phosphor bloom halo** around every stroke (the electron beam softly diffuses on the screen), and **bright dots at every place the beam decelerates** (line endpoints / polygon corners over-expose the phosphor and read as little glowing nodes).
+
+1. **Plumbing.** New `crtBeam: Boolean = false` on `MapPalette`. `ProjectedMap` gains `streetEndpoints` (first + last of each street + outline polyline), `plazaCorners` and `fenceCorners` (every vertex of those closed polygons). `PlayaMap.project()` walks the same `DoubleArray`s it already uses for the path build via two new private helpers (`collectPolylineEndpoints`, `collectAllVertices`) — same inline primitive projection, no per-vertex allocation.
+
+2. **Renderer.** Two new private DrawScope helpers in `BrcMapRenderer`. `drawCrtHalo` is a pre-pass that re-draws each stroke layer at 3.5× width with 0.22 alpha — same color family, just spread out and softer. `drawCrtEndpoints` is a post-pass painting bright filled dots over the beam-stop points; one `drawPoints` call per layer (3 total) regardless of dot count. Both gated on `palette.crtBeam`. No labels needed in either pass; labels still render through the same `drawProjectedLabels` cache.
+
+3. **Activation.** `MapPalette.Default` (Concept A only) flips to `crtBeam = true`, `labelsEnabled = true`, `labelPrimary = #B0FFB0` (pale green to match the green palette).
+
+CI gates green on every phase commit. Performance is fine: per frame, halo adds 4 `drawPath` calls (already-cached paths, no projection), endpoints add 3 `drawPoints` calls (already-projected positions). On the same per-frame budget that round 2/3 brought down to single-digit Skia calls, the CRT pass adds ~7 calls — still well within Fire-class headroom.
+
+If the look needs more bite later, options are: bump street/outline base brightness so the halo reads stronger, increase `CRT_HALO_WIDTH_MULT` past 3.5×, or switch to true `BlurMaskFilter` on a native Paint for an actual gaussian glow (works on API 30+, just needs a `nativeCanvas` drop-down).
+
+---
+
 ## 2026-05-03 — Pre-laid-out label TextLayoutResults
 
 Single follow-on commit on top of round 3. `drawProjectedLabels` was hitting Android `Paint.drawText` per label per frame, with internal glyph layout each call (measure characters, kerning, baseline). At high zoom with 100+ labels visible, that per-frame layout cost was real — and labels are going to be on by default.
