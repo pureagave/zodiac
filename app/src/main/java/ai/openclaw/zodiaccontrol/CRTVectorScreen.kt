@@ -25,6 +25,7 @@ import ai.openclaw.zodiaccontrol.ui.playamap.projectRetroGrid
 import ai.openclaw.zodiaccontrol.ui.playamap.rememberLabelLayouts
 import ai.openclaw.zodiaccontrol.ui.scanlineOverlay
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
+import ai.openclaw.zodiaccontrol.ui.vectorText
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import ai.openclaw.zodiaccontrol.ui.wrapHeading
 import androidx.compose.foundation.Canvas
@@ -59,7 +60,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -108,7 +108,7 @@ fun crtVectorScreen(
         scanlineOverlay()
 
         Column(Modifier.fillMaxSize()) {
-            topHeader(state = state)
+            topHeader(state = state, concept = state.concept, onCycleConcept = onCycleConcept)
             Spacer(Modifier.height(6.dp))
             navCueBar(cue = state.navCue, theme = ThemeCrtVector)
             Spacer(Modifier.height(8.dp))
@@ -150,21 +150,6 @@ fun crtVectorScreen(
             }
         }
 
-        Text(
-            text = "ZODIAC CONTROL // CRT VECTOR",
-            color = VectorGreen,
-            fontSize = 15.sp,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
-        )
-
-        conceptSwitcher(
-            current = state.concept,
-            onCycle = onCycleConcept,
-            accent = ThemeCrtVector.accent,
-            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
-        )
-
         recenterButton(
             followMode = state.followMode,
             theme = ThemeCrtVector,
@@ -175,33 +160,43 @@ fun crtVectorScreen(
 }
 
 @Composable
-private fun topHeader(state: CockpitUiState) {
+private fun topHeader(
+    state: CockpitUiState,
+    concept: ai.openclaw.zodiaccontrol.core.model.CockpitConcept,
+    onCycleConcept: () -> Unit,
+) {
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(52.dp)
+                .height(60.dp)
                 .border(1.dp, VectorGreen)
-                .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(24.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        headerText("MODE: ${state.mode.name}")
-        headerText("HDG: ${state.headingDeg}°")
-        headerText("VEL: ${state.speedKph} kph")
-        headerText("THERM: ${state.thermalC}C")
+        vectorText(
+            text = "ZODIAC",
+            color = VectorGreen,
+            fontSize = 26.sp,
+        )
+        Spacer(Modifier.weight(1f))
+        vectorText(
+            text = "HDG ${"%03d".format(state.headingDeg)}°",
+            color = VectorGreen,
+            fontSize = 14.sp,
+        )
+        vectorText(
+            text = "VEL ${"%03d".format(state.speedKph)}",
+            color = VectorGreen,
+            fontSize = 14.sp,
+        )
+        conceptSwitcher(
+            current = concept,
+            onCycle = onCycleConcept,
+            accent = ThemeCrtVector.accent,
+        )
     }
-}
-
-@Composable
-private fun headerText(value: String) {
-    Text(
-        text = value,
-        color = VectorGreen,
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-        fontSize = 14.sp,
-    )
 }
 
 @Composable
