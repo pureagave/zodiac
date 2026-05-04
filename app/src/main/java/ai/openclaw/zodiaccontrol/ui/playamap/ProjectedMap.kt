@@ -55,6 +55,19 @@ data class ProjectedMap(
     val artLabels: List<ProjectedLabel>,
     val streetLabels: List<ProjectedLabel>,
     val cpnLabels: List<ProjectedLabel>,
+    /**
+     * Screen-space first/last vertex of every street + outline polyline.
+     * The CRT-beam aesthetic renders these as bright endpoint dots —
+     * each represents a place where the simulated electron beam stopped
+     * and over-exposed the phosphor. Empty for non-CRT palettes (the
+     * data is computed unconditionally; only the renderer gates on
+     * [MapPalette.crtBeam]).
+     */
+    val streetEndpoints: List<Offset>,
+    /** Every vertex of the plaza polygons — corners glow brighter under CRT beam. */
+    val plazaCorners: List<Offset>,
+    /** Every vertex of the trash-fence polygon. */
+    val fenceCorners: List<Offset>,
 )
 
 /**
@@ -79,10 +92,15 @@ fun PlayaMap.project(
         ProjectedLabel(text = seed.text, position = toScreen(seed.location), major = seed.major)
     }
 
+    val fenceRing = trashFence.firstOrNull()
     val fencePath =
-        trashFence.firstOrNull()?.let { ring ->
+        fenceRing?.let { ring ->
             Path().apply { appendSubpath(ring.ringFlat, projection, viewport, close = true) }
         } ?: Path()
+
+    val streetEndpoints = ArrayList<Offset>(streetLines.size * 2 + streetOutlines.size * 2)
+    collectPolylineEndpoints(streetLines.map { it.pointsFlat }, projection, viewport, streetEndpoints)
+    collectPolylineEndpoints(streetOutlines.map { it.ringFlat }, projection, viewport, streetEndpoints)
 
     return ProjectedMap(
         trashFencePath = fencePath,
@@ -97,6 +115,12 @@ fun PlayaMap.project(
         artLabels = artLabelSeeds.map(toProjectedLabel),
         streetLabels = streetLabelSeeds.map(toProjectedLabel),
         cpnLabels = cpnLabelSeeds.map(toProjectedLabel),
+        streetEndpoints = streetEndpoints,
+        plazaCorners = collectAllVertices(plazas.map { it.ringFlat }, projection, viewport),
+        fenceCorners =
+            fenceRing
+                ?.let { collectAllVertices(listOf(it.ringFlat), projection, viewport) }
+                ?: emptyList(),
     )
 }
 
@@ -159,3 +183,56 @@ private fun Path.appendSubpath(
 
 /** Two `(lon, lat)` pairs = 4 Doubles, the smallest renderable polyline. */
 private const val MIN_POLYLINE_DOUBLES = 4
+
+/**
+ * Append the projected first and last vertex of every polyline in [flats]
+ * into [out]. Used to surface the points where a simulated electron beam
+ * would have decelerated — the renderer paints those as the bright
+ * "vector endpoint" dots in CRT-beam mode.
+ */
+private fun collectPolylineEndpoints(
+    flats: List<DoubleArray>,
+    projection: PlayaProjection,
+    viewport: PlayaViewport,
+    out: MutableList<Offset>,
+) {
+    for (flat in flats) {
+        if (flat.size < MIN_POLYLINE_DOUBLES) continue
+        projection.projectInline(flat[0], flat[1]) { e, n ->
+            viewport.toScreenInline(e, n) { sx, sy ->
+                out.add(Offset(sx.toFloat(), sy.toFloat()))
+            }
+        }
+        val tail = flat.size
+        projection.projectInline(flat[tail - 2], flat[tail - 1]) { e, n ->
+            viewport.toScreenInline(e, n) { sx, sy ->
+                out.add(Offset(sx.toFloat(), sy.toFloat()))
+            }
+        }
+    }
+}
+
+/**
+ * Project every vertex of every polyline in [flats]. For closed polygons
+ * (plazas, fence) the result lists every corner — the CRT-beam aesthetic
+ * renders all of them as endpoint dots.
+ */
+private fun collectAllVertices(
+    flats: List<DoubleArray>,
+    projection: PlayaProjection,
+    viewport: PlayaViewport,
+): List<Offset> {
+    val out = ArrayList<Offset>()
+    for (flat in flats) {
+        var i = 0
+        while (i < flat.size) {
+            projection.projectInline(flat[i], flat[i + 1]) { e, n ->
+                viewport.toScreenInline(e, n) { sx, sy ->
+                    out.add(Offset(sx.toFloat(), sy.toFloat()))
+                }
+            }
+            i += 2
+        }
+    }
+    return out
+}

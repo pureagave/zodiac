@@ -52,6 +52,14 @@ data class MapPalette(
     val labelsEnabled: Boolean = false,
     /** Color used for label glyphs when [labelsEnabled]. */
     val labelPrimary: Color = Color.White,
+    /**
+     * Enables the Atari-vector "CRT beam" aesthetic: a soft halo behind
+     * every stroke (same path re-drawn wider with low alpha — fakes
+     * phosphor bloom) plus bright endpoint dots wherever the simulated
+     * electron beam would have decelerated (street polyline endpoints,
+     * polygon corners). Off by default; concept A opts in.
+     */
+    val crtBeam: Boolean = false,
 ) {
     companion object {
         /** Concept A canonical palette — green/amber/blue/pink, round POIs. */
