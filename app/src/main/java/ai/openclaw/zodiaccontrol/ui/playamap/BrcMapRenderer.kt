@@ -99,15 +99,23 @@ private const val ART_MINOR_RADIUS = 1.5f
 private const val ART_MAJOR_STROKE = 1.5f
 
 // CRT-beam aesthetic constants. The halo is the same path re-drawn
-// thicker with low alpha so a soft phosphor glow surrounds every stroke.
-// Endpoint dots get a slightly larger radius than the underlying stroke
-// width — they read as the "stopped beam over-exposing the phosphor"
-// brightening you see at every line corner on a real vector monitor.
-private const val CRT_HALO_ALPHA = 0.22f
-private const val CRT_HALO_WIDTH_MULT = 3.5f
-private const val CRT_ENDPOINT_RADIUS = 2.0f
-private const val CRT_PLAZA_CORNER_RADIUS = 2.5f
-private const val CRT_FENCE_CORNER_RADIUS = 3.0f
+// twice — once at a broad width with low alpha (the soft outer
+// phosphor bloom) and once at a narrower width with higher alpha (the
+// brighter inner glow). Two passes give a visible falloff gradient
+// without needing a true gaussian blur.
+//
+// Endpoint dots are blended toward white so they read as the "stopped
+// beam over-exposing the phosphor" brightening you see at every line
+// corner on a real vector monitor — and as filled, larger circles than
+// the underlying stroke width.
+private const val CRT_HALO_OUTER_ALPHA = 0.22f
+private const val CRT_HALO_OUTER_WIDTH_MULT = 6.0f
+private const val CRT_HALO_INNER_ALPHA = 0.50f
+private const val CRT_HALO_INNER_WIDTH_MULT = 2.6f
+private const val CRT_ENDPOINT_TINT = 0.5f
+private const val CRT_ENDPOINT_RADIUS = 2.6f
+private const val CRT_PLAZA_CORNER_RADIUS = 3.0f
+private const val CRT_FENCE_CORNER_RADIUS = 3.4f
 private const val GRID_SPACING_M = 200.0
 private const val GRID_HALF_RANGE_M = 5_000.0
 private const val GRID_STROKE_PX = 1.2f
@@ -247,53 +255,58 @@ private fun DrawScope.drawMajorArt(
 }
 
 /**
- * CRT-beam halo pre-pass: re-draw every stroke layer at [CRT_HALO_WIDTH_MULT]×
- * its normal width with low alpha, before the sharp core layers go on top.
- * The wider, dim under-stroke fakes the phosphor bloom you see around
- * every line on a real vector monitor — same color family, just spread
- * out and softer. One extra `drawPath` per stroke layer; layered M2
- * batching keeps it cheap.
+ * CRT-beam halo pre-pass: re-draw every stroke layer twice before the
+ * sharp core goes on top. An outer pass at ~6× width / low alpha is the
+ * soft phosphor bloom; an inner pass at ~2.6× width / mid alpha is the
+ * brighter glow band closer to the beam path. Two passes give a visible
+ * falloff gradient without needing a true gaussian blur. M2 batching
+ * keeps this cheap — every "stroke layer" is still a single `drawPath`,
+ * just doubled.
  */
 private fun DrawScope.drawCrtHalo(
     projected: ProjectedMap,
     palette: MapPalette,
 ) {
+    drawHaloPair(projected.streetOutlinePath, palette.streetOutline, OUTLINE_STROKE)
+    drawHaloPair(projected.streetPath, palette.street, STREET_STROKE)
+    drawHaloPair(projected.trashFencePath, palette.fence, FENCE_STROKE)
+    drawHaloPair(projected.plazaPath, palette.plaza, PLAZA_STROKE)
+}
+
+private fun DrawScope.drawHaloPair(
+    path: Path,
+    color: Color,
+    coreStroke: Float,
+) {
     drawPath(
-        path = projected.streetOutlinePath,
-        color = palette.streetOutline.copy(alpha = CRT_HALO_ALPHA),
-        style = Stroke(width = OUTLINE_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        path = path,
+        color = color.copy(alpha = CRT_HALO_OUTER_ALPHA),
+        style = Stroke(width = coreStroke * CRT_HALO_OUTER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
     )
     drawPath(
-        path = projected.streetPath,
-        color = palette.street.copy(alpha = CRT_HALO_ALPHA),
-        style = Stroke(width = STREET_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
-    )
-    drawPath(
-        path = projected.trashFencePath,
-        color = palette.fence.copy(alpha = CRT_HALO_ALPHA),
-        style = Stroke(width = FENCE_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
-    )
-    drawPath(
-        path = projected.plazaPath,
-        color = palette.plaza.copy(alpha = CRT_HALO_ALPHA),
-        style = Stroke(width = PLAZA_STROKE * CRT_HALO_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        path = path,
+        color = color.copy(alpha = CRT_HALO_INNER_ALPHA),
+        style = Stroke(width = coreStroke * CRT_HALO_INNER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
     )
 }
 
 /**
  * CRT-beam endpoint pass: bright filled dots at every place the simulated
  * electron beam would have decelerated — street polyline endpoints,
- * plaza polygon corners, fence vertices. Each layer ships as one
- * `drawPoints` call (filled circle per offset), so even ~1500 dots
- * cost three Skia calls total.
+ * plaza polygon corners, fence vertices. Dot colour is the layer's base
+ * tinted toward white so it reads as the over-exposed phosphor "node"
+ * brightness you see at every corner on a real vector monitor. Each
+ * layer ships as one `drawPoints` call (filled circle per offset), so
+ * even ~1500 dots cost three Skia calls total.
  */
 private fun DrawScope.drawCrtEndpoints(
     projected: ProjectedMap,
     palette: MapPalette,
 ) {
-    drawCornerDots(projected.streetEndpoints, palette.street, CRT_ENDPOINT_RADIUS)
-    drawCornerDots(projected.plazaCorners, palette.plaza, CRT_PLAZA_CORNER_RADIUS)
-    drawCornerDots(projected.fenceCorners, palette.fence, CRT_FENCE_CORNER_RADIUS)
+    val tint = CRT_ENDPOINT_TINT
+    drawCornerDots(projected.streetEndpoints, androidx.compose.ui.graphics.lerp(palette.street, Color.White, tint), CRT_ENDPOINT_RADIUS)
+    drawCornerDots(projected.plazaCorners, androidx.compose.ui.graphics.lerp(palette.plaza, Color.White, tint), CRT_PLAZA_CORNER_RADIUS)
+    drawCornerDots(projected.fenceCorners, androidx.compose.ui.graphics.lerp(palette.fence, Color.White, tint), CRT_FENCE_CORNER_RADIUS)
 }
 
 private fun DrawScope.drawCornerDots(
