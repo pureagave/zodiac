@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -51,7 +54,12 @@ fun perspectiveGridScreen(
     viewModel: CockpitViewModel,
     onCycleConcept: () -> Unit,
 ) {
-    val state = viewModel.uiState.collectAsStateWithLifecycle().value
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // The map subtree only reads a small slice of state. Wrap it in
+    // derivedStateOf so playaMapPanel's recomposition is gated on the
+    // slice's `equals`, not on every CockpitUiState emission — thermal
+    // / link / connection updates skip the map subtree entirely.
+    val mapInputs by remember { derivedStateOf { MapUiInputs.from(state) } }
     val theme = ThemePerspective
 
     Box(
@@ -104,7 +112,7 @@ fun perspectiveGridScreen(
                             .border(1.dp, theme.primary),
                 ) {
                     playaMapPanel(
-                        state = state,
+                        inputs = mapInputs,
                         viewModel = viewModel,
                         style =
                             PlayaMapPanelStyle(

@@ -5,6 +5,8 @@ import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.model.MapMode
+import ai.openclaw.zodiaccontrol.core.model.PlayaMap
+import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.playamap.ProjectedMap
 import ai.openclaw.zodiaccontrol.ui.playamap.cockpitTouchInput
@@ -40,6 +42,46 @@ import kotlin.math.sin
 
 /** Ego marker drawing style for the shared map panel. */
 enum class EgoStyle { TRIANGLE, HEX }
+
+/**
+ * The strict slice of [CockpitUiState] the map subtree actually reads.
+ * Concept screens construct one of these from the live state and pass it
+ * into [playaMapPanel] / `centerViewport` instead of the full state.
+ *
+ * The point is Compose's smart-skip: because every field here is stable
+ * primitive / data-class and the surrounding parameters (`viewModel`,
+ * `style`) are also stable, two consecutive recompositions with
+ * unchanged map fields will be skipped at the call site even if the
+ * parent recomposed for an unrelated reason — e.g. a thermal or
+ * connection update flowing through `CockpitUiState`. Without the slice,
+ * any state emission re-ran the map subtree's `remember` keys (cache
+ * hits, but still allocations and Compose plumbing).
+ */
+@androidx.compose.runtime.Stable
+data class MapUiInputs(
+    val playaMap: PlayaMap?,
+    val egoFix: GpsFix?,
+    val cameraOverride: PlayaPoint?,
+    val viewRotationDeg: Double,
+    val pixelsPerMeter: Double,
+    val tiltDeg: Int,
+    val mapMode: MapMode,
+    val headingDeg: Int,
+) {
+    companion object {
+        fun from(state: CockpitUiState): MapUiInputs =
+            MapUiInputs(
+                playaMap = state.playaMap,
+                egoFix = state.egoFix,
+                cameraOverride = state.cameraOverride,
+                viewRotationDeg = state.viewRotationDeg,
+                pixelsPerMeter = state.pixelsPerMeter,
+                tiltDeg = state.tiltDeg,
+                mapMode = state.mapMode,
+                headingDeg = state.headingDeg,
+            )
+    }
+}
 
 /**
  * Visual configuration for the shared playa map panel. Bundling these here
@@ -108,14 +150,14 @@ private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
  */
 @Composable
 fun playaMapPanel(
-    state: CockpitUiState,
+    inputs: MapUiInputs,
     viewModel: CockpitViewModel,
     style: PlayaMapPanelStyle,
     modifier: Modifier = Modifier,
 ) {
     val projection = remember { PLAYA_PROJECTION }
-    val pixelsPerMeter = state.pixelsPerMeter
-    val tilt = style.allowTilt && state.mapMode == MapMode.TILT
+    val pixelsPerMeter = inputs.pixelsPerMeter
+    val tilt = style.allowTilt && inputs.mapMode == MapMode.TILT
     val egoColor = style.egoColor ?: style.palette.fence
 
     // Track the panel's pixel size at Composable scope so the viewport (and
@@ -128,18 +170,18 @@ fun playaMapPanel(
     // the *same* camera.
     val viewport: PlayaViewport? =
         remember(
-            state.egoFix?.location,
-            state.cameraOverride,
-            state.viewRotationDeg,
-            state.pixelsPerMeter,
-            state.tiltDeg,
+            inputs.egoFix?.location,
+            inputs.cameraOverride,
+            inputs.viewRotationDeg,
+            inputs.pixelsPerMeter,
+            inputs.tiltDeg,
             tilt,
             canvasSize,
         ) {
             if (canvasSize.width <= 0 || canvasSize.height <= 0) {
                 null
             } else {
-                viewportFor(state, projection, tilt, canvasSize.width, canvasSize.height)
+                viewportFor(inputs, projection, tilt, canvasSize.width, canvasSize.height)
             }
         }
 
@@ -148,8 +190,8 @@ fun playaMapPanel(
     // when this is done per frame; with the cache, panning at 60 fps
     // reuses the same projection across all frames in a GPS tick window.
     val projected: ProjectedMap? =
-        remember(state.playaMap, viewport) {
-            val map = state.playaMap
+        remember(inputs.playaMap, viewport) {
+            val map = inputs.playaMap
             if (map != null && viewport != null) map.project(projection, viewport) else null
         }
 
@@ -168,7 +210,7 @@ fun playaMapPanel(
                         // in FREE the user has rotated the display
                         // independently of heading, and pan must move along
                         // the visible axes.
-                        val h = Math.toRadians(state.viewRotationDeg)
+                        val h = Math.toRadians(inputs.viewRotationDeg)
                         val cosH = cos(h)
                         val sinH = sin(h)
                         val dE = (-dxScreen * cosH + dyScreen * sinH) / pixelsPerMeter
@@ -186,12 +228,12 @@ fun playaMapPanel(
                 retroGrid = retroGrid,
                 style = style,
                 tilt = tilt,
-                tiltDeg = state.tiltDeg,
+                tiltDeg = inputs.tiltDeg,
             ),
         )
         egoOverlayCanvas(
             EgoOverlayInputs(
-                state = state,
+                inputs = inputs,
                 projection = projection,
                 viewport = viewport,
                 style = style,
@@ -226,19 +268,19 @@ private fun rememberRetroGridPath(viewport: PlayaViewport?): Path {
  * two-finger twist from the ego's GPS-reported heading.
  */
 private fun viewportFor(
-    state: CockpitUiState,
+    inputs: MapUiInputs,
     projection: PlayaProjection,
     tilt: Boolean,
     widthPx: Int,
     heightPx: Int,
 ): PlayaViewport {
-    val ego = state.egoFix?.let { projection.project(it.location) } ?: PlayaPoint(0.0, 0.0)
-    val cameraCenter = state.cameraOverride ?: ego
+    val ego = inputs.egoFix?.let { projection.project(it.location) } ?: PlayaPoint(0.0, 0.0)
+    val cameraCenter = inputs.cameraOverride ?: ego
     val anchorYFrac = if (tilt) TILT_ANCHOR_Y else TOP_ANCHOR_Y
     return PlayaViewport(
         center = cameraCenter,
-        headingDeg = state.viewRotationDeg,
-        pixelsPerMeter = if (tilt) state.pixelsPerMeter * TILT_ZOOM_BOOST else state.pixelsPerMeter,
+        headingDeg = inputs.viewRotationDeg,
+        pixelsPerMeter = if (tilt) inputs.pixelsPerMeter * TILT_ZOOM_BOOST else inputs.pixelsPerMeter,
         widthPx = widthPx,
         heightPx = heightPx,
         anchorYFrac = anchorYFrac,
@@ -290,7 +332,7 @@ private fun mapBaseCanvas(inputs: MapBaseInputs) {
 
 /** Bundle so [egoOverlayCanvas] stays under detekt's parameter cap. */
 private data class EgoOverlayInputs(
-    val state: CockpitUiState,
+    val inputs: MapUiInputs,
     val projection: PlayaProjection,
     val viewport: PlayaViewport?,
     val style: PlayaMapPanelStyle,
@@ -309,18 +351,18 @@ private fun egoOverlayCanvas(inputs: EgoOverlayInputs) {
         // is unchanged, display rotated, marker keeps pointing in the
         // physical direction of motion). Falls back to viewport centre
         // when there's no fix yet so the marker is still visible at boot.
-        val state = inputs.state
+        val mapInputs = inputs.inputs
         val viewport = inputs.viewport
         val tilt = inputs.tilt
         val ego =
             if (viewport == null) {
                 null
             } else {
-                state.egoFix?.location?.let { viewport.toScreen(inputs.projection.project(it)) }
+                mapInputs.egoFix?.location?.let { viewport.toScreen(inputs.projection.project(it)) }
             }
         val cx = ego?.x?.toFloat() ?: (size.width / 2f)
         val cy = ego?.y?.toFloat() ?: (size.height * (if (tilt) TILT_ANCHOR_Y else TOP_ANCHOR_Y).toFloat())
-        val rotationDeg = (state.headingDeg - state.viewRotationDeg).toFloat()
+        val rotationDeg = (mapInputs.headingDeg - mapInputs.viewRotationDeg).toFloat()
         when (inputs.style.egoStyle) {
             EgoStyle.TRIANGLE -> drawEgoMarkerAt(cx = cx, cy = cy, color = inputs.egoColor, rotationDeg = rotationDeg)
             EgoStyle.HEX -> drawHexEgoMarkerAt(cx = cx, cy = cy, color = inputs.egoColor, rotationDeg = rotationDeg)

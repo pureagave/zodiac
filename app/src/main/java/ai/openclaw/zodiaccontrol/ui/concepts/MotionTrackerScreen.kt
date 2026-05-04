@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,7 +75,8 @@ fun motionTrackerScreen(
     viewModel: CockpitViewModel,
     onCycleConcept: () -> Unit,
 ) {
-    val state = viewModel.uiState.collectAsStateWithLifecycle().value
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val mapInputs by remember { derivedStateOf { MapUiInputs.from(state) } }
     val theme = ThemeTracker
 
     var sweepDeg by remember { mutableStateOf(0f) }
@@ -161,7 +163,7 @@ fun motionTrackerScreen(
                                 .border(2.dp, theme.primary),
                     ) {
                         playaMapPanel(
-                            state = state,
+                            inputs = mapInputs,
                             viewModel = viewModel,
                             style =
                                 PlayaMapPanelStyle(

@@ -19,6 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -59,7 +62,8 @@ fun instrumentBayScreen(
     viewModel: CockpitViewModel,
     onCycleConcept: () -> Unit,
 ) {
-    val state = viewModel.uiState.collectAsStateWithLifecycle().value
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val mapInputs by remember { derivedStateOf { MapUiInputs.from(state) } }
     val theme = ThemeInstrumentBay
 
     Box(
@@ -128,7 +132,7 @@ fun instrumentBayScreen(
                     )
                     Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
                         playaMapPanel(
-                            state = state,
+                            inputs = mapInputs,
                             viewModel = viewModel,
                             style =
                                 PlayaMapPanelStyle(
