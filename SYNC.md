@@ -6,6 +6,22 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-05-03 — Render perf round 3: DoubleArray polylines, binary map cache, sliced map inputs
+
+Three more phase commits stacked on top of round 2. Same pattern: identify a per-frame or per-launch cost, hoist it.
+
+1. **DoubleArray-backed polyline storage + inline primitive projection.** The renderer's per-vertex walk allocated two small data class instances (`PlayaPoint` + `ScreenXY`) for every point in every polyline on every cache miss — thousands of allocations per gesture frame just to hand x/y floats to `Path.moveTo` / `lineTo`. Source coords were also stored as N separate heap-resident `LatLon` objects, costing cache locality.
+
+   `PolygonRing.ringFlat` and `StreetLine.pointsFlat` are eagerly flattened `[lon0, lat0, lon1, lat1, ...]` `DoubleArray` mirrors of the existing `List<LatLon>`, computed once when `PlayaMap` loads. New `PlayaProjection.projectInline` and `PlayaViewport.toScreenInline` are inline functions that take primitive `(lon, lat)` / `(eastM, northM)` args and yield primitive results to a callback — no `PlayaPoint` / `ScreenXY` allocations on the hot path. `Path.appendSubpath` walks the DoubleArrays via these inline helpers and allocates nothing in its inner loop. Existing object-arg APIs are preserved for tests and the (cold-path) navigator code.
+
+2. **Binary cache for parsed `PlayaMap` (cold-start speedup).** `AssetsPlayaMapRepository` re-parsed ~1 MB of GeoJSON on every launch, doing the same JSONObject walk + `StreetLine`/`PolygonRing` construction from scratch. New `PlayaMapBinaryCache` hand-rolls a flat `DataInputStream`/`DataOutputStream` format keyed on year + schema version. First cold start parses JSON and writes the binary into `cacheDir`; subsequent starts read it back in a few hundred ms. Filename + header carry the schema version, so a bump silently invalidates older caches and falls through to JSON. Read/write failures are best-effort — JSON path stays the source of truth, app stays alive without the cache. `ZodiacApplication` wires `cacheDir` through. Round-trip tests cover every layer + nullable field.
+
+3. **Slice the map subtree's inputs through `derivedStateOf`.** Concept screens collected the full `CockpitUiState` and passed it into `playaMapPanel` / `centerViewport` — meaning a thermal / link / connection update (touching no map field) flowed through the panel's remember-keyed caches just to be a no-op. New `@Stable MapUiInputs` data class carries exactly the fields the map subtree reads. Each screen wraps `MapUiInputs.from(state)` in `remember { derivedStateOf { ... } }`, and `playaMapPanel`'s signature takes `MapUiInputs` instead of `CockpitUiState`. Compose's smart-skip engages: thermal-only updates skip the panel's recomposition entirely while the surrounding rails still update.
+
+CI gates green on every phase commit. Items 5 / 8 / 9 / 10 from the round-2 list (major-art `Path` batching, wedge-path memoisation, label `TextLayout` cache, formatter-string memo) remain on `tasks/open.md`.
+
+---
+
 ## 2026-05-03 — Render perf round 2: scanlines, retro grid, static partition, fused projection
 
 Four small follow-on commits hoisting the rest of the obvious invariants out of the per-frame draw path. None changed visuals — pure tightening on top of the M2 cache landed yesterday.

@@ -56,3 +56,4 @@ Medium / Low sweep:
 - [x] M2 — cache projected geometry per camera state, plus draw-call batching (consolidated `Path`s + `drawPoints` for marker layers); fixed the Fire HD 10 stutter on Concept C's lit-wedge sweep
 - [x] M4 — cache the meter-space retro grid as one `Path` per viewport; per-frame cost drops from 102 `drawLine` calls to 1 `drawPath`
 - [x] Render perf round 2: scanline overlay cached as a single `Path` (CRT + Tracker), static map data pre-partitioned at load (`majorArt` / `minorArt` / `*LabelSeeds`), projection fused into path build (no intermediate `List<Offset>` per polyline)
+- [x] Render perf round 3: DoubleArray polyline storage + inline primitive projection (zero per-vertex allocations on the hot path), binary cache for parsed `PlayaMap` (skips ~1 MB JSON parse on warm starts), `MapUiInputs` slice + `derivedStateOf` so map subtree skips recomposition on thermal / link / connection updates
