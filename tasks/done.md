@@ -57,3 +57,4 @@ Medium / Low sweep:
 - [x] M4 — cache the meter-space retro grid as one `Path` per viewport; per-frame cost drops from 102 `drawLine` calls to 1 `drawPath`
 - [x] Render perf round 2: scanline overlay cached as a single `Path` (CRT + Tracker), static map data pre-partitioned at load (`majorArt` / `minorArt` / `*LabelSeeds`), projection fused into path build (no intermediate `List<Offset>` per polyline)
 - [x] Render perf round 3: DoubleArray polyline storage + inline primitive projection (zero per-vertex allocations on the hot path), binary cache for parsed `PlayaMap` (skips ~1 MB JSON parse on warm starts), `MapUiInputs` slice + `derivedStateOf` so map subtree skips recomposition on thermal / link / connection updates
+- [x] Pre-laid-out `TextLayoutResult`s for labels: parallel `LabelLayouts` cache keyed on `(map, density)`, palette colour applied at draw time so concept switches don't invalidate; `drawProjectedMap` bundles the gated label pass via optional params

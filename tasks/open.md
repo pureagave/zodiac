@@ -16,11 +16,10 @@ What's worth doing next, drawn from `audit.md` (2026-04-26) and a few items surf
 
 ## Performance (only matters on a real Fire tablet)
 
-Round-2 audit shipped 2026-05-03 (scanlines, retro grid / M4, static-data partition, fused projection — see SYNC). Round 3 same day shipped DoubleArray storage + inline projection, binary `PlayaMap` cache, and the `MapUiInputs` / `derivedStateOf` slice. Remaining round-2 items:
+Rounds 2/3 + label TextLayout cache shipped 2026-05-03 (see SYNC). Remaining items are diminishing-returns polish:
 
 - [ ] Major art batched as one `Path` of `addOval`s (~50 `drawCircle` → 1 `drawPath`).
 - [ ] Memoise the Concept C wedge `Path` between frames (transform a unit wedge instead of rebuilding 24 trig pairs at 60 fps).
-- [ ] Pre-laid-out `TextLayoutResult`s for labels (alongside `ProjectedMap`) so `drawText` skips per-frame glyph measurement.
 - [ ] Memoise formatter-string allocations (`%.1f`/`%.0f`/`%03d` in `NavCueBar`, stat columns, header).
 
 ## Testing

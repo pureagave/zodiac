@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-05-03 — Pre-laid-out label TextLayoutResults
+
+Single follow-on commit on top of round 3. `drawProjectedLabels` was hitting Android `Paint.drawText` per label per frame, with internal glyph layout each call (measure characters, kerning, baseline). At high zoom with 100+ labels visible, that per-frame layout cost was real — and labels are going to be on by default.
+
+New `LabelLayouts` struct holds parallel `List<TextLayoutResult>`s for plaza / art / street / CPN labels, pre-measured once via Compose's `TextMeasurer` keyed on `(map, density)`. Layouts are colour-agnostic (measured with default style colour; palette colour overridden at `drawText` time), so concept switches within a labels-enabled family don't invalidate the cache. `labelsEnabled = false` short-circuits to `LabelLayouts.Empty` so concepts that don't draw labels don't pay the up-front measurement cost.
+
+`drawProjectedMap` now bundles the label pass via optional `(labelLayouts, pixelsPerMeter)` parameters — same call shape, labels just disappear when layouts are Empty. `drawSweptProjectedMap` (Concept C's lit-wedge re-blit) passes Empty so labels don't double-render or get clipped by the rotating wedge.
+
+Open round-2 perf items remaining: major-art `Path` batching, wedge memoisation, formatter-string memo.
+
+---
+
 ## 2026-05-03 — Render perf round 3: DoubleArray polylines, binary map cache, sliced map inputs
 
 Three more phase commits stacked on top of round 2. Same pattern: identify a per-frame or per-launch cost, hoist it.
