@@ -87,8 +87,8 @@ fun vectorText(
     }
 }
 
-private const val HALO_ALPHA = 0.40f
-private const val HALO_STROKE_PX = 4.0f
+private const val HALO_ALPHA = 0.55f
+private const val HALO_STROKE_PX = 5.5f
 private const val SHARP_STROKE_PX = 1.0f
-private const val TRAIL_ALPHA = 0.45f
-private const val TRAIL_STROKE_PX = 0.7f
+private const val TRAIL_ALPHA = 0.55f
+private const val TRAIL_STROKE_PX = 0.8f

@@ -108,14 +108,14 @@ private const val ART_MAJOR_STROKE = 1.5f
 // beam over-exposing the phosphor" brightening you see at every line
 // corner on a real vector monitor — and as filled, larger circles than
 // the underlying stroke width.
-private const val CRT_HALO_OUTER_ALPHA = 0.22f
-private const val CRT_HALO_OUTER_WIDTH_MULT = 6.0f
-private const val CRT_HALO_INNER_ALPHA = 0.50f
-private const val CRT_HALO_INNER_WIDTH_MULT = 2.6f
-private const val CRT_ENDPOINT_TINT = 0.5f
-private const val CRT_ENDPOINT_RADIUS = 2.6f
-private const val CRT_PLAZA_CORNER_RADIUS = 3.0f
-private const val CRT_FENCE_CORNER_RADIUS = 3.4f
+private const val CRT_HALO_OUTER_ALPHA = 0.28f
+private const val CRT_HALO_OUTER_WIDTH_MULT = 7.5f
+private const val CRT_HALO_INNER_ALPHA = 0.62f
+private const val CRT_HALO_INNER_WIDTH_MULT = 2.8f
+private const val CRT_ENDPOINT_TINT = 0.6f
+private const val CRT_ENDPOINT_RADIUS = 3.0f
+private const val CRT_PLAZA_CORNER_RADIUS = 3.4f
+private const val CRT_FENCE_CORNER_RADIUS = 3.8f
 private const val GRID_SPACING_M = 200.0
 private const val GRID_HALF_RANGE_M = 5_000.0
 private const val GRID_STROKE_PX = 1.2f
