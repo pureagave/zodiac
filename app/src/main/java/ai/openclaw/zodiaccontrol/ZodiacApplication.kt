@@ -7,6 +7,7 @@ import ai.openclaw.zodiaccontrol.data.RoutedVehicleGateway
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
 import ai.openclaw.zodiaccontrol.data.VehicleConnectionGateway
 import ai.openclaw.zodiaccontrol.data.playa.AssetsPlayaMapRepository
+import ai.openclaw.zodiaccontrol.data.playa.PlayaMapBinaryCache
 import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
 import ai.openclaw.zodiaccontrol.data.prefs.CockpitPreferences
 import ai.openclaw.zodiaccontrol.data.prefs.DataStoreCockpitPreferences
@@ -58,7 +59,12 @@ class ZodiacApplication : Application() {
         )
     }
 
-    val playaMapRepository: PlayaMapRepository by lazy { AssetsPlayaMapRepository(assets) }
+    val playaMapRepository: PlayaMapRepository by lazy {
+        AssetsPlayaMapRepository(
+            assets = assets,
+            binaryCache = PlayaMapBinaryCache(cacheDir = cacheDir),
+        )
+    }
 
     private val preferencesDataStore: DataStore<Preferences> by lazy {
         PreferenceDataStoreFactory.create(scope = applicationScope) {

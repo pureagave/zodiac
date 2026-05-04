@@ -49,6 +49,11 @@ private class AndroidPlayaAssetReader(
  * the result transitions to [MapLoadResult.Failed] with a human-readable
  * message — the cockpit then renders without the map but stays alive.
  *
+ * Optional [binaryCache] short-circuits the JSON path on warm starts:
+ * the first parse populates the cache; subsequent launches read the
+ * pre-decoded binary in a few hundred ms. Cache failures fall through
+ * to JSON; cache writes are best-effort.
+ *
  * Asset layout (relative to assetManager root):
  *  brc/<year>/{trash_fence,street_lines,street_outlines,city_blocks,plazas,
  *              cpns,toilets}.geojson
@@ -57,8 +62,15 @@ class AssetsPlayaMapRepository(
     private val reader: PlayaAssetReader,
     private val year: String = "2025",
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val binaryCache: PlayaMapBinaryCache? = null,
 ) : PlayaMapRepository {
     constructor(assets: AssetManager, year: String = "2025") : this(AndroidPlayaAssetReader(assets), year)
+
+    constructor(
+        assets: AssetManager,
+        binaryCache: PlayaMapBinaryCache,
+        year: String = "2025",
+    ) : this(reader = AndroidPlayaAssetReader(assets), year = year, binaryCache = binaryCache)
 
     private val _loadResult = MutableStateFlow<MapLoadResult>(MapLoadResult.Loading)
     override val loadResult: StateFlow<MapLoadResult> = _loadResult.asStateFlow()
@@ -72,12 +84,21 @@ class AssetsPlayaMapRepository(
     }
 
     private suspend fun runLoadAttempt(): MapLoadResult =
-        try {
-            MapLoadResult.Loaded(withContext(ioDispatcher) { parseAll() })
-        } catch (e: IOException) {
-            MapLoadResult.Failed(e.message ?: "I/O error reading map")
-        } catch (e: JSONException) {
-            MapLoadResult.Failed(e.message ?: "Malformed map data")
+        withContext(ioDispatcher) {
+            try {
+                val cached = binaryCache?.read(year)
+                if (cached != null) {
+                    MapLoadResult.Loaded(cached)
+                } else {
+                    val parsed = parseAll()
+                    binaryCache?.write(year, parsed)
+                    MapLoadResult.Loaded(parsed)
+                }
+            } catch (e: IOException) {
+                MapLoadResult.Failed(e.message ?: "I/O error reading map")
+            } catch (e: JSONException) {
+                MapLoadResult.Failed(e.message ?: "Malformed map data")
+            }
         }
 
     private fun parseAll(): PlayaMap =
