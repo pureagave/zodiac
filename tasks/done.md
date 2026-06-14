@@ -58,3 +58,9 @@ Medium / Low sweep:
 - [x] Render perf round 2: scanline overlay cached as a single `Path` (CRT + Tracker), static map data pre-partitioned at load (`majorArt` / `minorArt` / `*LabelSeeds`), projection fused into path build (no intermediate `List<Offset>` per polyline)
 - [x] Render perf round 3: DoubleArray polyline storage + inline primitive projection (zero per-vertex allocations on the hot path), binary cache for parsed `PlayaMap` (skips ~1 MB JSON parse on warm starts), `MapUiInputs` slice + `derivedStateOf` so map subtree skips recomposition on thermal / link / connection updates
 - [x] Pre-laid-out `TextLayoutResult`s for labels: parallel `LabelLayouts` cache keyed on `(map, density)`, palette colour applied at draw time so concept switches don't invalidate; `drawProjectedMap` bundles the gated label pass via optional params
+
+## Robustness audit (2026-06-14) — see SYNC entry + commits `c5d652a` `5171eb2` `81473b1`
+- [x] Tier 1 — `collectAllVertices` odd-length crash; NMEA lat/lon/minutes range + course normalization; Usb/Ble pump loops observe the job scope (so `stop()` halts them); binary-cache count bounds-check (no OOM/NegativeArraySize)
+- [x] Tier 2 — broaden Ble/Usb/System setup catches → `Error` state; GeoJSON per-feature skip; atomic cache write + `Mutex`-guarded `load()`; `PlayaNavigator` at-origin → `Unknown`; `commandError` surfaced on failed sends; `viewRotationDeg` normalized
+- [x] Tier 3 — ~21 unit tests for the above; removed `Example*` boilerplate tests
+- [x] Tier 4 — `ACCESS_COARSE_LOCATION` (real lint error); `lintDebug` in CI via `./gradlew`; R8 release (36MB→2.4MB) + proguard keep rules; opt-in release signing; CLAUDE.md/README re-synced to reality

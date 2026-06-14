@@ -6,6 +6,24 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-06-14 — Deep robustness audit + Tier 1-4 hardening
+
+Ran a five-front read-only audit (core logic, data layer, UI/VM, tests, docs/build) then landed the fixes in four CI-green phase commits.
+
+**Tier 1 — verified bugs (`c5d652a`).** `ProjectedMap.collectAllVertices` read `flat[i+1]` with only an `i < size` guard → crash on any odd-length vertex array (fixed to `i+1 < size`). `NmeaParser` now validates decoded lat/lon range (±90/±180), minutes <60, and finiteness, and normalizes RMC course into [0,360) — one corrupt sentence can no longer inject NaN/garbage coords downstream. Usb/Ble pump loops checked the *parent* scope's `isActive`, so `stop()` didn't actually halt them; now they observe the launched job's scope. `PlayaMapBinaryCache` bounds-checks every `readInt()` count before allocating (a corrupt cache could OOM/`NegativeArraySize` outside the IOException catch).
+
+**Tier 2 — hardening (same commit).** Ble/Usb/System location sources broaden their setup catches so a missing `GPS_PROVIDER` (Fire tablets have no GNSS), revoked permission, or zero-port driver surfaces as `Error` state instead of crashing the coroutine. `GeoJsonParser` uses `optDouble` + per-feature skip (one bad coordinate no longer fails the whole map). Cache write is atomic (temp + rename); `AssetsPlayaMapRepository.load` is `Mutex`-guarded against a concurrent parse/cache-write race. `PlayaNavigator` emits `Unknown` at the Man (distance ~0) instead of a bogus 12:00 from `atan2(0,0)`. Failed vehicle-command sends now surface as `CockpitUiState.commandError` (a shared `sendCommand`/`runCatching` helper that also stopped swallowing `CancellationException`). `viewRotationDeg` is normalized into [0,360).
+
+**Design call NOT taken:** the audit flagged `RoutedVehicleGateway` not disconnecting the old adapter on transport switch as a leak. `RoutedVehicleGatewayTest` documents this as *intentional* (pure router, keeps links warm for fast switch-back) — the opposite choice from `RoutedLocationSource`. Left as-is with a clarifying comment; flagged for a deliberate decision later.
+
+**Tier 3 — tests (`5171eb2`).** ~21 new unit tests covering the above (NMEA range/normalization/garbage, corrupt-cache miss, ViewModel clamp boundaries + rotation normalization + commandError + auto-recenter timer, GeoJSON malformed-feature skip, the repository success/stitch path). Removed `ExampleUnitTest` (tested stdlib `coerceIn`) and `ExampleInstrumentedTest` (default stub). USB byte→line ingest left untested — needs a `Context` seam and the project has no mocking/Robolectric.
+
+**Tier 4 — build/CI + docs (`81473b1` + docs commit).** Added `ACCESS_COARSE_LOCATION` (was a real lint **error** — Android 12+ requires it with FINE). CI now runs via `./gradlew` (wrapper 8.10.2 = single source of truth) and adds an `lintDebug` step. Release build enables R8 minify + resource shrink: **36MB → 2.4MB**; `proguard-rules.pro` keeps the usb-serial driver classes. Opt-in `signingConfigs.release` wired from `ZODIAC_KEYSTORE_FILE` (env/property) for the tablet fleet; unsigned without it. detekt: `ReturnCount` relaxed to 3, `TooManyFunctions` bumped for the `sendCommand` helper. CLAUDE.md + README brought back in sync with reality (four concepts, GPS/playa-map/prefs layers, `CockpitScreen` dispatcher, DI in `ZodiacApplication`, pan/pinch map touch — not the old X→heading/Y→speed).
+
+**Caveats:** the R8 release APK builds clean (incl. `lintVitalRelease`) but must be validated on a real tablet before distribution. The audit's "appcompat is unused" finding was a false positive (`Theme.ZodiacControl` extends `Theme.AppCompat.DayNight.NoActionBar`).
+
+---
+
 ## 2026-05-03 — CRT beam + vectorText: rolled to all concepts, dialed up
 
 After validating the look on Concept A, rolled the same shared chrome treatment to B / C / D (the user's call: "good enough, apply to all"), then a second commit dialed both subsystems up a notch for more pop.

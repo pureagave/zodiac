@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting Amazon Fire tablets in landscape. Currently a v0.1.0 prototype using "Concept B: CRT Vector" aesthetic (80s monochrome vector terminal with scanlines).
+Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting Amazon Fire tablets in landscape. Currently a v0.1.0 prototype. Four runtime-switchable cockpit "concepts" — A `CRT VECTOR`, B `PERSPECTIVE`, C `TRACKER`, D `BAY` (`core/model/CockpitConcept`) — share the same underlying state and an 80s monochrome aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
 
 Package: `ai.openclaw.zodiaccontrol`
 
@@ -18,25 +18,36 @@ Package: `ai.openclaw.zodiaccontrol`
 ./gradlew ktlintFormat               # Auto-fix formatting
 ```
 
-CI runs all four checks (ktlint, detekt, unit tests, assembleDebug) on push/PR to `main`.
+```bash
+./gradlew lintDebug                  # Android Lint (manifest/permission/API)
+./gradlew assembleRelease            # R8 minify + resource shrink (unsigned without a keystore)
+```
+
+CI runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDebug on push/PR to `main` (via the Gradle wrapper). Run the same gates locally before each commit.
 
 ## Architecture
 
 **Reactive state with Coroutines + Flow.** ViewModel subscribes to repository/gateway flows and exposes a single `StateFlow<CockpitUiState>` to the Compose UI.
 
 **Key layers:**
-- `ui/viewmodel/CockpitViewModel` — state orchestration, input validation (heading 0-359, speed 0-160)
-- `ui/state/CockpitUiState` — immutable data class, updated via `.copy()`
-- `data/VehicleConnectionGateway` — interface for transport selection/connection + command sending
-- `data/RoutedVehicleGateway` — routes commands to the currently selected transport adapter
+- `CockpitScreen` — top-level dispatcher: reads `CockpitConcept` from state and routes to one of the four concept screens (`CRTVectorScreen`, `ui/concepts/PerspectiveGridScreen` / `MotionTrackerScreen` / `InstrumentBayScreen`)
+- `ui/viewmodel/CockpitViewModel` — state orchestration, input validation (heading 0-359, speed 0-160), command dispatch, map/GPS/concept actions
+- `ui/state/CockpitUiState` — immutable data class, updated via `.copy()` (includes `commandError` surfaced from failed command sends)
+- `data/VehicleConnectionGateway` / `data/RoutedVehicleGateway` — interface + pure router that forwards commands to the currently selected transport adapter (note: switching transports does **not** disconnect the old adapter — see `RoutedVehicleGatewayTest`)
 - `data/TelemetryRepository` — streams `Telemetry` via Flow
 - `data/transport/TransportAdapter` — pluggable interface (connect/disconnect/send) per transport type (BLE/USB/WiFi)
-- `core/model/VehicleCommand` — sealed interface (SetHeading, SetSpeed, EmergencyStop)
+- `core/model/VehicleCommand` — sealed interface (`SetHeading`, `SetSpeed`)
 - `core/connection/ConnectionModels` — TransportType enum, ConnectionPhase, ConnectionState
 
-**All transports are currently fake** (FakeTransportAdapter, FakeTelemetryRepository). Real BLE/USB/WiFi adapters are a future milestone.
+**GPS / location (see "GPS sourcing"):** `data/sensor/*LocationSource` (Fake/System/BLE/USB) behind `RoutedLocationSource` + `LocationSourceRegistry`, feeding `data/sensor/nmea/NmeaParser`. Same selector-chip pattern as transports.
 
-**DI is manual** in `MainActivity.kt` — no Hilt/Dagger. Dependencies are created and wired up directly.
+**Playa map + navigation:** `data/playa/` (GeoJSON parser → binary cache → `PlayaMapRepository`), `core/geo/` (equirectangular `PlayaProjection`, `PlayaViewport`), `core/navigation/` (`PlayaNavigator`, clock-bearing cues), rendered by `ui/playamap/` (projection, markers, labels, pan/pinch touch input).
+
+**Preferences:** `data/prefs/DataStoreCockpitPreferences` persists GPS source / map mode / tilt / zoom / concept across launches (Jetpack DataStore).
+
+**All transports are currently fake** (FakeTransportAdapter, FakeTelemetryRepository). Real BLE/USB/WiFi transport adapters are a future milestone; the GPS location sources, by contrast, have real System/BLE/USB implementations.
+
+**DI is manual** in `ZodiacApplication.kt` (process-lifetime scope) — no Hilt/Dagger. Dependencies are created and wired up directly.
 
 ## GPS sourcing
 
@@ -48,16 +59,18 @@ Fire tablets have no built-in GNSS. Architecture is a pluggable `LocationSource`
 
 The phone bring-up exists specifically to prove `NetworkLocationSource` end-to-end before any hardware is bought.
 
-## UI Structure (CRTVectorScreen.kt)
+## UI Structure
 
-Three-rail layout: left rail (system cards), center viewport (Canvas wireframe + touch input), right rail (transport selector + status). Full-screen scanline overlay. Touch on center viewport maps X→heading, Y→speed.
+`CockpitScreen` dispatches on the active `CockpitConcept`. Concept A (`CRTVectorScreen`) is the canonical three-rail layout: left rail (system cards), center viewport (the playa map Canvas), right rail (transport selector + status), with a full-screen scanline overlay. Concepts B/C/D (`ui/concepts/`) are alternate HUD presentations over the same state.
+
+Center-viewport touch drives the **map**, not the vehicle: drag to pan, pinch to zoom, two-finger twist to rotate (`ui/playamap/MapTouchInput`). Heading/speed are set programmatically / by the synthetic GPS, not by tapping the viewport. (An earlier X→heading / Y→speed mapping was replaced by the map interaction.)
 
 Color palette: pure black bg, neon green vectors (#00FF66), electric blue (#00BFFF), amber accents (#FFD166).
 
 ## Conventions
 
 - **Kotlin 2.0.21**, JDK 17, Compose BOM 2024.11.00, AGP 8.7.3
-- Detekt config at `config/detekt/detekt.yml` — MagicNumber, MaxLineLength, and LongMethod rules are disabled
+- Detekt config at `config/detekt/detekt.yml` — `MagicNumber`, `MaxLineLength`, `LongMethod` disabled; `ReturnCount` relaxed to 3 (guard-clause validation), `TooManyFunctions` bumped for the canonical screen/ViewModel, `FunctionNaming` loosened for lowercase composables. Broad `catch (Exception)` at hardware/IO boundaries is `@Suppress`ed locally with a rationale rather than rule-disabled.
 - KtLint in Android mode, strict (fails on violations)
 - Landscape-only, minSdk 30, targetSdk 35
 - Test with JUnit 4 + kotlinx-coroutines-test (`runTest`, `advanceUntilIdle`)

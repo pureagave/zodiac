@@ -1,5 +1,7 @@
 # Zodiac UI Concepts (Aliens/80s Sci‑Fi Inspired)
 
+> **Superseded (2026-06-14).** This is the original pre-build concept exploration (Tactical Grid / CRT Vector / Dropship Console). The shipped app carries four different runtime concepts — A CRT VECTOR, B PERSPECTIVE, C TRACKER, D BAY. See README "Current build" for what actually ships; kept here for design history.
+
 ## App Naming (Android conventions)
 
 - **App name:** `Zodiac Control`

@@ -22,7 +22,7 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 - BRC map rendered into all four concepts with concept-specific palettes (green CRT for A, neon perspective for B, dim/lit sweep palette for C, blocky orange tiles for D). Pinch-zoom, drag-pan, recenter, and a TOP/TILT mode toggle are wired to every concept's rail.
 - Concept C's M41A-style sweep arm illuminates the real BRC map — features brighten as the wedge passes over them rather than as static blips.
 - Zoom-gated map labels in concepts B and D: plazas, named arcs and clock-position radials, CPNs, and art (major art like The Temple and The Man come in earlier than self-funded). Street labels are deduplicated across the BRC source's per-segment features so each logical street draws once. Toilets are unlabelled but recoloured BRC porta-potty purple as the type indicator.
-- Center viewport: BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading. Two map modes: `TOP` (orthographic, ego at center — default) and `TILT` (~40° pitched 3D with a retro perspective-grid backdrop, ego anchored to the lower third — Battlezone / Out-Run feel). Touch on the viewport sets heading (X) and speed (Y); pinch zooms.
+- Center viewport: BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading. Two map modes: `TOP` (orthographic, ego at center — default) and `TILT` (~40° pitched 3D with a retro perspective-grid backdrop, ego anchored to the lower third — Battlezone / Out-Run feel). Touch pans (drag), zooms (pinch), and rotates (two-finger twist) the map; heading/speed come from the GPS fix, not from tapping the viewport.
 - Art layer: 332 2025 placements bundled from iBurn-Data; majors (Honorarium + ManPavGrant) drawn larger than self-funded and labelled at lower zoom.
 - GPS / location source abstraction: pluggable `LocationSource` with four implementations — synthetic `FakeLocationSource` (default, slow circle around the Spike for testing), Android `LocationManager`, Bluetooth Classic SPP NMEA receivers, and USB serial NMEA dongles via [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android). Source selectable at runtime via the right-rail GPS chips. Map viewport centers on the live ego fix.
 - Scanline overlay
@@ -49,11 +49,14 @@ Tablets gain a 5th `LocationSource` implementation (`NET`) alongside FAKE / SYST
 
 Workflow: `.github/workflows/android-ci.yml`
 
-Runs on pushes/PRs to `main`:
+Runs on pushes/PRs to `main` (via the Gradle wrapper):
 1. `:app:ktlintCheck`
 2. `:app:detekt`
-3. `:app:testDebugUnitTest`
-4. `:app:assembleDebug`
+3. `:app:lintDebug` (Android Lint)
+4. `:app:testDebugUnitTest`
+5. `:app:assembleDebug`
+
+Release builds (`:app:assembleRelease`) run R8 minify + resource shrink and are signed when `ZODIAC_KEYSTORE_FILE` (+ matching password/alias) is provided via env or gradle properties; otherwise they build unsigned.
 
 ## Run locally
 
@@ -63,7 +66,7 @@ Runs on pushes/PRs to `main`:
 
 ## Next sprint recommendations
 
-- Replace placeholder wireframe with traced Zodiac geometry layers
-- Add theme skinning and animation system
-- Add telemetry domain model + fake feed service abstraction
-- Introduce Compose UI tests/snapshot tests for critical screens
+- Build `NetworkLocationSource` (NET) — the UDP-10110 shared-WiFi GPS path is the production target (see GPS sourcing plan); add the `INTERNET` permission with it.
+- Operational logging (Timber + rolling file) so a misbehaving tablet can be postmortem'd on the playa (`tasks/open.md` M10).
+- Compose UI / instrumented tests for the map touch interaction (drag-pan / pinch / twist), which has no automated coverage.
+- Validate the R8-shrunk release APK on a real Fire tablet before fleet distribution.

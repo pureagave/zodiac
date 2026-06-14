@@ -1,4 +1,6 @@
-# Wireframe Previews (WIP)
+# Wireframe Previews (WIP — superseded)
+
+> **Superseded (2026-06-14).** The project pivoted from a traced Zodiac vehicle wireframe to the live Black Rock City playa map; the traced-geometry direction below was never built. Kept for history.
 
 Current checkpoint includes selected canonical base references for wireframe extraction:
 
