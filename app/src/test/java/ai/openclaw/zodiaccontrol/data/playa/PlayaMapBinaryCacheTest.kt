@@ -12,6 +12,7 @@ import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.DataOutputStream
 import java.io.File
 import java.io.FileOutputStream
 
@@ -78,6 +79,40 @@ class PlayaMapBinaryCacheTest {
         val file = File(tempFolder.root, "playa_map_2025_v1.bin")
         FileOutputStream(file).use { it.write(byteArrayOf(0x00)) }
         assertNull(cache.read("2025"))
+    }
+
+    @Test
+    fun read_returns_null_when_first_count_negative() {
+        // Header is valid (magic + version + matching year) but the first
+        // layer's count is negative — readCount must reject it as corruption
+        // and read() must surface a clean miss, not a NegativeArraySizeException.
+        writeCorruptCache("2025", firstCount = -1)
+        assertNull(PlayaMapBinaryCache(tempFolder.root).read("2025"))
+    }
+
+    @Test
+    fun read_returns_null_when_first_count_huge() {
+        // A huge count would otherwise allocate a giant ArrayList (OOM);
+        // readCount rejects anything past MAX_CACHE_COUNT, so read() misses.
+        writeCorruptCache("2025", firstCount = Int.MAX_VALUE)
+        assertNull(PlayaMapBinaryCache(tempFolder.root).read("2025"))
+    }
+
+    // Hand-writes a cache whose header matches what read() expects (MAGIC,
+    // SCHEMA_VERSION, year) but whose first layer (trashFence) count is the
+    // supplied corrupt value. MAGIC/SCHEMA_VERSION mirror the private consts
+    // in PlayaMapBinaryCache: 0x504C4159 ('PLAY') and 1.
+    private fun writeCorruptCache(
+        year: String,
+        firstCount: Int,
+    ) {
+        val file = File(tempFolder.root, "playa_map_${year}_v$CACHE_SCHEMA_VERSION.bin")
+        DataOutputStream(FileOutputStream(file)).use { out ->
+            out.writeInt(CACHE_MAGIC)
+            out.writeInt(CACHE_SCHEMA_VERSION)
+            out.writeUTF(year)
+            out.writeInt(firstCount)
+        }
     }
 
     private fun sampleMap(): PlayaMap =
@@ -163,5 +198,12 @@ class PlayaMapBinaryCacheTest {
             assertEquals(expected[i].kind, actual[i].kind)
             assertEquals(expected[i].location, actual[i].location)
         }
+    }
+
+    private companion object {
+        // Mirror the private consts in PlayaMapBinaryCache so the hand-written
+        // corrupt-cache header matches what read() expects.
+        const val CACHE_MAGIC = 0x504C4159 // 'PLAY'
+        const val CACHE_SCHEMA_VERSION = 1
     }
 }

@@ -166,6 +166,97 @@ class NmeaParserTest {
         assertNotNull(NmeaParser.parse(line))
     }
 
+    @Test
+    fun rejects_latitude_out_of_range() {
+        // ddmm 9130.000 decodes to 91 deg 30 min = 91.5 deg — minutes are
+        // valid (< 60) but the latitude exceeds 90, so the fix is rejected.
+        val signed = "\$GPGGA,123519,9130.000,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun rejects_minutes_ge_sixty_in_latitude() {
+        // ddmm 4875.000 decodes to 48 deg 75 min — minutes >= 60 is impossible
+        // in a real fix, so the corrupt sentence is rejected.
+        val signed = "\$GPGGA,123519,4875.000,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun rejects_longitude_out_of_range() {
+        // dddmm 18130.000 decodes to 181 deg 30 min = 181.5 deg — exceeds 180,
+        // so the fix is rejected despite valid minutes.
+        val signed = "\$GPGGA,123519,4807.038,N,18130.000,E,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun normalizes_rmc_course_of_360_to_zero() {
+        val signed = "\$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,360.0,230394,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(0.0, fix!!.headingDeg ?: -1.0, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun normalizes_rmc_course_of_540_to_180() {
+        val signed = "\$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,540.0,230394,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(180.0, fix!!.headingDeg ?: -1.0, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun wraps_negative_rmc_course_into_range() {
+        // -90.0 wraps to 270.0 via floored modulo into [0, 360).
+        val signed = "\$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,-90.0,230394,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(270.0, fix!!.headingDeg ?: -1.0, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun rejects_garbage_latitude_field() {
+        // A non-numeric lat field must yield null, never a NaN coordinate.
+        val signed = "\$GPGGA,123519,abc,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun rejects_nan_latitude_field() {
+        // "NaN" parses to Double.NaN; isFinite() rejects it before it can
+        // become a NaN coordinate.
+        val signed = "\$GPGGA,123519,NaN,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
     private companion object {
         const val COORD_TOLERANCE = 1e-4
         const val SPEED_TOLERANCE = 1e-3

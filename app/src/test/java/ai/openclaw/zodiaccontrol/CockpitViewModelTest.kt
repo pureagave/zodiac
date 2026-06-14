@@ -1,6 +1,8 @@
 package ai.openclaw.zodiaccontrol
 
+import ai.openclaw.zodiaccontrol.core.model.AUTO_RECENTER_MS
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
+import ai.openclaw.zodiaccontrol.core.model.FollowMode
 import ai.openclaw.zodiaccontrol.core.model.MapLoadResult
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
@@ -28,9 +30,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -214,6 +220,223 @@ class CockpitViewModelTest {
                 vm.setTiltDeg(120)
                 advanceUntilIdle()
                 assertEquals(80, vm.uiState.value.tiltDeg)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun setSpeed_clampsToRange() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+
+                // Above MAX_SPEED_KPH (=160) clamps to 160.
+                vm.setSpeed(161)
+                advanceUntilIdle()
+                assertEquals(CockpitUiState.MAX_SPEED_KPH, vm.uiState.value.speedKph)
+
+                // Below MIN_SPEED_KPH (=0) clamps to 0.
+                vm.setSpeed(-1)
+                advanceUntilIdle()
+                assertEquals(CockpitUiState.MIN_SPEED_KPH, vm.uiState.value.speedKph)
+
+                // In-range value passes through.
+                vm.setSpeed(80)
+                advanceUntilIdle()
+                assertEquals(80, vm.uiState.value.speedKph)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun setHeading_clampsToRange() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+
+                // 360 wraps past MAX_HEADING_DEG (=359) -> clamps to 359.
+                vm.setHeading(360)
+                advanceUntilIdle()
+                assertEquals(CockpitUiState.MAX_HEADING_DEG, vm.uiState.value.headingDeg)
+
+                // Below MIN_HEADING_DEG (=0) clamps to 0.
+                vm.setHeading(-1)
+                advanceUntilIdle()
+                assertEquals(CockpitUiState.MIN_HEADING_DEG, vm.uiState.value.headingDeg)
+
+                // In-range value passes through.
+                vm.setHeading(123)
+                advanceUntilIdle()
+                assertEquals(123, vm.uiState.value.headingDeg)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun nudgeViewRotation_zeroDelta_isNoOp() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle() // let VM init settle
+
+                val rotationBefore = vm.uiState.value.viewRotationDeg
+                val modeBefore = vm.uiState.value.followMode
+
+                // Zero delta returns early: neither rotation nor follow mode moves,
+                // and no auto-recenter timer is armed. Read state synchronously.
+                vm.nudgeViewRotation(0f)
+                assertEquals(rotationBefore, vm.uiState.value.viewRotationDeg, 0.0)
+                assertEquals(modeBefore, vm.uiState.value.followMode)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun nudgeViewRotation_normalizesIntoRange() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle() // let VM init settle
+
+                // First nudge parks rotation near the top of the range and switches to
+                // FREE (in FREE the GPS collector no longer rewrites viewRotationDeg, so
+                // the next nudge accumulates deterministically). Do NOT advance the
+                // scheduler after a nudge or the 60 s auto-recenter timer would fire.
+                vm.nudgeViewRotation(350f)
+                assertEquals(FollowMode.FREE, vm.uiState.value.followMode)
+
+                // 350 + 20 = 370 raw; floored modulo normalizes to 10, staying in [0,360).
+                vm.nudgeViewRotation(20f)
+                val rotation = vm.uiState.value.viewRotationDeg
+                assertEquals(10.0, rotation, 1e-3)
+                assertTrue("expected $rotation in [0, 360)", rotation >= 0.0 && rotation < 360.0)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun sendFailure_setsCommandError_thenSuccessClearsIt() =
+        runTest {
+            val gateway = FakeVehicleGateway()
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = gateway,
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+
+                // A throwing send surfaces as a non-null commandError.
+                gateway.failSend = true
+                vm.setHeading(90)
+                advanceUntilIdle()
+                assertNotNull(vm.uiState.value.commandError)
+
+                // A subsequent successful send clears the prior error.
+                gateway.failSend = false
+                vm.setHeading(90)
+                advanceUntilIdle()
+                assertNull(vm.uiState.value.commandError)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun autoRecenter_revertsToTrackUpAfterTimeout() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle() // let VM init settle
+
+                // A rotate gesture switches to FREE and arms the auto-recenter timer.
+                // Read synchronously so we observe FREE before the timer fires.
+                vm.nudgeViewRotation(30f)
+                assertEquals(FollowMode.FREE, vm.uiState.value.followMode)
+
+                // The delay(AUTO_RECENTER_MS) runs on the test scheduler; advancing
+                // virtual time past it fires the deterministic revert to TRACK_UP.
+                advanceTimeBy(AUTO_RECENTER_MS)
+                runCurrent()
+                assertEquals(FollowMode.TRACK_UP, vm.uiState.value.followMode)
             } finally {
                 store.clear()
             }
