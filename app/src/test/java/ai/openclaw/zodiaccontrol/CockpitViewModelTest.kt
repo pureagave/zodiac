@@ -1,6 +1,10 @@
 package ai.openclaw.zodiaccontrol
 
+import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
+import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
 import ai.openclaw.zodiaccontrol.core.model.AUTO_RECENTER_MS
+import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.core.model.FollowMode
 import ai.openclaw.zodiaccontrol.core.model.MapLoadResult
@@ -408,6 +412,292 @@ class CockpitViewModelTest {
         }
 
     @Test
+    fun cycleConcept_advancesThroughAllFourAndPersistsEach() =
+        runTest {
+            val prefs = RecordingCockpitPreferences()
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = prefs,
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+
+                // Default concept is A; each cycle advances one step and wraps A after D.
+                assertEquals(CockpitConcept.A, vm.uiState.value.concept)
+
+                vm.cycleConcept()
+                advanceUntilIdle()
+                assertEquals(CockpitConcept.B, vm.uiState.value.concept)
+
+                vm.cycleConcept()
+                advanceUntilIdle()
+                assertEquals(CockpitConcept.C, vm.uiState.value.concept)
+
+                vm.cycleConcept()
+                advanceUntilIdle()
+                assertEquals(CockpitConcept.D, vm.uiState.value.concept)
+
+                vm.cycleConcept()
+                advanceUntilIdle()
+                assertEquals(CockpitConcept.A, vm.uiState.value.concept)
+
+                // Every advance is persisted in order.
+                assertEquals(
+                    listOf(CockpitConcept.B, CockpitConcept.C, CockpitConcept.D, CockpitConcept.A),
+                    prefs.concepts,
+                )
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun selectLocationSource_updatesStatePersistsAndRoutesSelect() =
+        runTest {
+            val fake = StubLocationSource(LocationSourceType.FAKE)
+            val system = StubLocationSource(LocationSourceType.SYSTEM)
+            val routed =
+                RoutedLocationSource(
+                    registry = LocationSourceRegistry(sources = listOf(fake, system)),
+                    scope = this.backgroundScope,
+                    initialType = LocationSourceType.FAKE,
+                )
+            val prefs = RecordingCockpitPreferences()
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = routed,
+                        preferences = prefs,
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+                assertEquals(LocationSourceType.FAKE, vm.uiState.value.selectedLocationSource)
+
+                vm.selectLocationSource(LocationSourceType.SYSTEM)
+                advanceUntilIdle()
+
+                // State follows the routed source's selection, the choice is persisted,
+                // and the routed source stopped FAKE and started SYSTEM.
+                assertEquals(LocationSourceType.SYSTEM, vm.uiState.value.selectedLocationSource)
+                assertEquals(listOf(LocationSourceType.SYSTEM), prefs.locationSources)
+                assertEquals(1, fake.stopCalls)
+                assertEquals(1, system.startCalls)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun setMapMode_persistsSelectedMode() =
+        runTest {
+            val prefs = RecordingCockpitPreferences()
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = prefs,
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+
+                vm.setMapMode(MapMode.TILT)
+                advanceUntilIdle()
+                assertEquals(listOf(MapMode.TILT), prefs.mapModes)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun setTiltDeg_persistsClampedValue() =
+        runTest {
+            val prefs = RecordingCockpitPreferences()
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = prefs,
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+
+                // Out-of-range request is clamped before persistence (120 -> MAX_TILT_DEG).
+                vm.setTiltDeg(120)
+                advanceUntilIdle()
+                assertEquals(listOf(CockpitUiState.MAX_TILT_DEG), prefs.tiltDegs)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun selectTransport_andSetTransportConnected_reflectInState() =
+        runTest {
+            val gateway = FakeVehicleGateway()
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = gateway,
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+                assertEquals(TransportType.BLE, vm.uiState.value.selectedTransport)
+                assertEquals(ConnectionPhase.DISCONNECTED, vm.uiState.value.connectionPhase)
+
+                // Selecting a transport flows back through the gateway into state.
+                vm.selectTransport(TransportType.USB)
+                advanceUntilIdle()
+                assertEquals(TransportType.USB, vm.uiState.value.selectedTransport)
+
+                // Connecting / disconnecting drives the connection phase.
+                vm.setTransportConnected(true)
+                advanceUntilIdle()
+                assertEquals(ConnectionPhase.CONNECTED, vm.uiState.value.connectionPhase)
+
+                vm.setTransportConnected(false)
+                advanceUntilIdle()
+                assertEquals(ConnectionPhase.DISCONNECTED, vm.uiState.value.connectionPhase)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun nudgeFakeGps_thenReset_movesEgoFixAndReturnsToCenter() =
+        runTest {
+            // Back the routed source with the *same* FakeLocationSource the VM steers,
+            // so the live ticker's fixes flow into uiState.locationState (and egoFix).
+            val fake =
+                ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                    scope = this.backgroundScope,
+                )
+            val routed =
+                RoutedLocationSource(
+                    registry = LocationSourceRegistry(sources = listOf(fake)),
+                    scope = this.backgroundScope,
+                    initialType = LocationSourceType.FAKE,
+                )
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = routed,
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource = fake,
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                // The fake source has an infinite-delay ticker; never advanceUntilIdle
+                // it. runCurrent drains init + the first emitted Active fix only.
+                runCurrent()
+                val centerFix = vm.uiState.value.egoFix
+                assertNotNull(centerFix)
+                assertEquals(GoldenSpike.Y2025.lat, centerFix!!.location.lat, 1e-9)
+                assertEquals(GoldenSpike.Y2025.lon, centerFix.location.lon, 1e-9)
+
+                // Teleporting north pushes an immediate fix at a higher latitude.
+                vm.nudgeFakeGps(0.0, 500.0)
+                runCurrent()
+                val nudged = vm.uiState.value.egoFix
+                assertNotNull(nudged)
+                assertTrue(
+                    "expected nudged lat ${nudged!!.location.lat} north of center ${centerFix.location.lat}",
+                    nudged.location.lat > centerFix.location.lat,
+                )
+
+                // Reset clears the parked offset, returning the ego to center.
+                vm.resetFakeGps()
+                runCurrent()
+                val resetFix = vm.uiState.value.egoFix
+                assertNotNull(resetFix)
+                assertEquals(GoldenSpike.Y2025.lat, resetFix!!.location.lat, 1e-9)
+                assertEquals(GoldenSpike.Y2025.lon, resetFix.location.lon, 1e-9)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun telemetryStream_doesNotOverwriteUserHeading() =
+        runTest {
+            // StaticTelemetryRepo reports headingDeg = 42 but thermalC = 60 / DIAGNOSTIC.
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+
+                // User sets a heading that differs from the telemetry-reported 42.
+                vm.setHeading(200)
+                advanceUntilIdle()
+
+                // Telemetry drove thermal / mode (so the collector demonstrably ran)...
+                assertEquals(60, vm.uiState.value.thermalC)
+                assertEquals(CockpitMode.DIAGNOSTIC, vm.uiState.value.mode)
+                // ...but never clobbered the user-owned heading.
+                assertEquals(200, vm.uiState.value.headingDeg)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
     fun autoRecenter_revertsToTrackUpAfterTimeout() =
         runTest {
             val store = ViewModelStore()
@@ -470,7 +760,39 @@ private class NoOpCockpitPreferences : CockpitPreferences {
 
     override suspend fun setPixelsPerMeter(zoom: Double) = Unit
 
-    override suspend fun setConcept(concept: ai.openclaw.zodiaccontrol.core.model.CockpitConcept) = Unit
+    override suspend fun setConcept(concept: CockpitConcept) = Unit
+}
+
+private class RecordingCockpitPreferences(
+    private val snapshot: CockpitPrefsSnapshot = CockpitPrefsSnapshot.DEFAULT,
+) : CockpitPreferences {
+    val locationSources = mutableListOf<LocationSourceType>()
+    val mapModes = mutableListOf<MapMode>()
+    val tiltDegs = mutableListOf<Int>()
+    val zooms = mutableListOf<Double>()
+    val concepts = mutableListOf<CockpitConcept>()
+
+    override suspend fun read(): CockpitPrefsSnapshot = snapshot
+
+    override suspend fun setLocationSource(type: LocationSourceType) {
+        locationSources += type
+    }
+
+    override suspend fun setMapMode(mode: MapMode) {
+        mapModes += mode
+    }
+
+    override suspend fun setTiltDeg(deg: Int) {
+        tiltDegs += deg
+    }
+
+    override suspend fun setPixelsPerMeter(zoom: Double) {
+        zooms += zoom
+    }
+
+    override suspend fun setConcept(concept: CockpitConcept) {
+        concepts += concept
+    }
 }
 
 private class StaticTelemetryRepo : TelemetryRepository {
