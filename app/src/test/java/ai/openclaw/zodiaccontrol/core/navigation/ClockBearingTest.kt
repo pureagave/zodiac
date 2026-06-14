@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.core.navigation
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class ClockBearingTest {
@@ -87,5 +88,69 @@ class ClockBearingTest {
         assertEquals("4:05", ClockTime(4, 5).format())
         assertEquals("12:00", ClockTime(12, 0).format())
         assertEquals("9:59", ClockTime(9, 59).format())
+    }
+
+    @Test
+    fun `both 0 deg and 360 deg of clock rotation map to 12 colon 00`() {
+        // The 45° axis is the clock origin: 45° -> clockDeg 0, 45+360 -> clockDeg 360.
+        // Both rawHours==0 paths must resolve to the displayed hour 12, not 0.
+        val atZero = bearingToClock(45.0)
+        val atRev = bearingToClock(45.0 + 360.0)
+        assertEquals(12, atZero.hours)
+        assertEquals(0, atZero.minutes)
+        assertEquals(12, atRev.hours)
+        assertEquals(0, atRev.minutes)
+    }
+
+    @Test
+    fun `minute rounding rounds a value just under a tick up to the next minute`() {
+        // 1° = 2 min. 4:30 = 180°. Half a clock-minute = 0.25°, so 180.24° rounds
+        // to 180° (4:30) but 180.26° (just over half a minute) rounds up to 4:31.
+        assertEquals(30, bearingToClock(180.24).minutes)
+        val justOver = bearingToClock(180.26)
+        assertEquals(4, justOver.hours)
+        assertEquals(31, justOver.minutes)
+    }
+
+    @Test
+    fun `minute rounding can carry into the next hour at 59 and a half minutes`() {
+        // 4:59.75 in clock-minutes rounds to 5:00. 5:00 = 195°; back off 0.125°
+        // (a quarter clock-minute under the tick) so it rounds up across the hour.
+        val c = bearingToClock(195.0 - 0.1)
+        assertEquals(5, c.hours)
+        assertEquals(0, c.minutes)
+    }
+
+    @Test
+    fun `a non-zero axis bearing rotates the clock mapping`() {
+        // With axis at 0°, the clock origin moves to true north: 0° -> 12:00,
+        // and 90° (a quarter turn = 180 clock-min = 3h) -> 3:00.
+        assertEquals("12:00", bearingToClock(0.0, axisBearingDeg = 0.0).format())
+        val ninety = bearingToClock(90.0, axisBearingDeg = 0.0)
+        assertEquals(3, ninety.hours)
+        assertEquals(0, ninety.minutes)
+    }
+
+    @Test
+    fun `clockToBearing round-trips a fractional minute clock under a custom axis`() {
+        // Off-radial minute value through both directions with a non-default axis,
+        // exercising the axis offset in the inverse path too.
+        val axis = 12.0
+        val deg = clockToBearing(ClockTime(4, 42), axisBearingDeg = axis)
+        val back = bearingToClock(deg, axisBearingDeg = axis)
+        assertEquals(4, back.hours)
+        assertEquals(42, back.minutes)
+    }
+
+    @Test
+    fun `ClockTime rejects hours outside 1 to 12`() {
+        assertThrows(IllegalArgumentException::class.java) { ClockTime(0, 0) }
+        assertThrows(IllegalArgumentException::class.java) { ClockTime(13, 0) }
+    }
+
+    @Test
+    fun `ClockTime rejects minutes outside 0 to 59`() {
+        assertThrows(IllegalArgumentException::class.java) { ClockTime(4, -1) }
+        assertThrows(IllegalArgumentException::class.java) { ClockTime(4, 60) }
     }
 }

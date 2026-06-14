@@ -61,8 +61,85 @@ class SystemLocationSourceTest {
             assertSame(LocationSourceState.Disconnected, source.state.value)
         }
 
+    @Test
+    fun start_when_request_throws_illegal_argument_emits_error_and_stays_unregistered() =
+        runTest {
+            // IllegalArgumentException mirrors a missing GPS_PROVIDER on Fire tablets.
+            val handle =
+                RecordingHandle(
+                    grantPermission = true,
+                    throwOnRequest = IllegalArgumentException("no GPS_PROVIDER"),
+                )
+            val source = SystemLocationSource(managerHandle = handle)
+
+            source.start()
+
+            val state = source.state.value
+            assertTrue(state is LocationSourceState.Error)
+            assertTrue((state as LocationSourceState.Error).detail.startsWith("GPS unavailable:"))
+            assertEquals(1, handle.requestCount)
+
+            // A failed start must leave listenerRegistered false so a later start() retries.
+            handle.throwOnRequest = null
+            source.start()
+            assertEquals(2, handle.requestCount)
+            assertSame(LocationSourceState.Searching, source.state.value)
+        }
+
+    @Test
+    fun start_when_request_throws_security_exception_emits_error() =
+        runTest {
+            val handle =
+                RecordingHandle(
+                    grantPermission = true,
+                    throwOnRequest = SecurityException("revoked"),
+                )
+            val source = SystemLocationSource(managerHandle = handle)
+
+            source.start()
+
+            val state = source.state.value
+            assertTrue(state is LocationSourceState.Error)
+            assertTrue((state as LocationSourceState.Error).detail.startsWith("GPS unavailable:"))
+            assertEquals(1, handle.requestCount)
+        }
+
+    @Test
+    fun start_without_permission_does_not_call_request_and_reports_missing_permission() =
+        runTest {
+            val handle = RecordingHandle(grantPermission = false)
+            val source = SystemLocationSource(managerHandle = handle)
+
+            source.start()
+
+            assertEquals(0, handle.requestCount)
+            val state = source.state.value
+            assertTrue(state is LocationSourceState.Error)
+            assertEquals("ACCESS_FINE_LOCATION not granted", (state as LocationSourceState.Error).detail)
+        }
+
+    @Test
+    fun stop_then_start_after_idempotent_start_re_registers() =
+        runTest {
+            val handle = RecordingHandle(grantPermission = true)
+            val source = SystemLocationSource(managerHandle = handle)
+
+            // Double-start is idempotent: only one registration.
+            source.start()
+            source.start()
+            assertEquals(1, handle.requestCount)
+
+            // stop() unregisters, then a fresh start() registers again.
+            source.stop()
+            assertEquals(1, handle.removeCount)
+            source.start()
+            assertEquals(2, handle.requestCount)
+            assertSame(LocationSourceState.Searching, source.state.value)
+        }
+
     private class RecordingHandle(
         private val grantPermission: Boolean,
+        var throwOnRequest: RuntimeException? = null,
     ) : SystemLocationManagerHandle {
         var requestCount: Int = 0
         var removeCount: Int = 0
@@ -75,6 +152,7 @@ class SystemLocationSourceTest {
             listener: LocationListener,
         ) {
             requestCount += 1
+            throwOnRequest?.let { throw it }
         }
 
         override fun removeUpdates(listener: LocationListener) {

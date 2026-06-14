@@ -3,7 +3,11 @@ package ai.openclaw.zodiaccontrol.data.prefs
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -59,13 +63,87 @@ class DataStoreCockpitPreferencesTest {
             assertEquals(5.0, snapshot.pixelsPerMeter, ZOOM_TOLERANCE)
         }
 
-    private fun TestScope.newPrefs(): DataStoreCockpitPreferences {
-        val store = PreferenceDataStoreFactory.create(scope = this.backgroundScope) { tmp.newFile("prefs.preferences_pb") }
-        return DataStoreCockpitPreferences(store)
-    }
+    @Test
+    fun clamps_below_minimum_values_up_to_floor_on_read() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefs()
+
+            // Existing coverage only exercises the high end (9999 -> 80, 99.0 -> 5.0);
+            // the lower coerceIn bound is a separate branch. MIN_TILT_DEG = 0, MIN_ZOOM = 0.05.
+            prefs.setTiltDeg(-12)
+            prefs.setPixelsPerMeter(0.0001)
+
+            val snapshot = prefs.read()
+            assertEquals(0, snapshot.tiltDeg)
+            assertEquals(0.05, snapshot.pixelsPerMeter, ZOOM_TOLERANCE)
+        }
+
+    @Test
+    fun falls_back_to_defaults_for_corrupt_enum_strings() =
+        runTest(UnconfinedTestDispatcher()) {
+            val store = newStore()
+            val prefs = DataStoreCockpitPreferences(store)
+
+            // Simulate a tampered/old file: enum keys hold strings that no longer
+            // resolve via valueOf. read() must absorb the IllegalArgumentException
+            // and return the documented defaults rather than crash.
+            store.edit {
+                it[stringPreferencesKey("location_source")] = "GALILEO"
+                it[stringPreferencesKey("map_mode")] = "ISOMETRIC"
+                it[stringPreferencesKey("cockpit_concept")] = "Z"
+            }
+
+            val snapshot = prefs.read()
+            assertEquals(CockpitPrefsSnapshot.DEFAULT.locationSource, snapshot.locationSource)
+            assertEquals(CockpitPrefsSnapshot.DEFAULT.mapMode, snapshot.mapMode)
+            assertEquals(CockpitPrefsSnapshot.DEFAULT.concept, snapshot.concept)
+        }
+
+    @Test
+    fun round_trips_each_enum_constant_independently() =
+        runTest(UnconfinedTestDispatcher()) {
+            // Every persisted enum value must survive write+read, not just the
+            // single combination in round_trips_every_field.
+            LocationSourceType.entries.forEach { source ->
+                val prefs = newPrefs()
+                prefs.setLocationSource(source)
+                assertEquals(source, prefs.read().locationSource)
+            }
+            MapMode.entries.forEach { mode ->
+                val prefs = newPrefs()
+                prefs.setMapMode(mode)
+                assertEquals(mode, prefs.read().mapMode)
+            }
+            CockpitConcept.entries.forEach { concept ->
+                val prefs = newPrefs()
+                prefs.setConcept(concept)
+                assertEquals(concept, prefs.read().concept)
+            }
+        }
+
+    @Test
+    fun preserves_in_range_numeric_values_without_coercion() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefs()
+
+            // Mid-range values sit strictly inside both coerceIn bounds, so they
+            // must pass through untouched — confirming clamping is bounds-only.
+            prefs.setTiltDeg(40)
+            prefs.setPixelsPerMeter(1.5)
+
+            val snapshot = prefs.read()
+            assertEquals(40, snapshot.tiltDeg)
+            assertEquals(1.5, snapshot.pixelsPerMeter, ZOOM_TOLERANCE)
+        }
+
+    private fun TestScope.newStore(): DataStore<Preferences> =
+        PreferenceDataStoreFactory.create(scope = this.backgroundScope) { tmp.newFile("prefs_${nextFileId++}.preferences_pb") }
+
+    private fun TestScope.newPrefs(): DataStoreCockpitPreferences = DataStoreCockpitPreferences(newStore())
 
     private companion object {
         const val ZOOM_TOLERANCE = 1e-9
+        private var nextFileId = 0
     }
 }
 

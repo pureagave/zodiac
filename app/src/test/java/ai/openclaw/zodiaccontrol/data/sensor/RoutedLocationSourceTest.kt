@@ -95,6 +95,65 @@ class RoutedLocationSourceTest {
             assertEquals(1, fake.stopCalls)
         }
 
+    @Test
+    fun select_stops_previous_before_starting_new() =
+        runTest(UnconfinedTestDispatcher()) {
+            val log = mutableListOf<String>()
+            val fake = StubLocationSource(LocationSourceType.FAKE, lifecycleLog = log)
+            val system = StubLocationSource(LocationSourceType.SYSTEM, lifecycleLog = log)
+            val routed = newRouted(listOf(fake, system), LocationSourceType.FAKE, this.backgroundScope)
+
+            routed.start()
+            routed.select(LocationSourceType.SYSTEM)
+
+            // start() runs FAKE:start; select() must stop the old source first.
+            assertEquals(
+                listOf("FAKE:start", "FAKE:stop", "SYSTEM:start"),
+                log,
+            )
+        }
+
+    @Test
+    fun state_follows_newly_selected_source_and_ignores_old_emissions() =
+        runTest(UnconfinedTestDispatcher()) {
+            val fake = StubLocationSource(LocationSourceType.FAKE)
+            val system = StubLocationSource(LocationSourceType.SYSTEM)
+            val routed = newRouted(listOf(fake, system), LocationSourceType.FAKE, this.backgroundScope)
+
+            routed.start()
+            routed.select(LocationSourceType.SYSTEM)
+
+            // Selecting SYSTEM started it, so the routed state now mirrors
+            // SYSTEM's Searching, not FAKE's.
+            assertEquals(LocationSourceState.Searching, routed.state.value)
+
+            // After switching away, a late emission from the old source must not
+            // leak through; only the selected source's state is reflected.
+            fake.emit(LocationSourceState.Active(STALE_FIX))
+            assertEquals(LocationSourceState.Searching, routed.state.value)
+
+            system.emit(LocationSourceState.Active(SAMPLE_FIX))
+            assertEquals(LocationSourceState.Active(SAMPLE_FIX), routed.state.value)
+        }
+
+    @Test
+    fun select_back_to_original_source_restarts_it() =
+        runTest(UnconfinedTestDispatcher()) {
+            val fake = StubLocationSource(LocationSourceType.FAKE)
+            val system = StubLocationSource(LocationSourceType.SYSTEM)
+            val routed = newRouted(listOf(fake, system), LocationSourceType.FAKE, this.backgroundScope)
+
+            routed.start()
+            routed.select(LocationSourceType.SYSTEM)
+            routed.select(LocationSourceType.FAKE)
+
+            assertEquals(LocationSourceType.FAKE, routed.selected.value)
+            assertEquals(2, fake.startCalls)
+            assertEquals(1, fake.stopCalls)
+            assertEquals(1, system.startCalls)
+            assertEquals(1, system.stopCalls)
+        }
+
     private fun newRouted(
         sources: List<LocationSource>,
         initial: LocationSourceType,
@@ -108,5 +167,6 @@ class RoutedLocationSourceTest {
 
     private companion object {
         val SAMPLE_FIX = GpsFix(LatLon(lon = -119.2, lat = 40.78))
+        val STALE_FIX = GpsFix(LatLon(lon = 0.0, lat = 0.0))
     }
 }

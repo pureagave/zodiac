@@ -12,7 +12,17 @@ import kotlinx.coroutines.flow.asStateFlow
  * No timers or background work, so it composes safely with `runTest` /
  * `advanceUntilIdle` without fighting the virtual clock.
  */
-internal class StubLocationSource(override val type: LocationSourceType) : LocationSource {
+internal class StubLocationSource(
+    override val type: LocationSourceType,
+    /**
+     * Optional shared log so tests can assert the cross-source ordering of
+     * start/stop calls (e.g. that a select() stops the old source before
+     * starting the new one). Each entry is `"$type:start"` / `"$type:stop"`.
+     * Defaults to null, so existing call sites that only need the per-source
+     * counters keep compiling unchanged.
+     */
+    private val lifecycleLog: MutableList<String>? = null,
+) : LocationSource {
     private val _state = MutableStateFlow<LocationSourceState>(LocationSourceState.Disconnected)
     override val state: StateFlow<LocationSourceState> = _state.asStateFlow()
 
@@ -24,11 +34,13 @@ internal class StubLocationSource(override val type: LocationSourceType) : Locat
 
     override suspend fun start() {
         startCalls += 1
+        lifecycleLog?.add("$type:start")
         _state.value = LocationSourceState.Searching
     }
 
     override suspend fun stop() {
         stopCalls += 1
+        lifecycleLog?.add("$type:stop")
         _state.value = LocationSourceState.Disconnected
     }
 
