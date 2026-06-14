@@ -257,6 +257,124 @@ class NmeaParserTest {
         assertNull(NmeaParser.parse(line))
     }
 
+    @Test
+    fun round_trips_gga_position_from_known_coordinates() {
+        // 40 deg 47.000' N -> ddmm "4047.000"; 111 deg 54.000' W -> dddmm "11154.000".
+        // Decode: deg = int(ddmm/100), min = ddmm - deg*100, result = deg + min/60.
+        val expectedLat = 40.0 + 47.0 / 60.0
+        val expectedLon = -(111.0 + 54.0 / 60.0)
+        val signed = "\$GPGGA,123519,4047.000,N,11154.000,W,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(expectedLat, fix!!.location.lat, COORD_TOLERANCE)
+        assertEquals(expectedLon, fix.location.lon, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun round_trips_rmc_position_from_known_coordinates() {
+        // 51 deg 30.000' N -> "5130.000"; 0 deg 7.500' W -> "00007.500".
+        val expectedLat = 51.0 + 30.0 / 60.0
+        val expectedLon = -(0.0 + 7.5 / 60.0)
+        val signed = "\$GPRMC,123519,A,5130.000,N,00007.500,W,022.4,084.4,230394,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(expectedLat, fix!!.location.lat, COORD_TOLERANCE)
+        assertEquals(expectedLon, fix.location.lon, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun parses_rmc_position_with_empty_speed_and_course() {
+        // Empty optional speed/course fields must null those values, not crash,
+        // and the position must still decode.
+        val signed = "\$GPRMC,123519,A,4807.038,N,01131.000,E,,,230394,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(48.1173, fix!!.location.lat, COORD_TOLERANCE)
+        assertEquals(11.516667, fix.location.lon, COORD_TOLERANCE)
+        assertNull(fix.speedKph)
+        assertNull(fix.headingDeg)
+    }
+
+    @Test
+    fun parses_gga_position_with_empty_hdop_altitude_fields() {
+        // Empty HDOP/altitude optionals must leave fixQualityM null without
+        // disturbing the decoded position.
+        val signed = "\$GPGGA,123519,4807.038,N,01131.000,E,1,08,,,M,,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(48.1173, fix!!.location.lat, COORD_TOLERANCE)
+        assertNull(fix.fixQualityM)
+    }
+
+    @Test
+    fun returns_null_for_truncated_gga_below_required_field_count() {
+        // GGA stops short before the HDOP index the parser reads; the size
+        // guard must return null rather than throwing IndexOutOfBounds.
+        val signed = "\$GPGGA,123519,4807.038,N,01131.000,E,1"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun returns_null_for_truncated_rmc_below_required_field_count() {
+        // RMC stops short before the course index the parser reads.
+        val signed = "\$GPRMC,123519,A,4807.038,N,01131.000,E"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun ignores_gsa_sentence_type() {
+        val signed = "\$GPGSA,A,3,04,05,,09,12,,,24,,,,,2.5,1.3,2.1"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun ignores_gsv_sentence_type() {
+        val signed = "\$GPGSV,3,1,11,03,03,111,00,04,15,270,00,06,01,010,00,13,06,292,00"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        assertNull(NmeaParser.parse(line))
+    }
+
+    @Test
+    fun applies_southern_and_western_hemispheres_on_gga() {
+        // GGA hemisphere sign handling, complementing the existing RMC case.
+        val signed = "\$GPGGA,123519,4807.038,S,01131.000,W,1,08,0.9,545.4,M,46.9,M,,"
+        val cs = signed.substring(1).fold(0) { acc, c -> acc xor c.code }
+        val line = "$signed*${"%02X".format(cs)}"
+
+        val fix = NmeaParser.parse(line)
+
+        assertNotNull(fix)
+        assertEquals(-48.1173, fix!!.location.lat, COORD_TOLERANCE)
+        assertEquals(-11.516667, fix.location.lon, COORD_TOLERANCE)
+    }
+
     private companion object {
         const val COORD_TOLERANCE = 1e-4
         const val SPEED_TOLERANCE = 1e-3

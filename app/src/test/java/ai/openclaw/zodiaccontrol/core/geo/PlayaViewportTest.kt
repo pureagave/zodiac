@@ -1,6 +1,8 @@
 package ai.openclaw.zodiaccontrol.core.geo
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlayaViewportTest {
@@ -94,6 +96,143 @@ class PlayaViewportTest {
             )
         val s = v.toScreen(PlayaPoint(eastM = 0.0, northM = 100.0))
         assertEquals(0.78 * 600 - 100.0, s.y, EPSILON)
+    }
+
+    @Test
+    fun center_atCameraCenter_landsAtCxCy() {
+        // A point AT the camera center maps to (cx, cy) = (widthPx/2, heightPx*anchorYFrac).
+        val v =
+            PlayaViewport(
+                center = PlayaPoint(eastM = 123.0, northM = -45.0),
+                widthPx = 1024,
+                heightPx = 768,
+                pixelsPerMeter = 1.0,
+                anchorYFrac = 0.5,
+            )
+        val s = v.toScreen(PlayaPoint(eastM = 123.0, northM = -45.0))
+        assertEquals(512.0, s.x, EPSILON)
+        assertEquals(384.0, s.y, EPSILON)
+    }
+
+    @Test
+    fun northOfCenter_isAboveCenter() {
+        val v = PlayaViewport(widthPx = 800, heightPx = 600, pixelsPerMeter = 1.0)
+        val s = v.toScreen(PlayaPoint(eastM = 0.0, northM = 50.0))
+        assertEquals(400.0, s.x, EPSILON)
+        // North of center → screen y strictly less than cy (300).
+        assertTrue("north point should be above center, got y=${s.y}", s.y < 300.0)
+    }
+
+    @Test
+    fun eastOfCenter_isRightOfCenter() {
+        val v = PlayaViewport(widthPx = 800, heightPx = 600, pixelsPerMeter = 1.0)
+        val s = v.toScreen(PlayaPoint(eastM = 50.0, northM = 0.0))
+        assertEquals(300.0, s.y, EPSILON)
+        // East of center → screen x strictly greater than cx (400).
+        assertTrue("east point should be right of center, got x=${s.x}", s.x > 400.0)
+    }
+
+    @Test
+    fun heading90_rotatesEastPointTowardScreenTop() {
+        // headingDeg=90 → cosH=0, sinH=1. For an east-only offset (dx,0):
+        // xRot = dx*0 - 0*1 = 0; yRot = dx*1 + 0*1 = dx. So x stays at cx and the
+        // point lifts above center by dx*pixelsPerMeter (track-up).
+        val v = PlayaViewport(headingDeg = 90.0, widthPx = 800, heightPx = 600, pixelsPerMeter = 1.0)
+        val s = v.toScreen(PlayaPoint(eastM = 120.0, northM = 0.0))
+        assertEquals(400.0, s.x, EPSILON)
+        assertEquals(300.0 - 120.0, s.y, EPSILON)
+    }
+
+    @Test
+    fun toScreenInline_matchesToScreen_headingZero() {
+        val v = PlayaViewport(widthPx = 800, heightPx = 600, pixelsPerMeter = 0.75)
+        val expected = v.toScreen(PlayaPoint(eastM = 60.0, northM = -30.0))
+        var sx = Double.NaN
+        var sy = Double.NaN
+        v.toScreenInline(eastM = 60.0, northM = -30.0) { x, y ->
+            sx = x
+            sy = y
+        }
+        assertEquals(expected.x, sx, EPSILON)
+        assertEquals(expected.y, sy, EPSILON)
+    }
+
+    @Test
+    fun toScreenInline_matchesToScreen_withHeadingAndOffset() {
+        val v =
+            PlayaViewport(
+                center = PlayaPoint(eastM = 10.0, northM = 20.0),
+                headingDeg = 37.0,
+                widthPx = 800,
+                heightPx = 600,
+                pixelsPerMeter = 0.4,
+                anchorYFrac = 0.6,
+            )
+        val expected = v.toScreen(PlayaPoint(eastM = 90.0, northM = 140.0))
+        var sx = Double.NaN
+        var sy = Double.NaN
+        v.toScreenInline(eastM = 90.0, northM = 140.0) { x, y ->
+            sx = x
+            sy = y
+        }
+        assertEquals(expected.x, sx, EPSILON)
+        assertEquals(expected.y, sy, EPSILON)
+    }
+
+    @Test
+    fun pixelsPerMeter_doubling_doublesNorthOffset() {
+        val a = PlayaViewport(widthPx = 800, heightPx = 600, pixelsPerMeter = 0.5)
+        val b = PlayaViewport(widthPx = 800, heightPx = 600, pixelsPerMeter = 1.0)
+        val pa = a.toScreen(PlayaPoint(eastM = 0.0, northM = 200.0))
+        val pb = b.toScreen(PlayaPoint(eastM = 0.0, northM = 200.0))
+        // Offset above center (300 - y) should scale linearly with pixelsPerMeter.
+        assertEquals(100.0, 300.0 - pa.y, EPSILON)
+        assertEquals(200.0, 300.0 - pb.y, EPSILON)
+    }
+
+    @Test
+    fun nonZeroCenter_offsetPointMapsRelativeToCenter() {
+        // Camera centered 30 m east / 40 m north; a point 30 m east + 40 m north
+        // beyond center is 30 m E and 40 m N of the camera center.
+        val v =
+            PlayaViewport(
+                center = PlayaPoint(eastM = 30.0, northM = 40.0),
+                widthPx = 800,
+                heightPx = 600,
+                pixelsPerMeter = 1.0,
+            )
+        val s = v.toScreen(PlayaPoint(eastM = 60.0, northM = 80.0))
+        // dx=30 → 30 px right of cx; dy=40 → 40 px above cy.
+        assertEquals(430.0, s.x, EPSILON)
+        assertEquals(260.0, s.y, EPSILON)
+    }
+
+    @Test
+    fun anchorYFrac_belowZero_throws() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PlayaViewport(widthPx = 800, heightPx = 600, anchorYFrac = -0.1)
+        }
+    }
+
+    @Test
+    fun anchorYFrac_aboveOne_throws() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PlayaViewport(widthPx = 800, heightPx = 600, anchorYFrac = 1.1)
+        }
+    }
+
+    @Test
+    fun anchorYFrac_zero_isAccepted() {
+        val v = PlayaViewport(widthPx = 800, heightPx = 600, anchorYFrac = 0.0)
+        val s = v.toScreen(PlayaPoint(0.0, 0.0))
+        assertEquals(0.0, s.y, EPSILON)
+    }
+
+    @Test
+    fun anchorYFrac_one_isAccepted() {
+        val v = PlayaViewport(widthPx = 800, heightPx = 600, anchorYFrac = 1.0)
+        val s = v.toScreen(PlayaPoint(0.0, 0.0))
+        assertEquals(600.0, s.y, EPSILON)
     }
 
     private companion object {

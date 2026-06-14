@@ -190,6 +190,75 @@ class PlayaNavigatorTest {
     }
 
     @Test
+    fun `two point trash fence returns Unknown`() {
+        // One point short of MIN_FENCE_POINTS (3): a degenerate fence can't be
+        // a polygon, so we bail before any street/ray work.
+        val twoPoint =
+            city.copy(
+                trashFenceM = listOf(PlayaPoint(-2000.0, -2000.0), PlayaPoint(2000.0, -2000.0)),
+            )
+        val cue = computeNavigationCue(PlayaPoint(0.0, 0.0), headingDeg = 0, city = twoPoint)
+        assertEquals(NavigationCue.Unknown, cue)
+    }
+
+    @Test
+    fun `on an arc but within a metre of the Man returns Unknown`() {
+        // Arc polyline that runs straight through the origin (a short E-W line).
+        // Sitting at the Man, bearing-from-origin is undefined, so the
+        // ORIGIN_EPSILON_M guard fires and we emit Unknown instead of a fake 12:00.
+        val throughOrigin =
+            PlayaStreet(
+                name = "OriginArc",
+                kind = StreetKind.Arc,
+                pointsM = listOf(PlayaPoint(-50.0, 0.0), PlayaPoint(50.0, 0.0)),
+            )
+        val withArc = city.copy(streetsM = listOf(throughOrigin))
+        val cue = computeNavigationCue(PlayaPoint(0.0, 0.0), headingDeg = 90, city = withArc)
+        assertEquals(NavigationCue.Unknown, cue)
+    }
+
+    @Test
+    fun `on radial inside Esplanade heading outward falls back to Esplanade as last arc`() {
+        // Sit on the 4:30 radial at 300 m — inside the innermost arc (660 m),
+        // so no arc has actually been passed yet. The lastArcPassed fallback
+        // keeps the cue stable by naming Esplanade.
+        val ego = PlayaPoint(eastM = 0.0, northM = -300.0)
+        val cue = computeNavigationCue(ego, headingDeg = 180, city = city)
+        assertTrue("expected OnRadialOutbound, got $cue", cue is NavigationCue.OnRadialOutbound)
+        val outbound = cue as NavigationCue.OnRadialOutbound
+        assertEquals("4:30", outbound.radialName)
+        assertEquals("Esplanade", outbound.lastArc)
+    }
+
+    @Test
+    fun `on radial beyond Cherryh heading outward names the outermost arc`() {
+        // Sit on the 4:30 radial at 1100 m — past Cherryh (1080 m), the
+        // outermost arc. takeWhile walks all four arcs and lands on Cherryh.
+        // (1100 is 20 m off the Cherryh ring, outside the 15 m snap, so we stay
+        // pinned to the radial rather than the arc.)
+        val ego = PlayaPoint(eastM = 0.0, northM = -1100.0)
+        val cue = computeNavigationCue(ego, headingDeg = 180, city = city)
+        assertTrue("expected OnRadialOutbound, got $cue", cue is NavigationCue.OnRadialOutbound)
+        val outbound = cue as NavigationCue.OnRadialOutbound
+        assertEquals("4:30", outbound.radialName)
+        assertEquals("Cherryh", outbound.lastArc)
+    }
+
+    @Test
+    fun `on the 9 colon 00 radial heading toward Man returns OnRadialInbound carrying that radial name`() {
+        // 9:00 radial sits at 315° true. A fix 900 m out along it, then heading
+        // 135° (back at the Man) → inbound. Confirms radialName plumbs through
+        // for a radial other than 4:30, and nextArc is the innermost arc.
+        val rad = Math.toRadians(315.0)
+        val ego = PlayaPoint(eastM = 900.0 * Math.sin(rad), northM = 900.0 * Math.cos(rad))
+        val cue = computeNavigationCue(ego, headingDeg = 135, city = city)
+        assertTrue("expected OnRadialInbound, got $cue", cue is NavigationCue.OnRadialInbound)
+        val inbound = cue as NavigationCue.OnRadialInbound
+        assertEquals("9:00", inbound.radialName)
+        assertEquals("Esplanade", inbound.nextArc)
+    }
+
+    @Test
     fun `between 4 colon 30 and 5 colon 00 from deep playa - heading toward city`() {
         // Stand 1500 m at clock 4:42 (true bearing = 4:42 in clock-deg + 45°).
         // 4:42 = 4*30 + 42*0.5 = 141° clock-deg → 186° true.
