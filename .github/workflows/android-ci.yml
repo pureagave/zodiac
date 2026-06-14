@@ -23,19 +23,22 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      # Uses the project's Gradle wrapper (8.10.2) as the single source of
+      # truth for the Gradle version; the action provides dependency caching.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
 
       - name: Ktlint
-        run: gradle :app:ktlintCheck --stacktrace
+        run: ./gradlew :app:ktlintCheck --stacktrace
 
       - name: Detekt
-        run: gradle :app:detekt --stacktrace
+        run: ./gradlew :app:detekt --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew :app:lintDebug --stacktrace
 
       - name: Unit tests
-        run: gradle :app:testDebugUnitTest --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
 
       - name: Assemble debug
-        run: gradle :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug --stacktrace

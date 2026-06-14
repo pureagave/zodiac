@@ -23,13 +23,45 @@ android {
         }
     }
 
+    // Release signing is opt-in: set ZODIAC_KEYSTORE_FILE (plus the matching
+    // password/alias via env vars or gradle properties) to produce a signed
+    // release for the tablet fleet. Without it, release builds unsigned — R8
+    // still runs, so CI/local can verify shrinking without a keystore.
+    val releaseKeystore =
+        System.getenv("ZODIAC_KEYSTORE_FILE")
+            ?: project.findProperty("zodiac.keystore.file") as String?
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword =
+                    System.getenv("ZODIAC_KEYSTORE_PASSWORD")
+                        ?: project.findProperty("zodiac.keystore.password") as String?
+                keyAlias =
+                    System.getenv("ZODIAC_KEY_ALIAS")
+                        ?: project.findProperty("zodiac.key.alias") as String?
+                keyPassword =
+                    System.getenv("ZODIAC_KEY_PASSWORD")
+                        ?: project.findProperty("zodiac.key.password") as String?
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 shrink + obfuscate. proguard-rules.pro keeps the usb-serial
+            // driver classes the prober resolves at runtime. Validate the
+            // shrunk APK on a real tablet before fleet distribution.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (releaseKeystore != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
@@ -70,7 +102,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3:1.3.1")
+    implementation("androidx.compose.material3:material3")
     implementation("com.github.mik3y:usb-serial-for-android:3.9.0")
 
     testImplementation("junit:junit:4.13.2")

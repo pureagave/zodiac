@@ -2,6 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Android 12+ requires COARSE alongside FINE (user may grant only COARSE). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+      TODO(NET source): the production GPS path streams NMEA over UDP 10110 on
+      the car WiFi (NetworkLocationSource, not yet built). UDP sockets need
+      android.permission.INTERNET — add it when that source lands.
+    -->
 
     <!-- Bluetooth Classic SPP for NMEA GPS receivers (Phase 4d). -->
     <uses-permission
