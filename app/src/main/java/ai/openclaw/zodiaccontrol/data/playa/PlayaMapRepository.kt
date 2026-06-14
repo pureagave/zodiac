@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONException
 import java.io.IOException
@@ -75,12 +77,21 @@ class AssetsPlayaMapRepository(
     private val _loadResult = MutableStateFlow<MapLoadResult>(MapLoadResult.Loading)
     override val loadResult: StateFlow<MapLoadResult> = _loadResult.asStateFlow()
 
+    // Serialises load() so concurrent callers can't both parse and race the
+    // cache write (which would corrupt it via overlapping FileOutputStreams).
+    private val loadMutex = Mutex()
+
     override val map: Flow<PlayaMap> =
         _loadResult.mapNotNull { (it as? MapLoadResult.Loaded)?.map }
 
     override suspend fun load() {
         if (_loadResult.value is MapLoadResult.Loaded) return
-        _loadResult.value = runLoadAttempt()
+        loadMutex.withLock {
+            // Double-checked under the lock: a racing caller may have loaded
+            // while we waited, in which case we must not parse/write again.
+            if (_loadResult.value is MapLoadResult.Loaded) return
+            _loadResult.value = runLoadAttempt()
+        }
     }
 
     private suspend fun runLoadAttempt(): MapLoadResult =

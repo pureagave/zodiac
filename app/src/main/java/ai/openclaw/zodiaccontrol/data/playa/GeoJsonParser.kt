@@ -84,9 +84,17 @@ object GeoJsonParser {
         return out
     }
 
-    private fun readLatLon(arr: JSONArray?): LatLon? =
-        arr?.takeIf { it.length() >= 2 }
-            ?.let { LatLon(lon = it.getDouble(0), lat = it.getDouble(1)) }
+    private fun readLatLon(arr: JSONArray?): LatLon? {
+        val coords = arr?.takeIf { it.length() >= 2 } ?: return null
+        // optDouble (not getDouble) so a non-numeric/null coordinate yields
+        // NaN instead of throwing JSONException, which would abort the whole
+        // layer parse for one bad feature. NaN is dropped to null here, so
+        // the existing per-feature null-handling skips just that feature.
+        val lon = coords.optDouble(0, Double.NaN)
+        val lat = coords.optDouble(1, Double.NaN)
+        if (!lon.isFinite() || !lat.isFinite()) return null
+        return LatLon(lon = lon, lat = lat)
+    }
 }
 
 private fun String?.nullIfEmpty(): String? = this?.trim()?.takeIf { it.isNotEmpty() }

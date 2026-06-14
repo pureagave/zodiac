@@ -43,6 +43,10 @@ class RoutedVehicleGateway(
     private fun currentAdapter(): TransportAdapter = transportRegistry.adapterFor(_selectedTransport.value)
 
     override suspend fun selectTransport(transportType: TransportType) {
+        // Pure router: switching transports does NOT disconnect the old adapter
+        // (adapter lifecycle is owned elsewhere), so re-selecting a link finds
+        // it still up. See RoutedVehicleGatewayTest. Note this is the OPPOSITE
+        // choice from RoutedLocationSource.select(), which stops the old source.
         _selectedTransport.value = transportType
     }
 

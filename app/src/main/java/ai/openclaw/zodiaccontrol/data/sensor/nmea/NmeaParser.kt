@@ -56,8 +56,8 @@ object NmeaParser {
         } else {
             GpsFix(
                 location = LatLon(lon = lon, lat = lat),
-                speedKph = fields[RMC_SPEED_KNOTS].toDoubleOrNull()?.let { it * KNOTS_TO_KPH },
-                headingDeg = fields[RMC_COURSE].toDoubleOrNull(),
+                speedKph = parseSpeedKph(fields[RMC_SPEED_KNOTS]),
+                headingDeg = parseCourseDeg(fields[RMC_COURSE]),
             )
         }
     }
@@ -67,11 +67,13 @@ object NmeaParser {
         hemi: String,
     ): Double? {
         val ddmm = value.toDoubleOrNull()
-        if (ddmm == null || hemi !in LAT_HEMIS) return null
+        if (ddmm == null || !ddmm.isFinite() || hemi !in LAT_HEMIS) return null
         val deg = (ddmm / NMEA_LAT_DEG_DIVISOR).toInt()
         val min = ddmm - deg * NMEA_LAT_DEG_DIVISOR
+        if (min < 0.0 || min >= MINUTES_PER_DEGREE) return null
         val signed = deg + min / MINUTES_PER_DEGREE
-        return if (hemi == "S") -signed else signed
+        val result = if (hemi == "S") -signed else signed
+        return result.takeIf { it.isFinite() && it in LAT_MIN_DEG..LAT_MAX_DEG }
     }
 
     private fun parseLongitude(
@@ -79,11 +81,35 @@ object NmeaParser {
         hemi: String,
     ): Double? {
         val dddmm = value.toDoubleOrNull()
-        if (dddmm == null || hemi !in LON_HEMIS) return null
+        if (dddmm == null || !dddmm.isFinite() || hemi !in LON_HEMIS) return null
         val deg = (dddmm / NMEA_LAT_DEG_DIVISOR).toInt()
         val min = dddmm - deg * NMEA_LAT_DEG_DIVISOR
+        if (min < 0.0 || min >= MINUTES_PER_DEGREE) return null
         val signed = deg + min / MINUTES_PER_DEGREE
-        return if (hemi == "W") -signed else signed
+        val result = if (hemi == "W") -signed else signed
+        return result.takeIf { it.isFinite() && it in LON_MIN_DEG..LON_MAX_DEG }
+    }
+
+    /**
+     * Ground speed in kph from a knots field. Returns null if the field is
+     * absent, non-finite, or negative (an optional field, so bad input is
+     * simply omitted rather than clamped).
+     */
+    private fun parseSpeedKph(value: String): Double? {
+        val knots = value.toDoubleOrNull() ?: return null
+        if (!knots.isFinite() || knots < 0.0) return null
+        return knots * KNOTS_TO_KPH
+    }
+
+    /**
+     * Course-over-ground normalized into [0.0, 360.0) via floored modulo so
+     * 360.0 wraps to 0.0 and negatives wrap correctly. Returns null if the
+     * field is absent or non-finite.
+     */
+    private fun parseCourseDeg(value: String): Double? {
+        val course = value.toDoubleOrNull() ?: return null
+        if (!course.isFinite()) return null
+        return ((course % DEGREES_PER_CIRCLE) + DEGREES_PER_CIRCLE) % DEGREES_PER_CIRCLE
     }
 
     private fun checksumValid(sentence: String): Boolean {
@@ -118,6 +144,11 @@ object NmeaParser {
 
     private const val NMEA_LAT_DEG_DIVISOR = 100.0
     private const val MINUTES_PER_DEGREE = 60.0
+    private const val DEGREES_PER_CIRCLE = 360.0
+    private const val LAT_MIN_DEG = -90.0
+    private const val LAT_MAX_DEG = 90.0
+    private const val LON_MIN_DEG = -180.0
+    private const val LON_MAX_DEG = 180.0
     private const val KNOTS_TO_KPH = 1.852
     private const val HDOP_TO_METERS = 5.0
     private const val CHECKSUM_HEX_MIN_LEN = 1

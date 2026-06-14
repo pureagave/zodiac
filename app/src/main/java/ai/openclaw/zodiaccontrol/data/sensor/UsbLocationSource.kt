@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 /**
  * USB-serial source for NMEA GPS dongles. Uses
@@ -49,7 +48,7 @@ class UsbLocationSource(
     override suspend fun start() {
         job?.cancel()
         _state.value = LocationSourceState.Searching
-        job = scope.launch(Dispatchers.IO) { runConnection() }
+        job = scope.launch(Dispatchers.IO) { runConnection(this) }
     }
 
     override suspend fun stop() {
@@ -62,7 +61,10 @@ class UsbLocationSource(
         _state.value = LocationSourceState.Disconnected
     }
 
-    private fun runConnection() {
+    // Broad catch is deliberate: any driver/IO failure must surface as an
+    // Error state, never crash the IO coroutine.
+    @Suppress("TooGenericExceptionCaught")
+    private fun runConnection(connectionScope: CoroutineScope) {
         val manager = applicationContext.getSystemService(Context.USB_SERVICE) as UsbManager
         val driver = UsbSerialProber.getDefaultProber().findAllDrivers(manager).firstOrNull()
         if (driver == null) {
@@ -74,23 +76,34 @@ class UsbLocationSource(
             _state.value = LocationSourceState.Error(detail = NO_PERMISSION_MSG)
             return
         }
+        val sp = driver.ports.firstOrNull()
+        if (sp == null) {
+            _state.value = LocationSourceState.Error(detail = NO_DEVICE_MSG)
+            return
+        }
         try {
-            val sp = driver.ports.first()
             port = sp
             sp.open(connection)
             sp.setParameters(baudRate, DATA_BITS, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-            pumpNmea(sp)
-        } catch (io: IOException) {
+            pumpNmea(sp, connectionScope)
+        } catch (ex: Exception) {
             runCatching { port?.close() }
             port = null
-            _state.value = LocationSourceState.Error(detail = "USB I/O: ${io.message}")
+            // A read/close throwing after stop() cancelled this job is a normal
+            // shutdown, not an error — stop() already set Disconnected.
+            if (connectionScope.isActive) {
+                _state.value = LocationSourceState.Error(detail = "USB: ${ex.message}")
+            }
         }
     }
 
-    private fun pumpNmea(sp: UsbSerialPort) {
+    private fun pumpNmea(
+        sp: UsbSerialPort,
+        connectionScope: CoroutineScope,
+    ) {
         val buf = ByteArray(BUFFER_BYTES)
         val line = StringBuilder(LINE_PREALLOC)
-        while (scope.coroutineContext.isActive) {
+        while (connectionScope.isActive) {
             val n = sp.read(buf, READ_TIMEOUT_MS)
             if (n > 0) ingestBytes(buf, n, line)
         }

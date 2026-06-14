@@ -46,6 +46,13 @@ data class CockpitUiState(
     val mapLoadError: String? = null,
     val concept: CockpitConcept = CockpitConcept.A,
     val navCue: NavigationCue = NavigationCue.Unknown,
+    /**
+     * Short message describing the most recent failed vehicle command send
+     * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced
+     * here so a dropped command on a vehicle control surface is observable
+     * instead of being silently swallowed by the fire-and-forget launch.
+     */
+    val commandError: String? = null,
 ) {
     companion object {
         const val DEFAULT_TILT_DEG: Int = 40

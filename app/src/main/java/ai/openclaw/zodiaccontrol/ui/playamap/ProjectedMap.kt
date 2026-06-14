@@ -225,7 +225,7 @@ private fun collectAllVertices(
     val out = ArrayList<Offset>()
     for (flat in flats) {
         var i = 0
-        while (i < flat.size) {
+        while (i + 1 < flat.size) {
             projection.projectInline(flat[i], flat[i + 1]) { e, n ->
                 viewport.toScreenInline(e, n) { sx, sy ->
                     out.add(Offset(sx.toFloat(), sy.toFloat()))

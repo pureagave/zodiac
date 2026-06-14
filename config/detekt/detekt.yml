@@ -3,6 +3,12 @@ style:
     active: false
   MaxLineLength:
     active: false
+  ReturnCount:
+    # Input-validation / hardware-setup code reads cleanest as a short
+    # sequence of early-return guards (NMEA + coordinate parsing, USB/GPS
+    # source bring-up). Default 2 is tight for that style; 3 caps it
+    # without forcing arrow-nesting.
+    max: 3
 
 complexity:
   LongMethod:
@@ -10,9 +16,10 @@ complexity:
   TooManyFunctions:
     # Default 11 was tight for CockpitViewModel which exposes one method per
     # discrete cockpit operation. Bumped each time a discrete cockpit action
-    # is added (concept cycling was the latest); kept just above the actual
-    # count so adding a 14th would still require a deliberate decision.
-    thresholdInClasses: 18
+    # is added (concept cycling was one; the private sendCommand dispatch
+    # helper was the latest); kept just above the actual count so the next
+    # addition still requires a deliberate decision.
+    thresholdInClasses: 19
     # CRTVectorScreen.kt is the canonical screen — header / left / right
     # rail / center viewport / chips all live as private composables in
     # one file. 12 fits the current shape with a touch of headroom.

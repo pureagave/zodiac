@@ -243,8 +243,13 @@ class CockpitViewModel(
     fun nudgeViewRotation(deltaDeg: Float) {
         if (deltaDeg == 0f) return
         _uiState.update { current ->
+            // Floored modulo keeps the accumulated rotation in [0, 360) so it
+            // never grows unbounded and bleeds float precision over a long
+            // session of rotate gestures.
+            val raw = current.viewRotationDeg + deltaDeg
+            val normalized = ((raw % FULL_CIRCLE_DEG) + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
             current.copy(
-                viewRotationDeg = current.viewRotationDeg + deltaDeg,
+                viewRotationDeg = normalized,
                 followMode = FollowMode.FREE,
             )
         }
@@ -296,7 +301,7 @@ class CockpitViewModel(
         // No-op when the active source isn't FAKE.
         fakeLocationSource.setHeading(clamped.toDouble())
         recomputeNavCue()
-        viewModelScope.launch { vehicleGateway.send(VehicleCommand.SetHeading(clamped)) }
+        sendCommand(VehicleCommand.SetHeading(clamped))
     }
 
     fun setSpeed(speedKph: Int) {
@@ -305,7 +310,24 @@ class CockpitViewModel(
         // Throttle the synthetic GPS. > 0 makes the fake source advance the
         // ego at every tick along the current heading; 0 parks it.
         fakeLocationSource.setSpeed(clamped.toDouble())
-        viewModelScope.launch { vehicleGateway.send(VehicleCommand.SetSpeed(clamped)) }
+        sendCommand(VehicleCommand.SetSpeed(clamped))
+    }
+
+    /**
+     * Dispatches a vehicle command, surfacing any transport failure as
+     * [CockpitUiState.commandError] rather than silently dropping it; a
+     * successful send clears a prior error. [runCatching] keeps a flaky
+     * gateway from crashing the cockpit (and, unlike `catch (Exception)`,
+     * doesn't need a generic-catch suppression).
+     */
+    private fun sendCommand(command: VehicleCommand) {
+        viewModelScope.launch {
+            runCatching { vehicleGateway.send(command) }
+                .onSuccess { _uiState.update { it.copy(commandError = null) } }
+                .onFailure { e ->
+                    _uiState.update { it.copy(commandError = "Command send failed: ${e.message}") }
+                }
+        }
     }
 
     fun selectTransport(type: TransportType) {
@@ -361,6 +383,9 @@ class CockpitViewModel(
         if (cue != state.navCue) _uiState.update { it.copy(navCue = cue) }
     }
 }
+
+/** Degrees in a full revolution — used to normalize accumulated view rotation. */
+private const val FULL_CIRCLE_DEG: Double = 360.0
 
 class CockpitViewModelFactory(
     private val telemetryRepository: TelemetryRepository,

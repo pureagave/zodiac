@@ -88,8 +88,12 @@ class SystemLocationSource(
     private val listener: LocationListener =
         LocationListener { loc -> _state.value = LocationSourceState.Active(loc.toGpsFix()) }
 
+    @Volatile
     private var listenerRegistered: Boolean = false
 
+    // Broad catch is deliberate: a missing GPS_PROVIDER (Fire tablets) or a
+    // revoked permission must surface as an Error state, never crash start().
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun start() {
         if (listenerRegistered) return
         if (!managerHandle.hasFineLocationPermission()) {
@@ -97,7 +101,14 @@ class SystemLocationSource(
             return
         }
         _state.value = LocationSourceState.Searching
-        managerHandle.requestGpsUpdates(MIN_INTERVAL_MS, MIN_DISTANCE_M, listener)
+        try {
+            managerHandle.requestGpsUpdates(MIN_INTERVAL_MS, MIN_DISTANCE_M, listener)
+        } catch (ex: Exception) {
+            // GPS_PROVIDER may not exist (Fire tablets) or permission may have
+            // been revoked — surface as Error rather than stalling in Searching.
+            _state.value = LocationSourceState.Error(detail = "GPS unavailable: ${ex.message}")
+            return
+        }
         listenerRegistered = true
     }
 

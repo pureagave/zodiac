@@ -62,11 +62,17 @@ private fun cueOnStreet(
 ): NavigationCue =
     when (street.kind) {
         StreetKind.Radial -> radialCue(ego, headingDeg, street, city)
+        // At the Man (distance ~0) the bearing-from-origin is undefined
+        // (atan2(0,0)=0 would fake a 12:00), so we can't name a clock.
         StreetKind.Arc ->
-            NavigationCue.OnArc(
-                arcName = street.name,
-                clock = bearingToClock(bearingFromOriginTo(ego), city.axisBearingDeg),
-            )
+            if (distanceFromOrigin(ego) < ORIGIN_EPSILON_M) {
+                NavigationCue.Unknown
+            } else {
+                NavigationCue.OnArc(
+                    arcName = street.name,
+                    clock = bearingToClock(bearingFromOriginTo(ego), city.axisBearingDeg),
+                )
+            }
     }
 
 private fun radialCue(
@@ -132,3 +138,10 @@ private fun cueOffStreet(
 
 private const val MIN_FENCE_POINTS = 3
 private const val INNERMOST_ARC = "Esplanade"
+
+/**
+ * Below this distance from the Man, the ego is effectively *at* the origin and
+ * bearing-from-origin is meaningless (atan2(0,0)=0 would fake a 12:00). 1 m is
+ * far tighter than any BRC street width, so normal on-arc fixes are unaffected.
+ */
+private const val ORIGIN_EPSILON_M = 1.0

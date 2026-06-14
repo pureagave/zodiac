@@ -48,7 +48,10 @@ import java.io.IOException
  * `[lon, lat] * N` Double payload for polylines.
  */
 class PlayaMapBinaryCache(private val cacheDir: File) {
-    @Suppress("SwallowedException") // Cache miss is silent by design; caller falls through to JSON.
+    // Broad catch + swallow are deliberate: a malformed/torn cache or IO
+    // failure must degrade to a silent miss (caller falls through to JSON),
+    // never crash the load.
+    @Suppress("SwallowedException", "TooGenericExceptionCaught")
     fun read(year: String): PlayaMap? {
         val file = fileFor(year)
         if (!file.exists()) return null
@@ -73,6 +76,10 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
             }
         } catch (ioe: IOException) {
             null
+        } catch (re: RuntimeException) {
+            // Malformed cache (e.g. NegativeArraySize, IndexOutOfBounds,
+            // BufferUnderflow): treat as a miss, fall through to JSON.
+            null
         }
     }
 
@@ -81,10 +88,11 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
         year: String,
         map: PlayaMap,
     ) {
+        val file = fileFor(year)
+        val tmp = File(file.parentFile, "${file.name}.tmp")
         try {
-            val file = fileFor(year)
             file.parentFile?.mkdirs()
-            DataOutputStream(BufferedOutputStream(FileOutputStream(file))).use { out ->
+            DataOutputStream(BufferedOutputStream(FileOutputStream(tmp))).use { out ->
                 out.writeInt(MAGIC)
                 out.writeInt(SCHEMA_VERSION)
                 out.writeUTF(year)
@@ -97,8 +105,12 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
                 writePointFeatureList(out, map.cpns)
                 writePointFeatureList(out, map.art)
             }
+            // Stream fully flushed/closed by use{}; swap atomically. A torn
+            // write leaves only the .tmp, never a half-written final cache.
+            if (!tmp.renameTo(file)) throw IOException("rename failed: $tmp -> $file")
         } catch (ioe: IOException) {
             // Next launch retries; JSON path remains available.
+            tmp.delete()
         }
     }
 
@@ -116,7 +128,7 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
     }
 
     private fun readPolygonRingList(input: DataInputStream): List<PolygonRing> {
-        val count = input.readInt()
+        val count = readCount(input)
         val out = ArrayList<PolygonRing>(count)
         repeat(count) {
             val name = readNullableUtf(input)
@@ -140,7 +152,7 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
     }
 
     private fun readStreetLineList(input: DataInputStream): List<StreetLine> {
-        val count = input.readInt()
+        val count = readCount(input)
         val kinds = StreetKind.entries
         val out = ArrayList<StreetLine>(count)
         repeat(count) {
@@ -174,7 +186,7 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
     }
 
     private fun readPointFeatureList(input: DataInputStream): List<PointFeature> {
-        val count = input.readInt()
+        val count = readCount(input)
         val out = ArrayList<PointFeature>(count)
         repeat(count) {
             val name = readNullableUtf(input)
@@ -198,7 +210,7 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
     }
 
     private fun readLatLonList(input: DataInputStream): List<LatLon> {
-        val count = input.readInt()
+        val count = readCount(input)
         val out = ArrayList<LatLon>(count)
         repeat(count) { out.add(LatLon(lon = input.readDouble(), lat = input.readDouble())) }
         return out
@@ -232,6 +244,20 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
 
     private fun readNullableInt(input: DataInputStream): Int? = if (input.readBoolean()) input.readInt() else null
 
+    /**
+     * Reads a count/length and rejects out-of-range values before any
+     * allocation. A corrupt-but-header-valid cache can encode a negative
+     * count (NegativeArraySizeException) or a huge one (OutOfMemoryError);
+     * both escape the IOException catch and crash the load. Treat either as
+     * a corrupt cache by throwing IOException, which the read() catch turns
+     * into a clean miss (null) and the caller falls through to JSON.
+     */
+    private fun readCount(input: DataInputStream): Int {
+        val count = input.readInt()
+        if (count !in 0..MAX_CACHE_COUNT) throw IOException("corrupt cache count: $count")
+        return count
+    }
+
     companion object {
         // 'PLAY' as ASCII so a hex dump of the file header is recognisable.
         private const val MAGIC = 0x504C4159
@@ -239,5 +265,10 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
         // Bump on any breaking change to the on-disk shape — older caches
         // become unreadable and re-derive from JSON automatically.
         private const val SCHEMA_VERSION = 1
+
+        // Upper bound on any count/length read from the cache. Anything
+        // larger is taken as corruption rather than a real element count,
+        // guarding against giant ArrayList allocations (OutOfMemoryError).
+        private const val MAX_CACHE_COUNT = 5_000_000
     }
 }

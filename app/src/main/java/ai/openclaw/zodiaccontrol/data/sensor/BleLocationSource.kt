@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import java.util.UUID
 
 /**
@@ -58,7 +57,7 @@ class BleLocationSource(
         }
         job?.cancel()
         _state.value = LocationSourceState.Searching
-        job = scope.launch(Dispatchers.IO) { runConnection() }
+        job = scope.launch(Dispatchers.IO) { runConnection(this) }
     }
 
     override suspend fun stop() {
@@ -71,33 +70,43 @@ class BleLocationSource(
         _state.value = LocationSourceState.Disconnected
     }
 
+    // Broad catch is deliberate: any radio/permission/IO failure must surface
+    // as an Error state, never crash the IO coroutine.
     @SuppressLint("MissingPermission")
-    private suspend fun runConnection() {
-        val adapter = bluetoothAdapter()
-        if (adapter == null || !adapter.isEnabled) {
-            _state.value = LocationSourceState.Error(detail = ADAPTER_OFF_MSG)
-            return
-        }
-        val device = adapter.bondedDevices.firstOrNull { deviceNamePattern.matches(it.name.orEmpty()) }
-        if (device == null) {
-            _state.value = LocationSourceState.Error(detail = NO_DEVICE_MSG)
-            return
-        }
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun runConnection(connectionScope: CoroutineScope) {
         try {
+            val adapter = bluetoothAdapter()
+            if (adapter == null || !adapter.isEnabled) {
+                _state.value = LocationSourceState.Error(detail = ADAPTER_OFF_MSG)
+                return
+            }
+            val device = adapter.bondedDevices.firstOrNull { deviceNamePattern.matches(it.name.orEmpty()) }
+            if (device == null) {
+                _state.value = LocationSourceState.Error(detail = NO_DEVICE_MSG)
+                return
+            }
             val sppSocket = device.createRfcommSocketToServiceRecord(SPP_UUID)
             socket = sppSocket
             sppSocket.connect()
-            pumpNmea(sppSocket)
-        } catch (io: IOException) {
+            pumpNmea(sppSocket, connectionScope)
+        } catch (ex: Exception) {
             runCatching { socket?.close() }
             socket = null
-            _state.value = LocationSourceState.Error(detail = "BT I/O: ${io.message}")
+            // A read/close throwing after stop() cancelled this job is a normal
+            // shutdown, not an error — stop() already set Disconnected.
+            if (connectionScope.isActive) {
+                _state.value = LocationSourceState.Error(detail = "BT: ${ex.message}")
+            }
         }
     }
 
-    private suspend fun pumpNmea(sppSocket: BluetoothSocket) {
+    private fun pumpNmea(
+        sppSocket: BluetoothSocket,
+        connectionScope: CoroutineScope,
+    ) {
         sppSocket.inputStream.bufferedReader().use { reader ->
-            while (scope.coroutineContext.isActive) {
+            while (connectionScope.isActive) {
                 val line = reader.readLine() ?: break
                 NmeaParser.parse(line)?.let { _state.value = LocationSourceState.Active(it) }
             }
