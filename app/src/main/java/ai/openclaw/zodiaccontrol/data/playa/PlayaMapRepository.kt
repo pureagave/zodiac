@@ -4,12 +4,15 @@ import ai.openclaw.zodiaccontrol.core.model.MapLoadResult
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import android.content.res.AssetManager
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -81,6 +84,11 @@ class AssetsPlayaMapRepository(
     // cache write (which would corrupt it via overlapping FileOutputStreams).
     private val loadMutex = Mutex()
 
+    // Owns the fire-and-forget cache write so it survives load() returning
+    // without blocking time-to-first-map. SupervisorJob keeps a write failure
+    // from cancelling unrelated work; runs on the same IO dispatcher.
+    private val cacheScope = CoroutineScope(SupervisorJob() + ioDispatcher)
+
     override val map: Flow<PlayaMap> =
         _loadResult.mapNotNull { (it as? MapLoadResult.Loaded)?.map }
 
@@ -102,7 +110,12 @@ class AssetsPlayaMapRepository(
                     MapLoadResult.Loaded(cached)
                 } else {
                     val parsed = parseAll()
-                    binaryCache?.write(year, parsed)
+                    // Publish the map first; serialising hundreds of KB to the
+                    // binary cache must not block time-to-first-map. The write
+                    // is already best-effort, so run it fire-and-forget.
+                    binaryCache?.let { cache ->
+                        cacheScope.launch { cache.write(year, parsed) }
+                    }
                     MapLoadResult.Loaded(parsed)
                 }
             } catch (e: IOException) {

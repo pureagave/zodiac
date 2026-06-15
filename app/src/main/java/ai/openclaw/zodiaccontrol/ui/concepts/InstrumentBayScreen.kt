@@ -125,8 +125,10 @@ fun instrumentBayScreen(
                 // blocky orange palette, honouring TOP/TILT toggle and the
                 // shared zoom/pan/recenter controls.
                 tile(theme = theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    val zoomLabel =
+                        remember(state.pixelsPerMeter) { "%.2f".format(state.pixelsPerMeter) }
                     Text(
-                        text = "GROUND TRACK // ZOOM ${"%.2f".format(state.pixelsPerMeter)} px/m",
+                        text = "GROUND TRACK // ZOOM $zoomLabel px/m",
                         color = theme.accent,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,

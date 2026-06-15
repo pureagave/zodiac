@@ -108,7 +108,12 @@ fun crtVectorScreen(
         scanlineOverlay()
 
         Column(Modifier.fillMaxSize()) {
-            topHeader(state = state, concept = state.concept, onCycleConcept = onCycleConcept)
+            topHeader(
+                headingDeg = state.headingDeg,
+                speedKph = state.speedKph,
+                concept = state.concept,
+                onCycleConcept = onCycleConcept,
+            )
             Spacer(Modifier.height(6.dp))
             navCueBar(cue = state.navCue, theme = ThemeCrtVector)
             Spacer(Modifier.height(8.dp))
@@ -161,7 +166,8 @@ fun crtVectorScreen(
 
 @Composable
 private fun topHeader(
-    state: CockpitUiState,
+    headingDeg: Int,
+    speedKph: Int,
     concept: ai.openclaw.zodiaccontrol.core.model.CockpitConcept,
     onCycleConcept: () -> Unit,
 ) {
@@ -182,12 +188,12 @@ private fun topHeader(
         )
         Spacer(Modifier.weight(1f))
         vectorText(
-            text = "HDG ${"%03d".format(state.headingDeg)}°",
+            text = "HDG ${"%03d".format(headingDeg)}°",
             color = VectorGreen,
             fontSize = 14.sp,
         )
         vectorText(
-            text = "VEL ${"%03d".format(state.speedKph)}",
+            text = "VEL ${"%03d".format(speedKph)}",
             color = VectorGreen,
             fontSize = 14.sp,
         )
@@ -439,16 +445,26 @@ private fun rightRail(
             actionChip(label = "RECENTER MAP", onClick = callbacks.chips.onRecenter)
         }
 
-        listOf(
-            modeLine to Amber,
-            "> LINK ${if (state.linkStable) "ESTABLISHED" else "LOST"}" to
-                (if (state.linkStable) VectorGreen else Amber),
-            "> CONN: $connectionLabel" to VectorGreen,
-            "> THERMAL ${state.thermalC}C" to VectorGreen,
-            locationLine(state.locationState),
-            "> TOUCH INPUT ACTIVE" to VectorGreen,
-            "> NO PROTOCOL BINDING (V1)" to Amber,
-        ).forEach { (line, color) ->
+        val statusLines =
+            remember(
+                modeLine,
+                state.linkStable,
+                connectionLabel,
+                state.thermalC,
+                state.locationState,
+            ) {
+                listOf(
+                    modeLine to Amber,
+                    "> LINK ${if (state.linkStable) "ESTABLISHED" else "LOST"}" to
+                        (if (state.linkStable) VectorGreen else Amber),
+                    "> CONN: $connectionLabel" to VectorGreen,
+                    "> THERMAL ${state.thermalC}C" to VectorGreen,
+                    locationLine(state.locationState),
+                    "> TOUCH INPUT ACTIVE" to VectorGreen,
+                    "> NO PROTOCOL BINDING (V1)" to Amber,
+                )
+            }
+        statusLines.forEach { (line, color) ->
             Text(
                 text = line,
                 color = color,

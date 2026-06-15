@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 
 private val Fence = Color(0xFF00FF66)
 private val Street = Color(0xFF1F8F46)
@@ -61,6 +62,24 @@ data class MapPalette(
      */
     val crtBeam: Boolean = false,
 ) {
+    // CRT-beam invariant colours, derived purely from the palette. Computed
+    // once at construction (one instance per concept) instead of per frame in
+    // the Canvas hot path. Declared as class-body `val`s — not constructor
+    // params — so equals/hashCode/copy are unaffected. The endpoint tints
+    // blend each layer toward white; the halo tints pre-bake the alpha used by
+    // the two halo passes.
+    val crtEndpointStreet = lerp(street, Color.White, CRT_ENDPOINT_TINT)
+    val crtEndpointPlaza = lerp(plaza, Color.White, CRT_ENDPOINT_TINT)
+    val crtEndpointFence = lerp(fence, Color.White, CRT_ENDPOINT_TINT)
+    val crtHaloOuterStreetOutline = streetOutline.copy(alpha = CRT_HALO_OUTER_ALPHA)
+    val crtHaloInnerStreetOutline = streetOutline.copy(alpha = CRT_HALO_INNER_ALPHA)
+    val crtHaloOuterStreet = street.copy(alpha = CRT_HALO_OUTER_ALPHA)
+    val crtHaloInnerStreet = street.copy(alpha = CRT_HALO_INNER_ALPHA)
+    val crtHaloOuterFence = fence.copy(alpha = CRT_HALO_OUTER_ALPHA)
+    val crtHaloInnerFence = fence.copy(alpha = CRT_HALO_INNER_ALPHA)
+    val crtHaloOuterPlaza = plaza.copy(alpha = CRT_HALO_OUTER_ALPHA)
+    val crtHaloInnerPlaza = plaza.copy(alpha = CRT_HALO_INNER_ALPHA)
+
     companion object {
         /**
          * Concept A canonical palette — green/amber/blue/pink, round POIs.
@@ -98,6 +117,15 @@ private const val ART_MAJOR_RADIUS = 5f
 private const val ART_MINOR_RADIUS = 1.5f
 private const val ART_MAJOR_STROKE = 1.5f
 
+// Stroke styles are value types with compile-time-constant geometry, so a
+// single shared instance renders byte-identically to a per-frame `Stroke(...)`
+// while removing the allocation from the 60fps Canvas hot path.
+private val OUTLINE_STROKE_STYLE = Stroke(width = OUTLINE_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val STREET_STROKE_STYLE = Stroke(width = STREET_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val FENCE_STROKE_STYLE = Stroke(width = FENCE_STROKE)
+private val PLAZA_STROKE_STYLE = Stroke(width = PLAZA_STROKE)
+private val ART_MAJOR_STROKE_STYLE = Stroke(width = ART_MAJOR_STROKE)
+
 // CRT-beam aesthetic constants. The halo is the same path re-drawn
 // twice — once at a broad width with low alpha (the soft outer
 // phosphor bloom) and once at a narrower width with higher alpha (the
@@ -116,6 +144,28 @@ private const val CRT_ENDPOINT_TINT = 0.6f
 private const val CRT_ENDPOINT_RADIUS = 3.0f
 private const val CRT_PLAZA_CORNER_RADIUS = 3.4f
 private const val CRT_FENCE_CORNER_RADIUS = 3.8f
+
+// Halo stroke styles are static per layer: each layer's core width is a
+// compile-time constant and the outer/inner multipliers are constants, so the
+// product is fixed. Hoisting them removes the two `Stroke(...)` allocations per
+// halo layer (8 per frame) from the Canvas hot path; geometry is byte-identical.
+private val OUTLINE_HALO_OUTER_STYLE =
+    Stroke(width = OUTLINE_STROKE * CRT_HALO_OUTER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val OUTLINE_HALO_INNER_STYLE =
+    Stroke(width = OUTLINE_STROKE * CRT_HALO_INNER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val STREET_HALO_OUTER_STYLE =
+    Stroke(width = STREET_STROKE * CRT_HALO_OUTER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val STREET_HALO_INNER_STYLE =
+    Stroke(width = STREET_STROKE * CRT_HALO_INNER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val FENCE_HALO_OUTER_STYLE =
+    Stroke(width = FENCE_STROKE * CRT_HALO_OUTER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val FENCE_HALO_INNER_STYLE =
+    Stroke(width = FENCE_STROKE * CRT_HALO_INNER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val PLAZA_HALO_OUTER_STYLE =
+    Stroke(width = PLAZA_STROKE * CRT_HALO_OUTER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+private val PLAZA_HALO_INNER_STYLE =
+    Stroke(width = PLAZA_STROKE * CRT_HALO_INNER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
 private const val GRID_SPACING_M = 200.0
 private const val GRID_HALF_RANGE_M = 5_000.0
 private const val GRID_STROKE_PX = 1.2f
@@ -170,22 +220,22 @@ fun DrawScope.drawProjectedMap(
     drawPath(
         path = projected.streetOutlinePath,
         color = palette.streetOutline,
-        style = Stroke(width = OUTLINE_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        style = OUTLINE_STROKE_STYLE,
     )
     drawPath(
         path = projected.streetPath,
         color = palette.street,
-        style = Stroke(width = STREET_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        style = STREET_STROKE_STYLE,
     )
     drawPath(
         path = projected.trashFencePath,
         color = palette.fence,
-        style = Stroke(width = FENCE_STROKE),
+        style = FENCE_STROKE_STYLE,
     )
     drawPath(
         path = projected.plazaPath,
         color = palette.plaza,
-        style = Stroke(width = PLAZA_STROKE),
+        style = PLAZA_STROKE_STYLE,
     )
     drawPointBatch(projected.toiletPositions, palette.pointStyle, palette.toilet, TOILET_RADIUS)
     drawPointBatch(projected.cpnPositions, palette.pointStyle, palette.cpn, CPN_RADIUS)
@@ -244,7 +294,7 @@ private fun DrawScope.drawMajorArt(
                     color = palette.artMajor,
                     radius = ART_MAJOR_RADIUS,
                     center = pos,
-                    style = Stroke(width = ART_MAJOR_STROKE),
+                    style = ART_MAJOR_STROKE_STYLE,
                 )
             }
         MapPointStyle.BLOCK ->
@@ -267,26 +317,52 @@ private fun DrawScope.drawCrtHalo(
     projected: ProjectedMap,
     palette: MapPalette,
 ) {
-    drawHaloPair(projected.streetOutlinePath, palette.streetOutline, OUTLINE_STROKE)
-    drawHaloPair(projected.streetPath, palette.street, STREET_STROKE)
-    drawHaloPair(projected.trashFencePath, palette.fence, FENCE_STROKE)
-    drawHaloPair(projected.plazaPath, palette.plaza, PLAZA_STROKE)
+    drawHaloPair(
+        projected.streetOutlinePath,
+        palette.crtHaloOuterStreetOutline,
+        palette.crtHaloInnerStreetOutline,
+        OUTLINE_HALO_OUTER_STYLE,
+        OUTLINE_HALO_INNER_STYLE,
+    )
+    drawHaloPair(
+        projected.streetPath,
+        palette.crtHaloOuterStreet,
+        palette.crtHaloInnerStreet,
+        STREET_HALO_OUTER_STYLE,
+        STREET_HALO_INNER_STYLE,
+    )
+    drawHaloPair(
+        projected.trashFencePath,
+        palette.crtHaloOuterFence,
+        palette.crtHaloInnerFence,
+        FENCE_HALO_OUTER_STYLE,
+        FENCE_HALO_INNER_STYLE,
+    )
+    drawHaloPair(
+        projected.plazaPath,
+        palette.crtHaloOuterPlaza,
+        palette.crtHaloInnerPlaza,
+        PLAZA_HALO_OUTER_STYLE,
+        PLAZA_HALO_INNER_STYLE,
+    )
 }
 
 private fun DrawScope.drawHaloPair(
     path: Path,
-    color: Color,
-    coreStroke: Float,
+    outerColor: Color,
+    innerColor: Color,
+    outerStyle: Stroke,
+    innerStyle: Stroke,
 ) {
     drawPath(
         path = path,
-        color = color.copy(alpha = CRT_HALO_OUTER_ALPHA),
-        style = Stroke(width = coreStroke * CRT_HALO_OUTER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        color = outerColor,
+        style = outerStyle,
     )
     drawPath(
         path = path,
-        color = color.copy(alpha = CRT_HALO_INNER_ALPHA),
-        style = Stroke(width = coreStroke * CRT_HALO_INNER_WIDTH_MULT, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        color = innerColor,
+        style = innerStyle,
     )
 }
 
@@ -303,10 +379,9 @@ private fun DrawScope.drawCrtEndpoints(
     projected: ProjectedMap,
     palette: MapPalette,
 ) {
-    val tint = CRT_ENDPOINT_TINT
-    drawCornerDots(projected.streetEndpoints, androidx.compose.ui.graphics.lerp(palette.street, Color.White, tint), CRT_ENDPOINT_RADIUS)
-    drawCornerDots(projected.plazaCorners, androidx.compose.ui.graphics.lerp(palette.plaza, Color.White, tint), CRT_PLAZA_CORNER_RADIUS)
-    drawCornerDots(projected.fenceCorners, androidx.compose.ui.graphics.lerp(palette.fence, Color.White, tint), CRT_FENCE_CORNER_RADIUS)
+    drawCornerDots(projected.streetEndpoints, palette.crtEndpointStreet, CRT_ENDPOINT_RADIUS)
+    drawCornerDots(projected.plazaCorners, palette.crtEndpointPlaza, CRT_PLAZA_CORNER_RADIUS)
+    drawCornerDots(projected.fenceCorners, palette.crtEndpointFence, CRT_FENCE_CORNER_RADIUS)
 }
 
 private fun DrawScope.drawCornerDots(

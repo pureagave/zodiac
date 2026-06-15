@@ -110,9 +110,15 @@ data class PlayaMapPanelStyle(
  * [sweepWidthDeg] degrees behind it. The map is re-drawn in [litPalette]
  * clipped to the wedge so features visibly brighten as the arm passes — the
  * canonical M41A "ping" effect.
+ *
+ * [sweepDeg] is a lambda read at *draw* time (not composition): the 60 fps
+ * animation updates a backing [androidx.compose.runtime.MutableFloatState]
+ * that only the draw lambdas subscribe to, so the frame ticker invalidates
+ * just the draw phase instead of recomposing the whole Motion Tracker tree
+ * (header / stats / nav cue + their String.format calls) every frame.
  */
 data class SweepOverlay(
-    val sweepDeg: Float,
+    val sweepDeg: () -> Float,
     val sweepWidthDeg: Float,
     val litPalette: MapPalette,
     val armColor: Color,
@@ -397,13 +403,16 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSweptProjectedM
     val cx = size.width / 2f
     val cy = size.height / 2f
     val radius = size.width.coerceAtMost(size.height)
+    // Read the animated sweep angle here, inside the draw scope, so only the
+    // draw phase re-runs each frame — not recomposition of the concept tree.
+    val deg = sweep.sweepDeg()
     val wedge =
         wedgePath(
             cx = cx,
             cy = cy,
             radius = radius,
-            startDeg = sweep.sweepDeg - sweep.sweepWidthDeg,
-            endDeg = sweep.sweepDeg,
+            startDeg = deg - sweep.sweepWidthDeg,
+            endDeg = deg,
         )
     clipPath(wedge) {
         drawProjectedMap(projected, sweep.litPalette)
@@ -443,8 +452,9 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawSweepArm(sweep:
         strokeWidth = 1.4f,
     )
 
-    // Leading edge of the sweep — the bright arm.
-    val armA = Math.toRadians((sweep.sweepDeg - 90.0))
+    // Leading edge of the sweep — the bright arm. Read the animated angle in
+    // the draw scope so the frame ticker invalidates draw, not composition.
+    val armA = Math.toRadians((sweep.sweepDeg() - 90.0))
     drawLine(
         color = sweep.armColor,
         start = Offset(cx, cy),

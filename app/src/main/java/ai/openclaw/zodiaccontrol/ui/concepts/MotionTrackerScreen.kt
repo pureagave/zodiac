@@ -22,9 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,14 +80,19 @@ fun motionTrackerScreen(
     val mapInputs by remember { derivedStateOf { MapUiInputs.from(state) } }
     val theme = ThemeTracker
 
-    var sweepDeg by remember { mutableStateOf(0f) }
+    // Backing state for the sweep angle. Deliberately NOT read in this
+    // composable's body — only the map/arm draw lambdas read it (via the
+    // SweepOverlay.sweepDeg lambda below), so the 60 fps frame ticker
+    // invalidates just the draw phase. Reading sweepDeg.floatValue here
+    // would recompose the whole screen (and every String.format) per frame.
+    val sweepDeg = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
             withFrameNanos { now ->
                 if (last != 0L) {
                     val dt = (now - last) / 1e9f
-                    sweepDeg = (sweepDeg + dt * 360f / SWEEP_PERIOD_S) % 360f
+                    sweepDeg.floatValue = (sweepDeg.floatValue + dt * 360f / SWEEP_PERIOD_S) % 360f
                 }
                 last = now
             }
@@ -176,7 +180,7 @@ fun motionTrackerScreen(
                                     clipCircular = true,
                                     sweep =
                                         SweepOverlay(
-                                            sweepDeg = sweepDeg,
+                                            sweepDeg = { sweepDeg.floatValue },
                                             sweepWidthDeg = SWEEP_WIDTH_DEG,
                                             litPalette = TrackerLitPalette,
                                             armColor = theme.primary,
