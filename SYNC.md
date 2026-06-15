@@ -6,6 +6,24 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-06-14 — Perf audit (slow Fire tablets) + behavior-preserving wins
+
+Ran a 9-subsystem performance audit as a workflow (54 agents, ~2.2M tokens: per-subsystem hot-path analysis → adversarial verification of each finding → completeness critic). 44 findings, 28 confirmed real + on the hot path. Landed only the **pixel-identical / observably-identical** subset; all 234 tests stay green.
+
+**Headline win — Concept-C (Motion Tracker) 60fps recomposition storm.** `sweepDeg` (the `withFrameNanos` ticker) was read at the top of `motionTrackerScreen`, recomposing the entire concept tree + every `String.format` (RNG/BEARING/SPEED/RANGE/ZOOM) and rebuilding `SweepOverlay`/`PlayaMapPanelStyle` every frame. Fix: `SweepOverlay.sweepDeg: Float` → `() -> Float`, backed by `mutableFloatStateOf` that is **not** read in the composable body — only the map/arm draw lambdas invoke it, so the frame ticker invalidates just the draw phase. Multiple analyzers + the critic converged on this; it's the single biggest behavior-preserving win.
+
+**Allocation hoisting (`BrcMapRenderer`, ~60fps on C):** hoisted the 4 static map Strokes, the per-art-marker Stroke (~50/frame), and 8 halo Strokes to file-level vals; cached the 3 CRT endpoint `lerp()` colors and 8 halo `copy(alpha)` colors as `MapPalette` class-body vals (computed once per palette; not constructor params, so equals/hashCode unaffected). Byte-identical output.
+
+**Recomposition-scope narrowing:** `topHeader` takes `(headingDeg, speedKph, concept)` not the full state; `rightRail`'s status-list + lat/lon formats wrapped in `remember`; InstrumentBay zoom `String.format` wrapped in `remember(pixelsPerMeter)`.
+
+**Cold-start:** `AssetsPlayaMapRepository` now emits `Loaded(map)` before the binary-cache write (fire-and-forget on a SupervisorJob IO scope) so the map paints without waiting on the ~MB serialize.
+
+**Investigated and rejected:** the critic's "parked GPS re-emits at 2Hz driving a full `CockpitUiState.copy()`" — **false**. `LocationSourceState.Active` + `GpsFix` are data classes, so `MutableStateFlow` already conflates identical fixes through `flatMapLatest` to the collector. Reverted the FakeLocationSource dedup as a no-op.
+
+**Biggest remaining win, deferred (needs device validation):** GPU **layer-promotion / pixel-caching** of the rasterized map. The geometry is cached but the pixels aren't, so the full CRT Skia call-list replays at 60fps under the sweep (and on the TILT layer). Promoting the base map to a `graphicsLayer` cache that only re-rasterizes on camera change would remove that — but offscreen-compositing the translucent CRT halos can shift blend math, so it must be validated on a real Fire HD 10 (`dumpsys gfxinfo framestats`, Layout Inspector recomposition counts, Macrobenchmark `FrameTimingMetric`) before landing. Tracked in `tasks/open.md`. NOTE: all wins here are principled static-analysis (allocation/recomposition/format reduction), not device-profiled — confirm with the tools above.
+
+---
+
 ## 2026-06-14 — Deep robustness audit + Tier 1-4 hardening
 
 Ran a five-front read-only audit (core logic, data layer, UI/VM, tests, docs/build) then landed the fixes in four CI-green phase commits.
