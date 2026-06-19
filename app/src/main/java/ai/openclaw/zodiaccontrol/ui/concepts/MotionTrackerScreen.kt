@@ -178,6 +178,7 @@ fun motionTrackerScreen(
                                     egoColor = theme.accent,
                                     allowTilt = false,
                                     clipCircular = true,
+                                    lockCameraToEgo = true,
                                     sweep =
                                         SweepOverlay(
                                             sweepDeg = { sweepDeg.floatValue },

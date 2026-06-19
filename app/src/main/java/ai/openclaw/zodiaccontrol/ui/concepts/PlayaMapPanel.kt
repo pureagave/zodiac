@@ -102,6 +102,15 @@ data class PlayaMapPanelStyle(
     val clipCircular: Boolean = false,
     val showRetroGrid: Boolean = false,
     val sweep: SweepOverlay? = null,
+    /**
+     * When true the camera is pinned to the ego (the car) and one-finger pan
+     * is disabled — the vehicle stays at the scope centre and the map scrolls
+     * under it. Used by the Concept-C radar scope so the sweep, which draws
+     * from the canvas centre, always originates from the car. Zoom and rotate
+     * still apply. Stale [CockpitUiState.cameraOverride] from another concept
+     * is ignored while locked.
+     */
+    val lockCameraToEgo: Boolean = false,
 )
 
 /**
@@ -189,7 +198,7 @@ fun playaMapPanel(
             if (canvasSize.width <= 0 || canvasSize.height <= 0) {
                 null
             } else {
-                viewportFor(inputs, projection, tilt, canvasSize.width, canvasSize.height)
+                viewportFor(inputs, projection, tilt, canvasSize, style.lockCameraToEgo)
             }
         }
 
@@ -217,19 +226,27 @@ fun playaMapPanel(
                 .onSizeChanged { canvasSize = it }
                 .cockpitTouchInput(
                     currentZoom = { pixelsPerMeter },
-                    onPan = { dxScreen, dyScreen ->
-                        // Convert screen-pixel delta to world metres using
-                        // the *display* rotation, not the ego's heading —
-                        // in FREE the user has rotated the display
-                        // independently of heading, and pan must move along
-                        // the visible axes.
-                        val h = Math.toRadians(inputs.viewRotationDeg)
-                        val cosH = cos(h)
-                        val sinH = sin(h)
-                        val dE = (-dxScreen * cosH + dyScreen * sinH) / pixelsPerMeter
-                        val dN = (dxScreen * sinH + dyScreen * cosH) / pixelsPerMeter
-                        viewModel.panBy(dE, dN)
-                    },
+                    onPan =
+                        if (style.lockCameraToEgo) {
+                            // Radar-scope concepts (C) pin the car to the scope
+                            // centre, so a one-finger drag must not pan the camera
+                            // off the ego. Zoom and rotate still apply.
+                            { _, _ -> }
+                        } else {
+                            { dxScreen, dyScreen ->
+                                // Convert screen-pixel delta to world metres using
+                                // the *display* rotation, not the ego's heading —
+                                // in FREE the user has rotated the display
+                                // independently of heading, and pan must move along
+                                // the visible axes.
+                                val h = Math.toRadians(inputs.viewRotationDeg)
+                                val cosH = cos(h)
+                                val sinH = sin(h)
+                                val dE = (-dxScreen * cosH + dyScreen * sinH) / pixelsPerMeter
+                                val dN = (dxScreen * sinH + dyScreen * cosH) / pixelsPerMeter
+                                viewModel.panBy(dE, dN)
+                            }
+                        },
                     onZoom = viewModel::setPixelsPerMeter,
                     onRotate = viewModel::nudgeViewRotation,
                 ),
@@ -285,18 +302,22 @@ private fun viewportFor(
     inputs: MapUiInputs,
     projection: PlayaProjection,
     tilt: Boolean,
-    widthPx: Int,
-    heightPx: Int,
+    canvasSize: IntSize,
+    lockToEgo: Boolean,
 ): PlayaViewport {
     val ego = inputs.egoFix?.let { projection.project(it.location) } ?: PlayaPoint(0.0, 0.0)
-    val cameraCenter = inputs.cameraOverride ?: ego
+    // When locked (the Motion Tracker radar scope) the camera always centres
+    // on the ego, so the car stays under the fixed scope centre and a pan
+    // never decouples the sweep origin from the vehicle. A stale cameraOverride
+    // left FREE by another concept is ignored.
+    val cameraCenter = if (lockToEgo) ego else inputs.cameraOverride ?: ego
     val anchorYFrac = if (tilt) TILT_ANCHOR_Y else TOP_ANCHOR_Y
     return PlayaViewport(
         center = cameraCenter,
         headingDeg = inputs.viewRotationDeg,
         pixelsPerMeter = if (tilt) inputs.pixelsPerMeter * TILT_ZOOM_BOOST else inputs.pixelsPerMeter,
-        widthPx = widthPx,
-        heightPx = heightPx,
+        widthPx = canvasSize.width,
+        heightPx = canvasSize.height,
         anchorYFrac = anchorYFrac,
     )
 }
