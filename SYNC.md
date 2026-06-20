@@ -6,6 +6,16 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-06-19 — Concept C radar locked to the car; build verified on the Fire HD 10
+
+**Deploy bring-up.** Got the debug build running on the physical tablet (Amazon Fire HD 10, codename "tungsten" / model `KFTUWI`, Android 11 / Fire OS 8.0, **API 30**, arm64-v8a — the real perf-target hardware). `./gradlew installDebug` + `adb shell am start -W -n ai.openclaw.zodiaccontrol/.MainActivity`; screencap to verify. Toolchain isn't on PATH (JDK 17 at the Homebrew Cellar path, SDK at `/usr/local/share/android-commandlinetools`), and there's no `local.properties` — set `JAVA_HOME`/`ANDROID_HOME` inline per command.
+
+**Radar bug + fix (decision: Option B).** In Concept C the sweep (arm, cone, range rings, lit "ping") draws from the **canvas centre**, but the car/ego arrow is drawn at its GPS position projected through the viewport. In TRACK_UP they coincide; after a one-finger **pan** (FREE mode) the car moved off-centre while the sweep stayed pinned to the canvas centre — sweep appeared to come from a random spot. User chose **Option B (lock the car to the scope centre)** over Option A (make the sweep follow the car off-centre). Implemented as `PlayaMapPanelStyle.lockCameraToEgo` (set on Concept C): (1) `viewportFor` always centres the camera on the ego, ignoring any stale `cameraOverride`; (2) one-finger pan is disabled (no-op `onPan`; zoom + rotate still work). Sweep drawing untouched. The car now always sits under the fixed scope centre and the map scrolls beneath it. No change in TRACK_UP; only removes the off-centre FREE case. Verified on the tablet (pan attempts no longer move the car). Commit `ded72a3`.
+
+**Also this stretch:** `design/PERFORMANCE.md` — durable backlog of the *unimplemented* perf wins (Tier 1 = GPU layer-promotion / pixel-caching of the map, needs on-device validation; Tier 2 behavior-preserving; Tier 3 visual-tradeoff; dismissed items; on-device profiling method).
+
+---
+
 ## 2026-06-14 — Perf audit (slow Fire tablets) + behavior-preserving wins
 
 Ran a 9-subsystem performance audit as a workflow (54 agents, ~2.2M tokens: per-subsystem hot-path analysis → adversarial verification of each finding → completeness critic). 44 findings, 28 confirmed real + on the hot path. Landed only the **pixel-identical / observably-identical** subset; all 234 tests stay green.
