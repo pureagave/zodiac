@@ -106,12 +106,17 @@ fun burnInScaffold(
         if (phase == BurnInPhase.SLEEP) return@Box // app-drawn black — OLED pixels off
 
         val shiftEnabled = config.pixelShiftEnabled
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .offset { if (shiftEnabled) pixelShift(tSec.floatValue, config) else IntOffset.Zero }
-                    .then(
+        val shifted =
+            Modifier
+                .fillMaxSize()
+                .offset { if (shiftEnabled) pixelShift(tSec.floatValue, config) else IntOffset.Zero }
+
+        if (phase == BurnInPhase.DEEP_IDLE) {
+            standbyScreen(modifier = shifted)
+        } else {
+            Box(
+                modifier =
+                    shifted.then(
                         if (visualEnabled) {
                             Modifier.graphicsLayer {
                                 alpha = contentAlpha(phase, tSec.floatValue, config)
@@ -121,8 +126,9 @@ fun burnInScaffold(
                             Modifier
                         },
                     ),
-        ) {
-            content()
+            ) {
+                content()
+            }
         }
     }
 }
@@ -167,7 +173,8 @@ private fun contentAlpha(
     when (phase) {
         BurnInPhase.ACTIVE -> breathe(tSec, config)
         BurnInPhase.DIM -> config.dimContentAlpha
-        // Interim until the dedicated standby screen (phase 3) replaces this branch.
+        // DEEP_IDLE / SLEEP never reach this layer — the scaffold routes them to
+        // the standby screen / pure black before applying content alpha.
         BurnInPhase.DEEP_IDLE -> config.deepIdleBacklight
         BurnInPhase.SLEEP -> 0f
     }
