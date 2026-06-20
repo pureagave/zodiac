@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol
 
+import ai.openclaw.zodiaccontrol.burnin.BurnInMitigationManager
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.FakeTelemetryRepository
@@ -104,6 +105,20 @@ class ZodiacApplication : Application() {
             registry = registry,
             scope = applicationScope,
             initialType = LocationSourceType.FAKE,
+        )
+    }
+
+    /**
+     * OLED burn-in mitigation state holder. Taps the same location/vehicle
+     * flows the cockpit ViewModel uses (read-only) and drives the display's
+     * idle-protection phases. Process-lifetime so the idle timer survives
+     * Activity recreation.
+     */
+    val burnInManager: BurnInMitigationManager by lazy {
+        BurnInMitigationManager(
+            locationState = locationSource.state,
+            connectionState = vehicleGateway.connectionState,
+            scope = applicationScope,
         )
     }
 }
