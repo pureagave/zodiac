@@ -56,5 +56,5 @@ private fun zodiacApp() {
         permissionLauncher.launch(perms.toTypedArray())
     }
 
-    cockpitScreen(viewModel = viewModel)
+    cockpitScreen(viewModel = viewModel, burnInManager = app.burnInManager)
 }
