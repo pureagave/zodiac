@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting Amazon Fire tablets in landscape. Currently a v0.1.0 prototype. Four runtime-switchable cockpit "concepts" — A `CRT VECTOR`, B `PERSPECTIVE`, C `TRACKER`, D `BAY` (`core/model/CockpitConcept`) — share the same underlying state and an 80s monochrome aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
+Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting **Amazon Fire and Samsung Galaxy Tab** tablets in landscape (the Galaxy Tab S9+ OLED is the main dashboard; the Fire HD 10 LCD is the performance floor). Currently a v0.1.0 prototype. Four runtime-switchable cockpit "concepts" — A `CRT VECTOR`, B `PERSPECTIVE`, C `TRACKER`, D `BAY` (`core/model/CockpitConcept`) — share the same underlying state and an 80s monochrome aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
 
 Package: `ai.openclaw.zodiaccontrol`
 
@@ -43,7 +43,9 @@ CI runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDe
 
 **Playa map + navigation:** `data/playa/` (GeoJSON parser → binary cache → `PlayaMapRepository`), `core/geo/` (equirectangular `PlayaProjection`, `PlayaViewport`), `core/navigation/` (`PlayaNavigator`, clock-bearing cues), rendered by `ui/playamap/` (projection, markers, labels, pan/pinch touch input).
 
-**Preferences:** `data/prefs/DataStoreCockpitPreferences` persists GPS source / map mode / tilt / zoom / concept across launches (Jetpack DataStore).
+**Preferences:** `data/prefs/DataStoreCockpitPreferences` persists GPS source / map mode / tilt / zoom / concept / burn-in config across launches (Jetpack DataStore).
+
+**Burn-in mitigation (OLED dashboard):** `burnin/` — `BurnInMitigationManager` (process-lifetime idle state machine: ACTIVE → DIM → DEEP_IDLE → SLEEP, on an injectable clock; activity = touch / real GPS movement / link change) drives `burnInScaffold`, which wraps the whole cockpit from one node in `CockpitScreen`. Pixel-shift is universal; the brightness breathe/dim `graphicsLayer` is OLED-gated off on the Fire (`BurnInDeviceProfile`). DEEP_IDLE renders `standbyScreen`; SLEEP is app-drawn black + min backlight (Activity stays foreground, instant wake). Corner long-press = park / hidden `burnInTuningPanel`. All params are `BurnInConfig` (self-coercing) and preferences-backed.
 
 **All transports are currently fake** (FakeTransportAdapter, FakeTelemetryRepository). Real BLE/USB/WiFi transport adapters are a future milestone; the GPS location sources, by contrast, have real System/BLE/USB implementations.
 

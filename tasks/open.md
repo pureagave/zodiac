@@ -5,6 +5,7 @@ What's worth doing next, drawn from `audit.md` (2026-04-26) and a few items surf
 ## Operational gap (do soonest)
 
 - [ ] **M10** — pull in Timber, tag every source's lifecycle, write a rolling file under `getExternalFilesDir(...)`. Without logs we can't postmortem a tablet that misbehaves on the playa. Add a debug screen later that displays the last N lines.
+- [ ] **Burn-in stress ledger** (deferred Phase 5 of the burn-in feature) — log cumulative on-time per pixel region to a local file so we can spot which regions are at highest burn risk and rotate UI elements between burns. Pairs with M10's rolling-file logging; only worth it if it stays cheap.
 
 ## UI / UX rough edges
 

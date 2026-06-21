@@ -15,6 +15,7 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 - **minSdk:** 30 (Android 11)
 - **targetSdk / compileSdk:** 35
 - **UI stack:** Jetpack Compose + Material3
+- **Target displays:** Amazon Fire HD 10 (LCD, perf floor) and Samsung Galaxy Tab (S9 / S9+ / S10) — the **S9+** 12.4" OLED is the main dashboard.
 
 ## What is implemented
 
@@ -26,6 +27,7 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 - Art layer: 332 2025 placements bundled from iBurn-Data; majors (Honorarium + ManPavGrant) drawn larger than self-funded and labelled at lower zoom.
 - GPS / location source abstraction: pluggable `LocationSource` with four implementations — synthetic `FakeLocationSource` (default, slow circle around the Spike for testing), Android `LocationManager`, Bluetooth Classic SPP NMEA receivers, and USB serial NMEA dongles via [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android). Source selectable at runtime via the right-rail GPS chips. Map viewport centers on the live ego fix.
 - Scanline overlay
+- OLED burn-in mitigation (`burnin/`) for the S9+ dashboard, wrapping every concept from one node via `burnInScaffold`: whole-UI pixel-shift, a subtle brightness breathe + idle-dim (OLED-only — gated off on the LCD Fire), and an idle state machine (ACTIVE → DIM → CRT "STANDBY" screen → app-drawn black sleep with instant wake-on-touch/GPS-movement/link-change). Manual park (top-left long-press) and a hidden, preferences-backed tuning panel (bottom-left long-press) for on-playa adjustment of every timeout/parameter.
 - Black Rock City map data layer: 2025 GIS bundled in `app/src/main/assets/brc/2025/`, parsed into a typed `PlayaMap` and projected via `PlayaProjection` (equirectangular, anchored on the Golden Spike) and `PlayaViewport` (track-up, configurable zoom).
 - Persisted preferences via `androidx.datastore.preferences` — last-picked GPS source, map mode, tilt angle, and zoom survive a restart.
 - Baseline quality tooling (ktlint + detekt)

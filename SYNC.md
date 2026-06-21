@@ -6,6 +6,23 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-06-20 — Fleet adds Samsung (S9+ main dashboard); OLED burn-in mitigation shipped
+
+**Hardware target widened: Fire + Samsung.** The fleet is no longer Fire-only — Samsung Galaxy Tabs are now a target, and the **main dashboard display switched to the Galaxy Tab S9+** (12.4" Dynamic AMOLED 2X, 2800×1752, 120Hz, Snapdragon 8 Gen 2, 12GB). Candidate fleet models: S9, S9+, S10, maybe FE. They span **2-3 GPU families** — S9/S9+ = Adreno 740 (Qualcomm, Vulkan), S9 FE = Mali-G68 (Exynos), S10 = MediaTek Immortalis. Consequences: (1) the deferred **GPU pixel-cache** map optimization now needs an **Adreno device** in its visual-validation loop (the Fire's Mali-GLES can't certify Vulkan-Adreno halo precision); the Fire HD 10 stays the **perf floor**, the FE is the only Samsung near it. (2) The OLED panels introduce **burn-in risk** over multi-day playa deployment — addressed below.
+
+**Burn-in mitigation feature (4 phased commits, all verified on the Fire HD 10).** New `burnin/` package; wraps the whole cockpit from one node in `cockpitScreen` via `burnInScaffold`.
+- **Idle state machine** (`BurnInMitigationManager`, `BurnInPhase` ACTIVE→DIM→DEEP_IDLE→SLEEP). Injectable clock (`SystemClock.elapsedRealtime`), so it's fully unit-tested with a fake clock. Activity = touch, **real** GPS movement (parked re-emits + jitter don't count — speed≥1kph or >3m drift), or a vehicle-link phase change. Taps the existing location/connection StateFlows read-only; ViewModel untouched.
+- **Visual mitigations:** whole-UI **pixel-shift** (`offset{}`, placement phase only — universal); **global brightness breathe + dim** via one `graphicsLayer` alpha (`ModulateAlpha`, cheap/blend-preserving) — chosen over per-element alpha threading (~40 sites) for the same wear-distribution benefit. **OLED-gated** off on the Fire (Amazon = LCD, can't burn in, slowest GPU) via `BurnInDeviceProfile`.
+- **Idle visuals:** DEEP_IDLE → dedicated CRT `standbyScreen` (phosphor "STANDBY" + drifting scan line, *not* a generic screensaver); SLEEP → app-drawn pure black (OLED pixels off) + min window backlight, Activity stays foreground so **wake-on-touch** is instant (no WAKE_LOCK, no lockscreen). `FLAG_KEEP_SCREEN_ON` held in all phases.
+- **Manual park:** top-left corner long-press → immediate standby (`enterPark` fast-forwards the idle clock to the deep-idle threshold). **Hidden tuning panel** (bottom-left long-press): phosphor-green CRT panel with steppers for every timeout/modulation param + PARK NOW/WAKE/DEFAULTS/CLOSE; edits apply live and persist (new `readBurnInConfig`/`setBurnInConfig` on `CockpitPreferences`, individual DataStore keys, coerced on read).
+- **All config coerces itself** (`BurnInConfig.coerced()`: timeouts forced strictly increasing, amplitudes/alphas clamped) — a tampered prefs file can't seed a bad config.
+- **Deferred (Phase 5, optional):** per-region burn-in stress-accounting ledger to file — pairs with the M10 Timber task; not built.
+- **Defaults:** 2px/45s shift, ±4%/20s breathe, 5/30/60-min dim/standby/sleep. Verified on device: dashboard → STANDBY → black SLEEP → tap-to-wake → dashboard; tuning panel + PARK NOW.
+
+**adb input quirk (Fire HD 10):** a reliable long-press needs a *continuous* `input swipe x y x+2 y+2 900` (one stream, tiny move within slop); separate `motionevent DOWN/UP` calls or a zero-distance swipe register as a tap, not a hold.
+
+---
+
 ## 2026-06-19 — Concept C radar locked to the car; build verified on the Fire HD 10
 
 **Deploy bring-up.** Got the debug build running on the physical tablet (Amazon Fire HD 10, codename "tungsten" / model `KFTUWI`, Android 11 / Fire OS 8.0, **API 30**, arm64-v8a — the real perf-target hardware). `./gradlew installDebug` + `adb shell am start -W -n ai.openclaw.zodiaccontrol/.MainActivity`; screencap to verify. Toolchain isn't on PATH (JDK 17 at the Homebrew Cellar path, SDK at `/usr/local/share/android-commandlinetools`), and there's no `local.properties` — set `JAVA_HOME`/`ANDROID_HOME` inline per command.

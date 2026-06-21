@@ -10,6 +10,13 @@ Historical task list. Detail and decision rationale lives in `SYNC.md` and the g
 - [x] Configure GitHub remote and push initial repository state
 - [x] Get JDK 17 + Android SDK installed locally so the CI gates run cleanly on every commit
 
+## OLED burn-in mitigation (2026-06-20)
+- [x] `BurnInMitigationManager` idle state machine (ACTIVE/DIM/DEEP_IDLE/SLEEP) on an injectable clock; activity = touch / real GPS movement / link change; unit-tested
+- [x] `burnInScaffold` integration — pixel-shift + OLED-gated brightness breathe/dim from one node, non-consuming touch observer, per-phase window backlight + KEEP_SCREEN_ON
+- [x] CRT `standbyScreen` for deep idle; app-drawn black SLEEP with instant wake
+- [x] Manual park (top-left long-press) + hidden, preferences-backed tuning panel (bottom-left long-press)
+- [x] `BurnInConfig` self-coercion + DataStore persistence; verified end-to-end on the Fire HD 10
+
 ## Cockpit UI
 - [x] Three-rail CRT layout (left subsystem rail, center viewport, right status rail)
 - [x] Heading / speed touch input on the center viewport (later replaced — see drag-pan)
