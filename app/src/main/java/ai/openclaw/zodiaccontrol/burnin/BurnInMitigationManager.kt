@@ -17,6 +17,17 @@ import kotlin.math.cos
 import kotlin.math.hypot
 
 /**
+ * Narrow persistence port for [BurnInConfig] — the manager's view of the
+ * preferences layer, kept minimal so the manager stays decoupled from (and
+ * testable without) `CockpitPreferences`.
+ */
+interface BurnInConfigStore {
+    suspend fun read(): BurnInConfig
+
+    suspend fun write(config: BurnInConfig)
+}
+
+/**
  * Process-lifetime state holder that drives OLED burn-in mitigation for the
  * cockpit display. Owns only the discrete [BurnInPhase] machine and the live
  * [BurnInConfig]; the Compose layer translates phase + config into the actual
@@ -43,11 +54,12 @@ class BurnInMitigationManager(
     locationState: StateFlow<LocationSourceState>,
     connectionState: StateFlow<ConnectionState>,
     private val scope: CoroutineScope,
-    initialConfig: BurnInConfig = BurnInConfig(),
     private val clock: () -> Long = SystemClock::elapsedRealtime,
     private val tickMillis: Long = DEFAULT_TICK_MILLIS,
+    /** Persisted-config port: read at startup, written on every tuning edit (null → in-memory only). */
+    private val configStore: BurnInConfigStore? = null,
 ) {
-    private val _config = MutableStateFlow(initialConfig.coerced())
+    private val _config = MutableStateFlow(BurnInConfig())
     val config: StateFlow<BurnInConfig> = _config.asStateFlow()
 
     private val _phase = MutableStateFlow(BurnInPhase.ACTIVE)
@@ -60,6 +72,12 @@ class BurnInMitigationManager(
     private var lastConnectionPhase: ConnectionPhase? = null
 
     init {
+        configStore?.let { store ->
+            scope.launch {
+                _config.value = store.read().coerced()
+                recomputePhase()
+            }
+        }
         scope.launch {
             locationState.collect { state ->
                 if (state is LocationSourceState.Active) onGpsFix(state.fix)
@@ -97,10 +115,12 @@ class BurnInMitigationManager(
         recomputePhase()
     }
 
-    /** Replace the live config (from the tuning panel); coerced before it lands. */
+    /** Replace the live config (from the tuning panel); coerced, then persisted. */
     fun updateConfig(config: BurnInConfig) {
-        _config.value = config.coerced()
+        val coerced = config.coerced()
+        _config.value = coerced
         recomputePhase()
+        configStore?.let { store -> scope.launch { store.write(coerced) } }
     }
 
     private fun registerActivity() {

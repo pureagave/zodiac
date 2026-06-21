@@ -5,16 +5,21 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.view.WindowManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -23,10 +28,14 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+
+/** Corner hot-zone size for the park / tuning long-press gestures. */
+private val HOT_ZONE = 72.dp
 
 private const val TWO_PI = 2f * Math.PI.toFloat()
 
@@ -83,6 +92,8 @@ fun burnInScaffold(
             window.attributes.apply { screenBrightness = backlightFor(phase, config) }
     }
 
+    var tuningOpen by remember { mutableStateOf(false) }
+
     val tSec = remember { mutableFloatStateOf(0f) }
     val animating = phase != BurnInPhase.SLEEP
     LaunchedEffect(animating) {
@@ -130,8 +141,28 @@ fun burnInScaffold(
                 content()
             }
         }
+
+        // Hidden corner gestures (non-interactive title/rail corners in every
+        // concept): top-left long-press parks, bottom-left opens tuning.
+        Box(Modifier.align(Alignment.TopStart).size(HOT_ZONE).cornerLongPress(manager::enterPark))
+        Box(Modifier.align(Alignment.BottomStart).size(HOT_ZONE).cornerLongPress { tuningOpen = true })
+
+        if (tuningOpen) {
+            burnInTuningPanel(
+                config = config,
+                onConfig = manager::updateConfig,
+                onPark = manager::enterPark,
+                onWake = manager::wake,
+                onClose = { tuningOpen = false },
+            )
+        }
     }
 }
+
+private fun Modifier.cornerLongPress(onLongPress: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        detectTapGestures(onLongPress = { onLongPress() })
+    }
 
 private fun Modifier.burnInActivityObserver(onInteraction: () -> Unit): Modifier =
     pointerInput(Unit) {

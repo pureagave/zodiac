@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol
 
+import ai.openclaw.zodiaccontrol.burnin.BurnInConfig
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
@@ -761,6 +762,10 @@ private class NoOpCockpitPreferences : CockpitPreferences {
     override suspend fun setPixelsPerMeter(zoom: Double) = Unit
 
     override suspend fun setConcept(concept: CockpitConcept) = Unit
+
+    override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
+
+    override suspend fun setBurnInConfig(config: BurnInConfig) = Unit
 }
 
 private class RecordingCockpitPreferences(
@@ -793,6 +798,10 @@ private class RecordingCockpitPreferences(
     override suspend fun setConcept(concept: CockpitConcept) {
         concepts += concept
     }
+
+    override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
+
+    override suspend fun setBurnInConfig(config: BurnInConfig) = Unit
 }
 
 private class StaticTelemetryRepo : TelemetryRepository {

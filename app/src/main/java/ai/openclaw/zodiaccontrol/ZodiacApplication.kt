@@ -1,5 +1,7 @@
 package ai.openclaw.zodiaccontrol
 
+import ai.openclaw.zodiaccontrol.burnin.BurnInConfig
+import ai.openclaw.zodiaccontrol.burnin.BurnInConfigStore
 import ai.openclaw.zodiaccontrol.burnin.BurnInMitigationManager
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -119,6 +121,12 @@ class ZodiacApplication : Application() {
             locationState = locationSource.state,
             connectionState = vehicleGateway.connectionState,
             scope = applicationScope,
+            configStore =
+                object : BurnInConfigStore {
+                    override suspend fun read(): BurnInConfig = preferences.readBurnInConfig()
+
+                    override suspend fun write(config: BurnInConfig) = preferences.setBurnInConfig(config)
+                },
         )
     }
 }

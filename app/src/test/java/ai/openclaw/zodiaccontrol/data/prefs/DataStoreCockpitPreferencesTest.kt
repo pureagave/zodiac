@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.data.prefs
 
+import ai.openclaw.zodiaccontrol.burnin.BurnInConfig
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -134,6 +135,40 @@ class DataStoreCockpitPreferencesTest {
             val snapshot = prefs.read()
             assertEquals(40, snapshot.tiltDeg)
             assertEquals(1.5, snapshot.pixelsPerMeter, ZOOM_TOLERANCE)
+        }
+
+    @Test
+    fun returns_default_burn_in_config_when_unwritten() =
+        runTest(UnconfinedTestDispatcher()) {
+            assertEquals(BurnInConfig().coerced(), newPrefs().readBurnInConfig())
+        }
+
+    @Test
+    fun round_trips_burn_in_config() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefs()
+            val cfg =
+                BurnInConfig(
+                    pixelShiftEnabled = false,
+                    pixelShiftAmplitudePx = 3,
+                    pixelShiftPeriodSec = 60,
+                    visualModulationEnabled = false,
+                    breatheAmplitude = 0.06f,
+                    breathePeriodSec = 25,
+                    dimTimeoutSec = 120,
+                    dimContentAlpha = 0.25f,
+                    dimBacklight = 0.5f,
+                    deepIdleTimeoutSec = 600,
+                    deepIdleBacklight = 0.2f,
+                    sleepTimeoutSec = 1_200,
+                    sleepBacklight = 0.02f,
+                    movementSpeedKph = 2.0,
+                    movementMeters = 5.0,
+                ).coerced()
+
+            prefs.setBurnInConfig(cfg)
+
+            assertEquals(cfg, prefs.readBurnInConfig())
         }
 
     private fun TestScope.newStore(): DataStore<Preferences> =

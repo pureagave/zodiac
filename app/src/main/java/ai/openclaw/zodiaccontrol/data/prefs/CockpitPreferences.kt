@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.data.prefs
 
+import ai.openclaw.zodiaccontrol.burnin.BurnInConfig
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -48,4 +49,14 @@ interface CockpitPreferences {
     suspend fun setPixelsPerMeter(zoom: Double)
 
     suspend fun setConcept(concept: CockpitConcept)
+
+    /**
+     * Burn-in mitigation tuning, persisted as individual keys so each timeout /
+     * modulation parameter is independently adjustable from the on-device tuning
+     * panel and survives a relaunch. Returns coerced defaults for any key the
+     * store hasn't seen yet.
+     */
+    suspend fun readBurnInConfig(): BurnInConfig
+
+    suspend fun setBurnInConfig(config: BurnInConfig)
 }
