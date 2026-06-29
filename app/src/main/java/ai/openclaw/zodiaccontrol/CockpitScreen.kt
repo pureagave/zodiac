@@ -6,8 +6,13 @@ import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.ui.concepts.instrumentBayScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.motionTrackerScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.perspectiveGridScreen
+import ai.openclaw.zodiaccontrol.ui.ops.opsStrip
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
@@ -27,11 +32,16 @@ fun cockpitScreen(
     val cycle: () -> Unit = viewModel::cycleConcept
 
     burnInScaffold(manager = burnInManager) {
-        when (concept) {
-            CockpitConcept.A -> crtVectorScreen(viewModel = viewModel, onCycleConcept = cycle)
-            CockpitConcept.B -> perspectiveGridScreen(viewModel = viewModel, onCycleConcept = cycle)
-            CockpitConcept.C -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
-            CockpitConcept.D -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
+        Box(Modifier.fillMaxSize()) {
+            when (concept) {
+                CockpitConcept.A -> crtVectorScreen(viewModel = viewModel, onCycleConcept = cycle)
+                CockpitConcept.B -> perspectiveGridScreen(viewModel = viewModel, onCycleConcept = cycle)
+                CockpitConcept.C -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
+                CockpitConcept.D -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
+            }
+            // Ambient operational strip over every concept. Collects its own
+            // narrow state, so its per-second tick doesn't recompose the dispatch.
+            opsStrip(viewModel = viewModel, modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
 }
