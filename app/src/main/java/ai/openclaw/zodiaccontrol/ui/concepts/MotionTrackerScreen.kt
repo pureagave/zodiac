@@ -63,10 +63,10 @@ private val TrackerLitPalette =
         fence = Color(0xFFB8FF98),
         street = Color(0xFF7EFF62),
         streetOutline = Color(0xFF3AAA2C),
-        plaza = Color(0xFFFFF700),
-        toilet = Color(0xFFFFF700),
+        plaza = Color(0xFFC77DFF),
+        toilet = Color(0xFF00BFFF),
         cpn = Color(0xFF7EFF62),
-        artMajor = Color(0xFFFFF700),
+        artMajor = Color(0xFFFF66CC),
         artMinor = Color(0xFF7EFF62),
         grid = Color(0xFF3AAA2C),
         crtBeam = true,
@@ -120,16 +120,16 @@ fun motionTrackerScreen(
             ) {
                 Text(
                     text = "MOTION TRACKER",
-                    color = theme.secondary,
+                    color = theme.primary,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     fontSize = 22.sp,
                 )
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("M41A / ZODIAC BAY", color = theme.secondary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                    Text("M41A / ZODIAC BAY", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                     Text(
                         "RNG ${"%.1f".format(rangeMetres(state.pixelsPerMeter))}m",
-                        color = theme.secondary,
+                        color = theme.primary,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                     )
@@ -241,7 +241,7 @@ fun motionTrackerScreen(
         conceptSwitcher(
             current = state.concept,
             onCycle = onCycleConcept,
-            accent = theme.accent,
+            accent = theme.primary,
             modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
         )
 
@@ -267,10 +267,10 @@ private fun trackerStatColumn(
         modifier = modifier.border(1.dp, theme.primary).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(pair.title1, color = theme.secondary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(pair.title1, color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text(pair.value1, color = theme.accent, fontFamily = FontFamily.Monospace, fontSize = 36.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(4.dp))
-        Text(pair.title2, color = theme.secondary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text(pair.title2, color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Text(pair.value2, color = theme.accent, fontFamily = FontFamily.Monospace, fontSize = 36.sp, fontWeight = FontWeight.Bold)
     }
 }

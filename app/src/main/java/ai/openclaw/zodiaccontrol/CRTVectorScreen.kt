@@ -10,6 +10,7 @@ import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
+import ai.openclaw.zodiaccontrol.ui.concepts.AlertRed
 import ai.openclaw.zodiaccontrol.ui.concepts.MapUiInputs
 import ai.openclaw.zodiaccontrol.ui.concepts.ThemeCrtVector
 import ai.openclaw.zodiaccontrol.ui.concepts.conceptSwitcher
@@ -71,7 +72,6 @@ import kotlin.math.sin
 private val Bg = Color(0xFF000000)
 private val VectorGreen = Color(0xFF00FF66)
 private val ElectricBlue = Color(0xFF00BFFF)
-private val Amber = Color(0xFFFFD166)
 
 private const val TILT_CAMERA_DISTANCE: Float = 8f
 
@@ -215,7 +215,7 @@ private fun topHeader(
         conceptSwitcher(
             current = concept,
             onCycle = onCycleConcept,
-            accent = ThemeCrtVector.accent,
+            accent = ThemeCrtVector.primary,
         )
     }
 }
@@ -237,7 +237,7 @@ private fun leftRail(
         repeat(6) { idx ->
             val isMapToggle = idx == MAP_TOGGLE_IDX
             val label = if (isMapToggle) "MAP: ${mapMode.name}" else "SYS-${idx + 1}"
-            val tint = if (isMapToggle && mapMode == MapMode.TILT) Amber else VectorGreen
+            val tint = if (isMapToggle && mapMode == MapMode.TILT) ElectricBlue else VectorGreen
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -308,7 +308,7 @@ private fun rightRail(
     ) {
         Text(
             text = "> TRANSPORT",
-            color = Amber,
+            color = VectorGreen,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
         )
@@ -338,7 +338,7 @@ private fun rightRail(
 
         Text(
             text = "> GPS",
-            color = Amber,
+            color = VectorGreen,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
         )
@@ -368,7 +368,7 @@ private fun rightRail(
 
         Text(
             text = "> HDG SET: ${state.headingDeg}°",
-            color = Amber,
+            color = VectorGreen,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
         )
@@ -398,7 +398,7 @@ private fun rightRail(
 
         Text(
             text = "> SPD SET: ${state.speedKph} kph",
-            color = Amber,
+            color = VectorGreen,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
         )
@@ -428,7 +428,7 @@ private fun rightRail(
 
         Text(
             text = "> TILT: ${state.tiltDeg}°",
-            color = Amber,
+            color = VectorGreen,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
         )
@@ -469,14 +469,14 @@ private fun rightRail(
                 state.locationState,
             ) {
                 listOf(
-                    modeLine to Amber,
+                    modeLine to ElectricBlue,
                     "> LINK ${if (state.linkStable) "ESTABLISHED" else "LOST"}" to
-                        (if (state.linkStable) VectorGreen else Amber),
+                        (if (state.linkStable) VectorGreen else AlertRed),
                     "> CONN: $connectionLabel" to VectorGreen,
                     "> THERMAL ${state.thermalC}C" to VectorGreen,
                     locationLine(state.locationState),
                     "> TOUCH INPUT ACTIVE" to VectorGreen,
-                    "> NO PROTOCOL BINDING (V1)" to Amber,
+                    "> NO PROTOCOL BINDING (V1)" to ElectricBlue,
                 )
             }
         statusLines.forEach { (line, color) ->
@@ -492,14 +492,14 @@ private fun rightRail(
 
 private fun locationLine(state: LocationSourceState): Pair<String, Color> =
     when (state) {
-        LocationSourceState.Disconnected -> "> GPS: OFFLINE" to Amber
-        LocationSourceState.Searching -> "> GPS: SEARCHING" to Amber
+        LocationSourceState.Disconnected -> "> GPS: OFFLINE" to ElectricBlue
+        LocationSourceState.Searching -> "> GPS: SEARCHING" to ElectricBlue
         is LocationSourceState.Active -> {
             val lat = "%.5f".format(state.fix.location.lat)
             val lon = "%.5f".format(state.fix.location.lon)
             "> GPS: $lat $lon" to VectorGreen
         }
-        is LocationSourceState.Error -> "> GPS: ERR ${state.detail}" to Amber
+        is LocationSourceState.Error -> "> GPS: ERR ${state.detail}" to AlertRed
     }
 
 @Composable
@@ -511,13 +511,13 @@ private fun transportChip(
     Box(
         modifier =
             Modifier
-                .border(1.dp, if (selected) Amber else VectorGreen)
+                .border(1.dp, if (selected) ElectricBlue else VectorGreen)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             text = label,
-            color = if (selected) Amber else VectorGreen,
+            color = if (selected) ElectricBlue else VectorGreen,
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
         )

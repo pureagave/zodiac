@@ -71,7 +71,7 @@ fun opsReadout(
     ) {
         Text(
             text = now.toLocalTime().formatHhMm(),
-            color = theme.primary,
+            color = theme.accent,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             fontSize = 16.sp,

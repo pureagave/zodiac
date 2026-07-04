@@ -30,7 +30,7 @@ import kotlin.math.roundToInt
 
 private val Phosphor = Color(0xFF00FF66)
 private val PhosphorDim = Color(0xFF2C8A4A)
-private val Amber = Color(0xFFFFD166)
+private val HeaderGreen = Color(0xFF00FF66)
 private val Scrim = Color(0xCC000000)
 private val PanelBg = Color(0xFF020602)
 
@@ -82,7 +82,7 @@ fun burnInTuningPanel(
         ) {
             Text(
                 text = "▸ BURN-IN TUNING",
-                color = Amber,
+                color = HeaderGreen,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
@@ -193,7 +193,7 @@ fun burnInTuningPanel(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                actionButton("PARK NOW", Amber, Modifier.weight(1f)) {
+                actionButton("PARK NOW", HeaderGreen, Modifier.weight(1f)) {
                     onPark()
                     onClose()
                 }
@@ -251,7 +251,7 @@ private fun stepperRow(
             stepGlyph("[-]", onMinus)
             Text(
                 text = value,
-                color = Amber,
+                color = HeaderGreen,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,

@@ -33,7 +33,8 @@ fun recenterButton(
     modifier: Modifier = Modifier,
 ) {
     val active = followMode == FollowMode.FREE
-    val borderColor = if (active) theme.accent else theme.dim
+    // Blue ring when panned (status: recenter available); dim otherwise.
+    val borderColor = if (active) theme.secondary else theme.dim
     Box(
         modifier =
             modifier
@@ -56,7 +57,7 @@ fun recenterButton(
                     lineTo(left.x, left.y)
                     close()
                 }
-            drawPath(path = path, color = theme.accent)
+            drawPath(path = path, color = theme.primary)
             drawPath(path = path, color = Color.White, style = Stroke(width = 2f))
         }
     }

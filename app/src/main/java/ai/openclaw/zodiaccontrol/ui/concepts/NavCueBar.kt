@@ -51,13 +51,13 @@ fun navCueBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        themedText("NAV", theme.accent, 12.sp, theme.useVectorText, bold = true)
+        themedText("NAV", theme.primary, 12.sp, theme.useVectorText, bold = true)
         themedText("·", theme.dim, 14.sp, useVector = false, bold = false)
         Box(modifier = Modifier.weight(1f)) {
             themedText(rendered.primary, theme.primary, 18.sp, theme.useVectorText, bold = true)
         }
         if (rendered.detail.isNotEmpty()) {
-            themedText(rendered.detail, theme.secondary, 13.sp, theme.useVectorText, bold = false)
+            themedText(rendered.detail, theme.accent, 13.sp, theme.useVectorText, bold = false)
         }
     }
 }

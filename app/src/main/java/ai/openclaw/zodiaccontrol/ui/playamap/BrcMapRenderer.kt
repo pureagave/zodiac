@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.lerp
 private val Fence = Color(0xFF00FF66)
 private val Street = Color(0xFF1F8F46)
 private val Outline = Color(0xFF0F5C2D)
-private val Plaza = Color(0xFFFFD166)
+private val Plaza = Color(0xFFC77DFF)
 private val Toilet = Color(0xFF00BFFF)
 private val Cpn = Color(0xFF00FF66)
 private val ArtMajor = Color(0xFFFF66CC)

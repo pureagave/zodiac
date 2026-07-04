@@ -47,7 +47,7 @@ private val InstrumentBayPalette =
         fence = Color(0xFF00FF66),
         street = Color(0xFF1F8F46),
         streetOutline = Color(0xFF0F5C2D),
-        plaza = Color(0xFFFFD166),
+        plaza = Color(0xFFC77DFF),
         toilet = Color(0xFF00BFFF),
         cpn = Color(0xFF00FF66),
         artMajor = Color(0xFFFF66CC),
@@ -83,7 +83,7 @@ fun instrumentBayScreen(
                 tile(theme = theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
                     Text(
                         text = "NOSTROMO  //  ZODIAC INSTRUMENT BAY  //  STATION 04",
-                        color = theme.accent,
+                        color = theme.primary,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
@@ -99,13 +99,13 @@ fun instrumentBayScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     tile(theme = theme, modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        Text("HEADING", color = theme.accent, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                        Text("HEADING", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                         Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
                             headingDial(theme = theme, headingDeg = state.headingDeg)
                         }
                     }
                     tile(theme = theme, modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        Text("SPEED KPH", color = theme.accent, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                        Text("SPEED KPH", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                         Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
                             speedGauge(theme = theme, speedKph = state.speedKph)
                         }
@@ -120,7 +120,7 @@ fun instrumentBayScreen(
                         remember(state.pixelsPerMeter) { "%.2f".format(state.pixelsPerMeter) }
                     Text(
                         text = "GROUND TRACK // ZOOM $zoomLabel px/m",
-                        color = theme.accent,
+                        color = theme.primary,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                     )
@@ -147,7 +147,7 @@ fun instrumentBayScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     tile(theme = theme, modifier = Modifier.fillMaxWidth().height(120.dp)) {
-                        Text("THROTTLE TRACE", color = theme.accent, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                        Text("THROTTLE TRACE", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                         Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
                             throttleTrace(theme = theme)
                         }
@@ -186,7 +186,7 @@ fun instrumentBayScreen(
         conceptSwitcher(
             current = state.concept,
             onCycle = onCycleConcept,
-            accent = theme.accent,
+            accent = theme.primary,
             modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
         )
 
@@ -289,7 +289,7 @@ private fun throttleTrace(theme: ConceptTheme) {
         val dx = w / (pts.size - 1)
         for (i in 0 until pts.size - 1) {
             drawLine(
-                color = theme.secondary,
+                color = theme.accent,
                 start = Offset(i * dx, pts[i] * h),
                 end = Offset((i + 1) * dx, pts[i + 1] * h),
                 strokeWidth = 2f,
@@ -308,7 +308,7 @@ private fun cellBar(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val frac = (percent / 100f).coerceIn(0f, 1f)
             drawLine(
-                color = theme.secondary,
+                color = theme.accent,
                 start = Offset(0f, size.height / 2f),
                 end = Offset(size.width * frac, size.height / 2f),
                 strokeWidth = size.height,

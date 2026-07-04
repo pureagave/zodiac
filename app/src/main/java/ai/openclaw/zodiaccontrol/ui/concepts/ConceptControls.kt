@@ -44,7 +44,7 @@ fun conceptControlStrip(
                 .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        sectionLabel("> TRANSPORT", theme.accent)
+        sectionLabel("> TRANSPORT", theme.primary)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TransportType.entries.forEach { t ->
                 themedChip(
@@ -65,13 +65,13 @@ fun conceptControlStrip(
             )
             Text(
                 text = state.connectionPhase.name,
-                color = theme.secondary,
+                color = if (state.connectionPhase == ConnectionPhase.ERROR) theme.error else theme.secondary,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
             )
         }
 
-        sectionLabel("> GPS", theme.accent)
+        sectionLabel("> GPS", theme.primary)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             LocationSourceType.entries.forEach { s ->
                 themedChip(
@@ -83,7 +83,7 @@ fun conceptControlStrip(
             }
         }
 
-        sectionLabel("> HDG ${state.headingDeg}°", theme.accent)
+        sectionLabel("> HDG ${state.headingDeg}°", theme.primary)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             HEADING_STEPS.forEach { step ->
                 themedChip(
@@ -95,7 +95,7 @@ fun conceptControlStrip(
             }
         }
 
-        sectionLabel("> SPD ${state.speedKph} kph", theme.accent)
+        sectionLabel("> SPD ${state.speedKph} kph", theme.primary)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             SPEED_STEPS.forEach { step ->
                 themedChip(
@@ -107,7 +107,7 @@ fun conceptControlStrip(
             }
         }
 
-        sectionLabel("> ZOOM ${"%.2f".format(state.pixelsPerMeter)} px/m", theme.accent)
+        sectionLabel("> ZOOM ${"%.2f".format(state.pixelsPerMeter)} px/m", theme.primary)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             themedChip(
                 label = "ZOOM-",
@@ -142,7 +142,7 @@ fun conceptControlStrip(
         }
 
         if (state.selectedLocationSource == LocationSourceType.FAKE) {
-            sectionLabel("> FAKE GPS NUDGE", theme.accent)
+            sectionLabel("> FAKE GPS NUDGE", theme.primary)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 themedChip(
                     label = "N+$NUDGE_STEP_M",
@@ -200,13 +200,13 @@ fun themedChip(
     Box(
         modifier =
             Modifier
-                .border(1.dp, if (selected) theme.accent else theme.primary)
+                .border(1.dp, if (selected) theme.secondary else theme.primary)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
     ) {
         Text(
             text = label,
-            color = if (selected) theme.accent else theme.primary,
+            color = if (selected) theme.secondary else theme.primary,
             fontFamily = FontFamily.Monospace,
             fontSize = 10.sp,
         )

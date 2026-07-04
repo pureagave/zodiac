@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 
-private val EgoDefault = Color(0xFFFFD166)
+private val EgoDefault = Color(0xFFC77DFF)
 
 // Bumped from 14 → 28 for debugging visibility. Triangle is now filled
 // with a thick white outline + a halo ring, so the ego reads at any zoom
