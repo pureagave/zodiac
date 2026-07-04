@@ -6,6 +6,13 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-04 — Two concepts (RADAR + MAP); drive-to nav (HOME/MAN/TEMPLE)
+
+- **Consolidated to two concepts.** Dropped Concept A (CRT VECTOR; B was already gone) + `CRTVectorScreen`. Renamed C→RADAR, D→MAP and dropped the letter designations (`CockpitConcept` lost `tag`; the switcher shows just the name). Cycle RADAR↔MAP; default RADAR; a stale persisted A/B/C/D falls back to RADAR via the enum-name guard.
+- **Drive-to navigation.** `core/ops/NavTarget` = HOME (camp, Heiau & 2:15), MAN (Golden Spike origin), TEMPLE (2025 CPN "The Temple", ~762 m out on the 12:00 axis). Added `CockpitUiState.navTarget` (default HOME) + `CockpitViewModel.setNavTarget`; a `> DRIVE TO [HOME][MAN][TEMPLE]` chip section in the shared control strip; and generalised `opsReadout` from the fixed camp readout to the active target — footer shows `▸ <TARGET> <dist>` + a heading-relative arrow (reuses `campGuidance`). Verified live on the S9+: HOME read the real ~429 km to the BRC camp from the tablet's actual GPS fix; on FAKE (parked at the Man) it reads HOME ~1.6 km / MAN 0 / TEMPLE ~762 m.
+
+---
+
 ## 2026-07-04 — Cockpit colour system (green chrome / blue status / purple data / red error)
 
 Amber didn't sit with the strong phosphor green, so replaced it with a **semantic palette** (shared constants in `ui/concepts/ConceptTheme`): **green** for all chrome/controls/buttons/labels; **blue** for status only (link/connection/GPS state, selected control); **purple** for live data values (heading/speed/range/zoom, clock, distance, gauge needles, ego marker, map plazas/landmarks); **red** for faults / extreme warnings only. Amber banned. Touched the theme (unified + new `error` role), all three concept screens, the shared components (switcher/nav/controls/recenter → green, selected → blue), the ops readout (values → purple), and the map palettes (plaza + ego amber→purple; tracker-lit yellow→purple/blue/magenta). No amber literals remain; verified across A/C/D on the S9+.

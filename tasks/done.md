@@ -27,6 +27,9 @@ Historical task list. Detail and decision rationale lives in `SYNC.md` and the g
 ## Concept changes (2026-07-04)
 - [x] Dropped Concept B (PERSPECTIVE); tags A/C/D kept stable, cycle A→C→D→A; tests updated
 - [x] Recoloured Concept D (Instrument Bay) from amber/orange to green phosphor (theme + map palette)
+- [x] Semantic colour system: green chrome / blue status / purple data / red error; amber removed
+- [x] Dropped Concept A (CRT VECTOR); renamed C→RADAR, D→MAP; dropped letter tags (two concepts)
+- [x] Drive-to navigation: NavTarget HOME/MAN/TEMPLE, `DRIVE TO` control-strip selector, generalised ops-footer guidance; verified live on the S9+
 
 ## Cockpit UI
 - [x] Three-rail CRT layout (left subsystem rail, center viewport, right status rail)

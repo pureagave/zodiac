@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting **Amazon Fire and Samsung Galaxy Tab** tablets in landscape (the Galaxy Tab S9+ OLED is the main dashboard; the Fire HD 10 LCD is the performance floor). Currently a v0.1.0 prototype. Three runtime-switchable cockpit "concepts" — A `CRT VECTOR`, C `TRACKER`, D `BAY` (`core/model/CockpitConcept`; B `PERSPECTIVE` was dropped 2026-07-04, tags A/C/D kept stable) — share the same underlying state and an 80s monochrome green-phosphor aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
+Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting **Amazon Fire and Samsung Galaxy Tab** tablets in landscape (the Galaxy Tab S9+ OLED is the main dashboard; the Fire HD 10 LCD is the performance floor). Currently a v0.1.0 prototype. Two runtime-switchable cockpit "concepts" — `RADAR` and `MAP` (`core/model/CockpitConcept`; the original A `CRT VECTOR` and B `PERSPECTIVE` were dropped and C/D lost their letter tags, 2026-07-04) — share the same underlying state and an 80s green-phosphor aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
 
 Package: `ai.openclaw.zodiaccontrol`
 
@@ -30,7 +30,7 @@ CI runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDe
 **Reactive state with Coroutines + Flow.** ViewModel subscribes to repository/gateway flows and exposes a single `StateFlow<CockpitUiState>` to the Compose UI.
 
 **Key layers:**
-- `CockpitScreen` — top-level dispatcher: reads `CockpitConcept` from state and routes to one of the three concept screens (`CRTVectorScreen` / `ui/concepts/MotionTrackerScreen` / `InstrumentBayScreen`). Each concept renders the operational readout (`ui/ops/opsReadout`: clock / sun / return-to-camp) as a first-class themed footer.
+- `CockpitScreen` — top-level dispatcher: reads `CockpitConcept` and routes to one of the two concept screens — `RADAR` (`ui/concepts/MotionTrackerScreen`) / `MAP` (`ui/concepts/InstrumentBayScreen`). Each renders the operational readout (`ui/ops/opsReadout`) as a first-class themed footer: BRC clock / sun / **drive-to guidance** (bearing + distance + heading-relative arrow to the active `core/ops/NavTarget` — HOME/MAN/TEMPLE, chosen via the control-strip `DRIVE TO` chips).
 - `ui/viewmodel/CockpitViewModel` — state orchestration, input validation (heading 0-359, speed 0-160), command dispatch, map/GPS/concept actions
 - `ui/state/CockpitUiState` — immutable data class, updated via `.copy()` (includes `commandError` surfaced from failed command sends)
 - `data/VehicleConnectionGateway` / `data/RoutedVehicleGateway` — interface + pure router that forwards commands to the currently selected transport adapter (note: switching transports does **not** disconnect the old adapter — see `RoutedVehicleGatewayTest`)
@@ -63,7 +63,7 @@ The phone bring-up exists specifically to prove `NetworkLocationSource` end-to-e
 
 ## UI Structure
 
-`CockpitScreen` dispatches on the active `CockpitConcept`. Concept A (`CRTVectorScreen`) is the canonical three-rail layout: left rail (system cards), center viewport (the playa map Canvas), right rail (transport selector + status), with a full-screen scanline overlay. Concepts C/D (`ui/concepts/`) are alternate HUD presentations over the same state. Every concept carries the `opsReadout` footer (clock / sun / return-to-camp) in its own palette.
+`CockpitScreen` dispatches on the active `CockpitConcept` (two concepts). `RADAR` (`MotionTrackerScreen`) is the *Aliens* M41A sweep-scope — a circular scope whose sweep arm lights up the real BRC map. `MAP` (`InstrumentBayScreen`) is the *Alien* Nostromo gauge-wall — bordered tiles (heading dial, speed gauge, ground-track map, cell/throttle gauges). Both share the control strip (`ConceptControls`) and the `opsReadout` footer, each rendered in its own palette.
 
 Center-viewport touch drives the **map**, not the vehicle: drag to pan, pinch to zoom, two-finger twist to rotate (`ui/playamap/MapTouchInput`). Heading/speed are set programmatically / by the synthetic GPS, not by tapping the viewport. (An earlier X→heading / Y→speed mapping was replaced by the map interaction.)
 
