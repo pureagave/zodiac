@@ -6,11 +6,10 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 
 ## Current build
 
-- **Concepts:** four cockpit aesthetics shipped together, runtime-switchable via the `[X] NAME >` pill in the top-right of every screen. The choice persists across launches.
-  - **A** — CRT VECTOR (Concept B "CRT Vector" carried forward from the original Concepts A/B/C exploration)
-  - **B** — PERSPECTIVE GRID (Lukas Uhlitz / *Alien: Europa*)
+- **Concepts:** three cockpit aesthetics shipped together, runtime-switchable via the `[X] NAME >` pill in the top-right of every screen. The choice persists across launches. (Concept B PERSPECTIVE GRID was dropped 2026-07-04; tags A/C/D are kept stable.)
+  - **A** — CRT VECTOR
   - **C** — MOTION TRACKER (*Aliens* '86 M41A)
-  - **D** — INSTRUMENT BAY (*Alien* '79 Nostromo gauge wall)
+  - **D** — INSTRUMENT BAY (*Alien* '79 Nostromo gauge wall, green phosphor)
 - **Package:** `ai.openclaw.zodiaccontrol`
 - **minSdk:** 30 (Android 11)
 - **targetSdk / compileSdk:** 35
@@ -19,16 +18,16 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 
 ## What is implemented
 
-- Four runtime-switchable cockpit concepts (A/B/C/D — see Current build) sharing the same underlying state (heading, speed, transport, GPS source, telemetry, BRC map, ego fix); only presentation differs. Tap the corner pill to cycle.
-- BRC map rendered into all four concepts with concept-specific palettes (green CRT for A, neon perspective for B, dim/lit sweep palette for C, blocky orange tiles for D). Pinch-zoom, drag-pan, recenter, and a TOP/TILT mode toggle are wired to every concept's rail.
+- Three runtime-switchable cockpit concepts (A/C/D — see Current build) sharing the same underlying state (heading, speed, transport, GPS source, telemetry, BRC map, ego fix); only presentation differs. Tap the corner pill to cycle.
+- BRC map rendered into all three concepts with concept-specific palettes (green CRT for A, dim/lit sweep palette for C, green blocky tiles for D). Pinch-zoom, drag-pan, recenter, and a TOP/TILT mode toggle are wired to every concept's rail.
 - Concept C's M41A-style sweep arm illuminates the real BRC map — features brighten as the wedge passes over them rather than as static blips.
-- Zoom-gated map labels in concepts B and D: plazas, named arcs and clock-position radials, CPNs, and art (major art like The Temple and The Man come in earlier than self-funded). Street labels are deduplicated across the BRC source's per-segment features so each logical street draws once. Toilets are unlabelled but recoloured BRC porta-potty purple as the type indicator.
+- Zoom-gated map labels in concept D: plazas, named arcs and clock-position radials, CPNs, and art (major art like The Temple and The Man come in earlier than self-funded). Street labels are deduplicated across the BRC source's per-segment features so each logical street draws once. Toilets are unlabelled but recoloured BRC porta-potty purple as the type indicator.
 - Center viewport: BRC map (trash fence, streets, plazas, toilets, CPNs, art) with track-up rotation following vehicle heading. Two map modes: `TOP` (orthographic, ego at center — default) and `TILT` (~40° pitched 3D with a retro perspective-grid backdrop, ego anchored to the lower third — Battlezone / Out-Run feel). Touch pans (drag), zooms (pinch), and rotates (two-finger twist) the map; heading/speed come from the GPS fix, not from tapping the viewport.
 - Art layer: 332 2025 placements bundled from iBurn-Data; majors (Honorarium + ManPavGrant) drawn larger than self-funded and labelled at lower zoom.
 - GPS / location source abstraction: pluggable `LocationSource` with four implementations — synthetic `FakeLocationSource` (default, slow circle around the Spike for testing), Android `LocationManager`, Bluetooth Classic SPP NMEA receivers, and USB serial NMEA dongles via [`usb-serial-for-android`](https://github.com/mik3y/usb-serial-for-android). Source selectable at runtime via the right-rail GPS chips. Map viewport centers on the live ego fix.
 - Scanline overlay
 - OLED burn-in mitigation (`burnin/`) for the S9+ dashboard, wrapping every concept from one node via `burnInScaffold`: whole-UI pixel-shift, a subtle brightness breathe + idle-dim (OLED-only — gated off on the LCD Fire), and an idle state machine (ACTIVE → DIM → CRT "STANDBY" screen → app-drawn black sleep with instant wake-on-touch/GPS-movement/link-change). Manual park (top-left long-press) and a hidden, preferences-backed tuning panel (bottom-left long-press) for on-playa adjustment of every timeout/parameter. All four phases verified on the S9+ OLED.
-- Operational-awareness strip (`core/ops/` + `ui/ops/`): an ambient bottom HUD footer over every concept showing the BRC clock, today's sunrise/sunset (local NOAA calc, no API), and a live return-to-camp distance + heading-relative arrow to Heiau & 2:15. No network required.
+- Operational-awareness readout (`core/ops/` + `ui/ops/opsReadout`): a first-class, palette-driven footer in each concept (rendered in that concept's own aesthetic, not a shared overlay) showing the BRC clock, today's sunrise/sunset (local NOAA calc, no API), and a live return-to-camp distance + heading-relative arrow to Heiau & 2:15. No network required.
 - Full-screen kiosk chrome: draws edge-to-edge and hides the status/nav bars (immersive), required because targetSdk 35 forces edge-to-edge on Android 15+ (the S9+).
 - Black Rock City map data layer: 2025 GIS bundled in `app/src/main/assets/brc/2025/`, parsed into a typed `PlayaMap` and projected via `PlayaProjection` (equirectangular, anchored on the Golden Spike) and `PlayaViewport` (track-up, configurable zoom).
 - Persisted preferences via `androidx.datastore.preferences` — last-picked GPS source, map mode, tilt angle, and zoom survive a restart.

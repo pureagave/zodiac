@@ -22,6 +22,11 @@ Historical task list. Detail and decision rationale lives in `SYNC.md` and the g
 - [x] `core/ops/Camp` (provisional Heiau & 2:15), `campGuidance` (ego→camp bearing/distance), `SunTimes` (local NOAA sunrise/sunset, no API) — unit-tested
 - [x] Ambient ops strip (`ui/ops/OpsStrip`): BRC clock + sunrise/sunset + return-to-camp over every concept; opaque HUD bar + reserved band (no chrome overlap)
 - [x] Edge-to-edge immersive kiosk chrome in `MainActivity` (targetSdk 35 / Android 15+); strip is `safeContent`-inset-aware. Verified on the S9+.
+- [x] Ops readout reworked into a first-class per-concept themed footer (`ui/ops/opsReadout`), replacing the shared overlay; verified across A/C/D on the S9+.
+
+## Concept changes (2026-07-04)
+- [x] Dropped Concept B (PERSPECTIVE); tags A/C/D kept stable, cycle A→C→D→A; tests updated
+- [x] Recoloured Concept D (Instrument Bay) from amber/orange to green phosphor (theme + map palette)
 
 ## Cockpit UI
 - [x] Three-rail CRT layout (left subsystem rail, center viewport, right status rail)

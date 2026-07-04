@@ -6,6 +6,15 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-04 — Dropped Concept B; Concept D green; ops readout made first-class per concept
+
+Three cockpit-shell changes, all verified on the S9+:
+- **Dropped Concept B (PERSPECTIVE).** Removed the enum entry, `PerspectiveGridScreen`, and `ThemePerspective`; kept tags A/C/D stable (a stale persisted "B" falls back to A via the existing enum-name guard). Cycle is now A→C→D→A; tests updated.
+- **Concept D recoloured to green.** `ThemeInstrumentBay` + the D map palette moved from amber/orange to the green phosphor family; D's blocky gauge-tile layout keeps it distinct from Concept A.
+- **Ops readout is now first-class per concept**, not the shared bottom overlay (which read as bolted-on). New `ui/ops/opsReadout` is palette-driven + background-less; each concept places it in its own chrome — A and C as a bordered footer in their theme colour, D as a green tile footer that replaced the decorative hazard chevron (and dropped D's fake static "UTC 19:38:23" tile, since the readout now shows a real live clock). Recenter buttons raised above the footer so they don't cover the CAMP segment. `OpsStrip` + the reserved-band wrapper removed from `CockpitScreen`. (Note on-device: CAMP shows "--" with no GPS fix; distance populates on a fix — same `campGuidance`, verified earlier.)
+
+---
+
 ## 2026-07-04 — Operational-awareness strip shipped; app verified on the S9+ OLED
 
 **Data ecosystem briefed (2026-06-29).** Zodiac has Starlink onboard, unlocking live data (weather via Open-Meteo, NWS alerts zone NVZ023, the Burning Man API) — all to be built offline-first. Camp = Galactic Relay, **Heiau & 2:15**. Full detail + constraints (don't touch nav/GPS/messaging) in memory `project_data_ecosystem`. First increment chosen: the no-network **operational quick-wins**.
