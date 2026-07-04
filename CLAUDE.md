@@ -67,7 +67,7 @@ The phone bring-up exists specifically to prove `NetworkLocationSource` end-to-e
 
 Center-viewport touch drives the **map**, not the vehicle: drag to pan, pinch to zoom, two-finger twist to rotate (`ui/playamap/MapTouchInput`). Heading/speed are set programmatically / by the synthetic GPS, not by tapping the viewport. (An earlier X→heading / Y→speed mapping was replaced by the map interaction.)
 
-Color palette: pure black bg, neon green vectors (#00FF66), electric blue (#00BFFF), amber accents (#FFD166).
+Color system (semantic, set 2026-07-04; shared constants in `ui/concepts/ConceptTheme`): pure black bg; **green `#00FF66`** for all chrome/controls/buttons/labels; **blue `#00BFFF`** for status only (link/connection/GPS state, selected control); **purple `#C77DFF`** for live data values (heading/speed/range/zoom, clock, distance, gauge needles, ego marker, map landmarks); **red `#FF5555`** for faults / extreme warnings only. Amber is banned.
 
 ## Conventions
 

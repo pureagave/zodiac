@@ -6,6 +6,12 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-04 — Cockpit colour system (green chrome / blue status / purple data / red error)
+
+Amber didn't sit with the strong phosphor green, so replaced it with a **semantic palette** (shared constants in `ui/concepts/ConceptTheme`): **green** for all chrome/controls/buttons/labels; **blue** for status only (link/connection/GPS state, selected control); **purple** for live data values (heading/speed/range/zoom, clock, distance, gauge needles, ego marker, map plazas/landmarks); **red** for faults / extreme warnings only. Amber banned. Touched the theme (unified + new `error` role), all three concept screens, the shared components (switcher/nav/controls/recenter → green, selected → blue), the ops readout (values → purple), and the map palettes (plaza + ego amber→purple; tracker-lit yellow→purple/blue/magenta). No amber literals remain; verified across A/C/D on the S9+.
+
+---
+
 ## 2026-07-04 — Dropped Concept B; Concept D green; ops readout made first-class per concept
 
 Three cockpit-shell changes, all verified on the S9+:
