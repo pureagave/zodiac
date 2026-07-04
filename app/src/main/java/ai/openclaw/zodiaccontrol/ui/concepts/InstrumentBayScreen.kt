@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
+import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPointStyle
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -89,16 +90,6 @@ fun instrumentBayScreen(
                     )
                     Text("SYS:ZD :BL: 76.75 :OB:", color = theme.dim, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 }
-                tile(theme = theme, modifier = Modifier.width(140.dp).fillMaxHeight()) {
-                    Text("UTC", color = theme.accent, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                    Text(
-                        text = "19:38:23",
-                        color = theme.secondary,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
             }
 
             Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -177,36 +168,19 @@ fun instrumentBayScreen(
                 }
             }
 
-            // Hazard chevron footer
-            Box(
+            // Operational readout footer: BRC clock / sunrise-sunset / return-to-camp,
+            // in the bay's tile aesthetic (replaced the decorative hazard chevron).
+            opsReadout(
+                theme = theme,
+                egoFix = state.egoFix,
+                headingDeg = state.headingDeg,
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .height(34.dp)
-                        .border(2.dp, theme.primary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val stripeW = 28f
-                    var x = -size.height
-                    while (x < size.width) {
-                        drawLine(
-                            color = theme.primary,
-                            start = Offset(x, size.height),
-                            end = Offset(x + size.height, 0f),
-                            strokeWidth = stripeW,
-                        )
-                        x += stripeW * 2f
-                    }
-                }
-                Text(
-                    text = "⚠  CAUTION  ZODIAC TRANSIT ACTIVE  ⚠",
-                    color = theme.background,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                )
-            }
+                        .border(2.dp, theme.primary)
+                        .padding(horizontal = 12.dp),
+            )
         }
 
         conceptSwitcher(
@@ -220,7 +194,8 @@ fun instrumentBayScreen(
             followMode = state.followMode,
             theme = theme,
             onClick = viewModel::recenterPan,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            // Raised above the ops footer so it doesn't cover the CAMP readout.
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 58.dp),
         )
     }
 }

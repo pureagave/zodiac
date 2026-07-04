@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
+import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.scanlineOverlay
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -139,7 +140,7 @@ fun motionTrackerScreen(
             navCueBar(cue = state.navCue, theme = theme)
             Spacer(Modifier.height(4.dp))
 
-            Row(Modifier.fillMaxSize()) {
+            Row(Modifier.weight(1f)) {
                 trackerStatColumn(
                     pair =
                         StatPair(
@@ -220,6 +221,19 @@ fun motionTrackerScreen(
                     )
                 }
             }
+
+            Spacer(Modifier.height(6.dp))
+            opsReadout(
+                theme = theme,
+                egoFix = state.egoFix,
+                headingDeg = state.headingDeg,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                        .border(1.dp, theme.primary)
+                        .padding(horizontal = 14.dp),
+            )
         }
 
         scanlineOverlay()
@@ -235,7 +249,8 @@ fun motionTrackerScreen(
             followMode = state.followMode,
             theme = theme,
             onClick = viewModel::recenterPan,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+            // Raised above the ops footer so it doesn't cover the CAMP readout.
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 58.dp),
         )
     }
 }

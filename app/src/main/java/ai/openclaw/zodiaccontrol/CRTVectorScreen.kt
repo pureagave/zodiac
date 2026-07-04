@@ -15,6 +15,7 @@ import ai.openclaw.zodiaccontrol.ui.concepts.ThemeCrtVector
 import ai.openclaw.zodiaccontrol.ui.concepts.conceptSwitcher
 import ai.openclaw.zodiaccontrol.ui.concepts.navCueBar
 import ai.openclaw.zodiaccontrol.ui.concepts.recenterButton
+import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.ProjectedMap
 import ai.openclaw.zodiaccontrol.ui.playamap.cockpitTouchInput
 import ai.openclaw.zodiaccontrol.ui.playamap.drawEgoMarkerAt
@@ -117,7 +118,7 @@ fun crtVectorScreen(
             Spacer(Modifier.height(6.dp))
             navCueBar(cue = state.navCue, theme = ThemeCrtVector)
             Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxSize()) {
+            Row(Modifier.weight(1f)) {
                 leftRail(
                     mapMode = state.mapMode,
                     onToggleMapMode = {
@@ -153,13 +154,27 @@ fun crtVectorScreen(
                         ),
                 )
             }
+
+            Spacer(Modifier.height(8.dp))
+            opsReadout(
+                theme = ThemeCrtVector,
+                egoFix = state.egoFix,
+                headingDeg = state.headingDeg,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                        .border(1.dp, VectorGreen)
+                        .padding(horizontal = 14.dp),
+            )
         }
 
         recenterButton(
             followMode = state.followMode,
             theme = ThemeCrtVector,
             onClick = viewModel::recenterPan,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+            // Raised above the ops footer so it doesn't cover the CAMP readout.
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 54.dp),
         )
     }
 }
