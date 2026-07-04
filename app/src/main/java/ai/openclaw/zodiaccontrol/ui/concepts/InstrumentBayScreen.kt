@@ -174,6 +174,7 @@ fun instrumentBayScreen(
                 theme = theme,
                 egoFix = state.egoFix,
                 headingDeg = state.headingDeg,
+                navTarget = state.navTarget,
                 modifier =
                     Modifier
                         .fillMaxWidth()

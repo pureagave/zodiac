@@ -9,6 +9,7 @@ import ai.openclaw.zodiaccontrol.core.model.FollowMode
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
+import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -46,6 +47,8 @@ data class CockpitUiState(
     val mapLoadError: String? = null,
     val concept: CockpitConcept = CockpitConcept.RADAR,
     val navCue: NavigationCue = NavigationCue.Unknown,
+    /** Active "drive to" destination — the ops readout guides to this (default HOME/camp). */
+    val navTarget: NavTarget = NavTarget.HOME,
     /**
      * Short message describing the most recent failed vehicle command send
      * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced

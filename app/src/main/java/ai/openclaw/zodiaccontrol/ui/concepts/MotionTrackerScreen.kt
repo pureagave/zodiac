@@ -227,6 +227,7 @@ fun motionTrackerScreen(
                 theme = theme,
                 egoFix = state.egoFix,
                 headingDeg = state.headingDeg,
+                navTarget = state.navTarget,
                 modifier =
                     Modifier
                         .fillMaxWidth()

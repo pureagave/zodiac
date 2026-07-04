@@ -13,6 +13,7 @@ import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
 import ai.openclaw.zodiaccontrol.core.navigation.PlayaCityModel
 import ai.openclaw.zodiaccontrol.core.navigation.computeNavigationCue
 import ai.openclaw.zodiaccontrol.core.navigation.toCityModel
+import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
@@ -344,6 +345,11 @@ class CockpitViewModel(
         val next = _uiState.value.concept.next()
         _uiState.update { it.copy(concept = next) }
         viewModelScope.launch { preferences.setConcept(next) }
+    }
+
+    /** Set the active "drive to" destination (HOME / MAN / TEMPLE). Session state. */
+    fun setNavTarget(target: NavTarget) {
+        _uiState.update { it.copy(navTarget = target) }
     }
 
     /**

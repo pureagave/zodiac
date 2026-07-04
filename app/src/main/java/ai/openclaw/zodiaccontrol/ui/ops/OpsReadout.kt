@@ -2,7 +2,7 @@ package ai.openclaw.zodiaccontrol.ui.ops
 
 import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
-import ai.openclaw.zodiaccontrol.core.ops.Camp
+import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.ops.campGuidance
 import ai.openclaw.zodiaccontrol.core.ops.sunTimes
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
@@ -49,6 +49,7 @@ fun opsReadout(
     theme: ConceptTheme,
     egoFix: GpsFix?,
     headingDeg: Int,
+    navTarget: NavTarget,
     modifier: Modifier = Modifier,
 ) {
     val zone = remember { ZoneId.of("America/Los_Angeles") }
@@ -62,7 +63,10 @@ fun opsReadout(
         }
     }
     val sun = remember(now.toLocalDate()) { sunTimes(now.toLocalDate(), GoldenSpike.Y2025.lat, GoldenSpike.Y2025.lon, zone) }
-    val guidance = remember(egoFix?.location) { egoFix?.let { campGuidance(it.location, Camp.GALACTIC_RELAY, projection) } }
+    val guidance =
+        remember(egoFix?.location, navTarget) {
+            egoFix?.let { campGuidance(it.location, navTarget.location, projection) }
+        }
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -84,7 +88,7 @@ fun opsReadout(
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "CAMP ${guidance?.distanceM?.let(::formatDistance) ?: "--"}",
+                text = "▸ ${navTarget.label} ${guidance?.distanceM?.let(::formatDistance) ?: "--"}",
                 color = theme.primary,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,

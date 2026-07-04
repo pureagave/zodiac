@@ -25,6 +25,25 @@ class CampGuidanceTest {
     }
 
     @Test
+    fun man_target_is_the_golden_spike() {
+        val g = campGuidance(ego = GoldenSpike.Y2025, target = NavTarget.MAN.location, projection = projection)
+        assertTrue("MAN should be the spike, got ${g.distanceM} m", g.distanceM < 1.0)
+    }
+
+    @Test
+    fun temple_sits_on_the_12_oclock_axis_from_the_man() {
+        // The 2025 Temple is ~2500 ft out on the 12:00 radial (45° true).
+        val g = campGuidance(ego = GoldenSpike.Y2025, target = NavTarget.TEMPLE.location, projection = projection)
+        assertEquals(45.0, g.bearingDeg, 3.0)
+        assertEquals(762.0, g.distanceM, 25.0)
+    }
+
+    @Test
+    fun home_target_resolves_to_the_camp() {
+        assertEquals(Camp.GALACTIC_RELAY, NavTarget.HOME.location)
+    }
+
+    @Test
     fun bearing_points_back_toward_camp_from_the_far_side() {
         // A point due *north-west* of camp (out past 8:00) should send the driver
         // roughly south-east — bearing in the lower-right quadrant (90..180).
