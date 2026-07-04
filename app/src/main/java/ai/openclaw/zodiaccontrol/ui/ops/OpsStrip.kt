@@ -27,7 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +45,12 @@ import kotlin.math.roundToInt
 private val Phosphor = Color(0xFF00FF66)
 private val PhosphorDim = Color(0xFF2C8A4A)
 private val Amber = Color(0xFFFFD166)
-private val StripBg = Color(0xCC000000)
+
+// Opaque black (OLED pixels off) rather than a translucent veil, so the strip
+// reads as a crisp HUD footer instead of dimming the concept behind it.
+private val StripBg = Color(0xFF000000)
+private val Divider = Color(0x5900FF66)
+private const val DIVIDER_PX = 2f
 private const val STRIP_HEIGHT_DP = 30
 private const val TICK_MS = 1_000L
 private const val METERS_PER_KM = 1_000.0
@@ -91,6 +98,9 @@ fun opsStrip(
                 .fillMaxWidth()
                 .height(STRIP_HEIGHT_DP.dp)
                 .background(StripBg)
+                .drawBehind {
+                    drawLine(Divider, Offset(0f, 0f), Offset(size.width, 0f), DIVIDER_PX)
+                }
                 .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
