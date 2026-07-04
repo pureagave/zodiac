@@ -150,15 +150,12 @@ private const val TILT_ZOOM_BOOST: Double = 1.0
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
 /**
- * Shared BRC map viewport for concepts B / C / D. Wraps the existing
+ * Shared BRC map viewport for both concepts (RADAR / MAP). Wraps the existing
  * `cockpitTouchInput` (pan + pinch), projects the map at the live heading and
  * zoom, optionally tilts via graphicsLayer, and overlays the ego marker.
  *
- * Concept A keeps its own inline implementation in `CRTVectorScreen` —
- * intentionally untouched per the directive to leave A as-is.
- *
  * @param allowTilt if true, the panel honours [CockpitUiState.mapMode]; if
- *   false (concept C) the panel is always top-down regardless of mode.
+ *   false (RADAR) the panel is always top-down regardless of mode.
  * @param clipCircular wraps the whole panel in a circular clip — the M41A
  *   look. Touch input still hits the bounding rect.
  * @param showRetroGrid draws the meter-space backdrop grid before the BRC

@@ -44,7 +44,7 @@ data class CockpitUiState(
      */
     val viewRotationDeg: Double = 0.0,
     val mapLoadError: String? = null,
-    val concept: CockpitConcept = CockpitConcept.A,
+    val concept: CockpitConcept = CockpitConcept.RADAR,
     val navCue: NavigationCue = NavigationCue.Unknown,
     /**
      * Short message describing the most recent failed vehicle command send

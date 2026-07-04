@@ -25,7 +25,7 @@ data class CockpitPrefsSnapshot(
                 mapMode = MapMode.TOP,
                 tiltDeg = CockpitUiState.DEFAULT_TILT_DEG,
                 pixelsPerMeter = DEFAULT_PIXELS_PER_METER,
-                concept = CockpitConcept.A,
+                concept = CockpitConcept.RADAR,
             )
 
         const val DEFAULT_PIXELS_PER_METER: Double = 0.18

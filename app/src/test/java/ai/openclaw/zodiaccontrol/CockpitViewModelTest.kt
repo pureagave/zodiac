@@ -433,25 +433,20 @@ class CockpitViewModelTest {
                 val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
                 advanceUntilIdle()
 
-                // Default concept is A; each cycle advances one step and wraps A after D
-                // (concept B was dropped, so the cycle is A -> C -> D -> A).
-                assertEquals(CockpitConcept.A, vm.uiState.value.concept)
+                // Default concept is RADAR; the cycle is RADAR -> MAP -> RADAR.
+                assertEquals(CockpitConcept.RADAR, vm.uiState.value.concept)
 
                 vm.cycleConcept()
                 advanceUntilIdle()
-                assertEquals(CockpitConcept.C, vm.uiState.value.concept)
+                assertEquals(CockpitConcept.MAP, vm.uiState.value.concept)
 
                 vm.cycleConcept()
                 advanceUntilIdle()
-                assertEquals(CockpitConcept.D, vm.uiState.value.concept)
-
-                vm.cycleConcept()
-                advanceUntilIdle()
-                assertEquals(CockpitConcept.A, vm.uiState.value.concept)
+                assertEquals(CockpitConcept.RADAR, vm.uiState.value.concept)
 
                 // Every advance is persisted in order.
                 assertEquals(
-                    listOf(CockpitConcept.C, CockpitConcept.D, CockpitConcept.A),
+                    listOf(CockpitConcept.MAP, CockpitConcept.RADAR),
                     prefs.concepts,
                 )
             } finally {

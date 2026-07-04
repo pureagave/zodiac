@@ -29,9 +29,8 @@ fun cockpitScreen(
 
     burnInScaffold(manager = burnInManager) {
         when (concept) {
-            CockpitConcept.A -> crtVectorScreen(viewModel = viewModel, onCycleConcept = cycle)
-            CockpitConcept.C -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
-            CockpitConcept.D -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
+            CockpitConcept.RADAR -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
+            CockpitConcept.MAP -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
         }
     }
 }

@@ -6,38 +6,25 @@ import org.junit.Test
 
 class CockpitConceptTest {
     @Test
-    fun next_cycles_through_all_concepts_and_wraps() {
-        // Concept B was dropped; cycle is now A -> C -> D -> A.
-        assertSame(CockpitConcept.C, CockpitConcept.A.next())
-        assertSame(CockpitConcept.D, CockpitConcept.C.next())
-        assertSame(CockpitConcept.A, CockpitConcept.D.next())
+    fun next_cycles_and_wraps() {
+        // Two concepts remain: RADAR <-> MAP.
+        assertSame(CockpitConcept.MAP, CockpitConcept.RADAR.next())
+        assertSame(CockpitConcept.RADAR, CockpitConcept.MAP.next())
     }
 
     @Test
     fun entries_are_in_order() {
         assertEquals(
-            listOf(
-                CockpitConcept.A,
-                CockpitConcept.C,
-                CockpitConcept.D,
-            ),
+            listOf(CockpitConcept.RADAR, CockpitConcept.MAP),
             CockpitConcept.entries,
         )
-        assertEquals(3, CockpitConcept.entries.size)
-    }
-
-    @Test
-    fun tags_match_each_concept() {
-        assertEquals("A", CockpitConcept.A.tag)
-        assertEquals("C", CockpitConcept.C.tag)
-        assertEquals("D", CockpitConcept.D.tag)
+        assertEquals(2, CockpitConcept.entries.size)
     }
 
     @Test
     fun display_names_match_each_concept() {
-        assertEquals("CRT VECTOR", CockpitConcept.A.displayName)
-        assertEquals("TRACKER", CockpitConcept.C.displayName)
-        assertEquals("BAY", CockpitConcept.D.displayName)
+        assertEquals("RADAR", CockpitConcept.RADAR.displayName)
+        assertEquals("MAP", CockpitConcept.MAP.displayName)
     }
 
     @Test

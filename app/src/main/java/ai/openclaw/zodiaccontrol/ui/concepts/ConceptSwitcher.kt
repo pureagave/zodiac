@@ -36,7 +36,7 @@ fun conceptSwitcher(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Text(
-            text = "[${current.tag}] ${current.displayName}  >",
+            text = "${current.displayName}  >",
             color = accent,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,

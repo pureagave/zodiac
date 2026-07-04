@@ -39,14 +39,14 @@ class DataStoreCockpitPreferencesTest {
             prefs.setMapMode(MapMode.TILT)
             prefs.setTiltDeg(55)
             prefs.setPixelsPerMeter(0.42)
-            prefs.setConcept(CockpitConcept.C)
+            prefs.setConcept(CockpitConcept.MAP)
 
             val snapshot = prefs.read()
             assertEquals(LocationSourceType.BLE, snapshot.locationSource)
             assertEquals(MapMode.TILT, snapshot.mapMode)
             assertEquals(55, snapshot.tiltDeg)
             assertEquals(0.42, snapshot.pixelsPerMeter, ZOOM_TOLERANCE)
-            assertEquals(CockpitConcept.C, snapshot.concept)
+            assertEquals(CockpitConcept.MAP, snapshot.concept)
         }
 
     @Test
