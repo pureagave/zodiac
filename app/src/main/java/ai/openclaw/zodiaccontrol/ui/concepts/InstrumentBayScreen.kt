@@ -37,24 +37,24 @@ import kotlin.math.sin
 
 /**
  * Concept D map palette: BLOCK point style so toilets, CPNs, and art render
- * as small framed rects matching the bay's orange-on-black tile aesthetic.
- * As the user zooms in, those blocks get visibly larger and read like
- * miniature instrument tiles scattered across the map.
+ * as small framed rects that read like miniature instrument tiles scattered
+ * across the map. Recoloured to the green phosphor family 2026-07-04 (was
+ * orange); the BLOCK styling is what keeps D distinct from Concept A.
  */
 private val InstrumentBayPalette =
     MapPalette(
-        fence = Color(0xFFFF8A00),
-        street = Color(0xFFFFAE3A),
-        streetOutline = Color(0xFF7A4200),
+        fence = Color(0xFF00FF66),
+        street = Color(0xFF1F8F46),
+        streetOutline = Color(0xFF0F5C2D),
         plaza = Color(0xFFFFD166),
-        toilet = Color(0xFFB266FF),
-        cpn = Color(0xFFFF8A00),
-        artMajor = Color(0xFFFFD166),
-        artMinor = Color(0xFFFFAE3A),
-        grid = Color(0xFFA36000),
+        toilet = Color(0xFF00BFFF),
+        cpn = Color(0xFF00FF66),
+        artMajor = Color(0xFFFF66CC),
+        artMinor = Color(0xFF80366A),
+        grid = Color(0xFF1F6E37),
         pointStyle = MapPointStyle.BLOCK,
         labelsEnabled = true,
-        labelPrimary = Color(0xFFFFD9A0),
+        labelPrimary = Color(0xFFB0FFB0),
         crtBeam = true,
     )
 

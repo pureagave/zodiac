@@ -5,7 +5,6 @@ import ai.openclaw.zodiaccontrol.burnin.burnInScaffold
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.ui.concepts.instrumentBayScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.motionTrackerScreen
-import ai.openclaw.zodiaccontrol.ui.concepts.perspectiveGridScreen
 import ai.openclaw.zodiaccontrol.ui.ops.OPS_STRIP_HEIGHT_DP
 import ai.openclaw.zodiaccontrol.ui.ops.opsStrip
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -42,7 +41,6 @@ fun cockpitScreen(
             Box(Modifier.fillMaxSize().padding(bottom = OPS_STRIP_HEIGHT_DP.dp)) {
                 when (concept) {
                     CockpitConcept.A -> crtVectorScreen(viewModel = viewModel, onCycleConcept = cycle)
-                    CockpitConcept.B -> perspectiveGridScreen(viewModel = viewModel, onCycleConcept = cycle)
                     CockpitConcept.C -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
                     CockpitConcept.D -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
                 }

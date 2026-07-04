@@ -33,16 +33,6 @@ val ThemeCrtVector =
         useVectorText = true,
     )
 
-val ThemePerspective =
-    ConceptTheme(
-        background = Color(0xFF000000),
-        primary = Color(0xFF00FF66),
-        secondary = Color(0xFF9DFF7A),
-        accent = Color(0xFFFFF700),
-        dim = Color(0xFF2C8A4A),
-        useVectorText = true,
-    )
-
 val ThemeTracker =
     ConceptTheme(
         background = Color(0xFF000000),
@@ -53,12 +43,15 @@ val ThemeTracker =
         useVectorText = true,
     )
 
+// Concept D was originally amber/orange ("Nostromo"); recoloured to the green
+// phosphor family 2026-07-04. Its distinct gauge-wall layout keeps it separate
+// from Concept A. Amber accent retained for gauge needles/values to pop.
 val ThemeInstrumentBay =
     ConceptTheme(
-        background = Color(0xFF0A0500),
-        primary = Color(0xFFFF8A00),
-        secondary = Color(0xFFFFAE3A),
+        background = Color(0xFF000000),
+        primary = Color(0xFF00FF66),
+        secondary = Color(0xFF00BFFF),
         accent = Color(0xFFFFD166),
-        dim = Color(0xFFA36000),
+        dim = Color(0xFF2C8A4A),
         useVectorText = true,
     )
