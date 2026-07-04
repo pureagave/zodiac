@@ -16,6 +16,12 @@ Historical task list. Detail and decision rationale lives in `SYNC.md` and the g
 - [x] CRT `standbyScreen` for deep idle; app-drawn black SLEEP with instant wake
 - [x] Manual park (top-left long-press) + hidden, preferences-backed tuning panel (bottom-left long-press)
 - [x] `BurnInConfig` self-coercion + DataStore persistence; verified end-to-end on the Fire HD 10
+- [x] Full four-phase burn-in visual layer verified on the S9+ OLED (2026-07-04): DIM 30% clean (no Adreno ModulateAlpha artifacts), CRT STANDBY, black SLEEP
+
+## Operational awareness (2026-07-04)
+- [x] `core/ops/Camp` (provisional Heiau & 2:15), `campGuidance` (ego→camp bearing/distance), `SunTimes` (local NOAA sunrise/sunset, no API) — unit-tested
+- [x] Ambient ops strip (`ui/ops/OpsStrip`): BRC clock + sunrise/sunset + return-to-camp over every concept; opaque HUD bar + reserved band (no chrome overlap)
+- [x] Edge-to-edge immersive kiosk chrome in `MainActivity` (targetSdk 35 / Android 15+); strip is `safeContent`-inset-aware. Verified on the S9+.
 
 ## Cockpit UI
 - [x] Three-rail CRT layout (left subsystem rail, center viewport, right status rail)

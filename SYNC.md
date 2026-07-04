@@ -6,6 +6,25 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-04 — Operational-awareness strip shipped; app verified on the S9+ OLED
+
+**Data ecosystem briefed (2026-06-29).** Zodiac has Starlink onboard, unlocking live data (weather via Open-Meteo, NWS alerts zone NVZ023, the Burning Man API) — all to be built offline-first. Camp = Galactic Relay, **Heiau & 2:15**. Full detail + constraints (don't touch nav/GPS/messaging) in memory `project_data_ecosystem`. First increment chosen: the no-network **operational quick-wins**.
+
+**Operational awareness (`core/ops/` + `ui/ops/`).**
+- **Logic (tested):** `Camp.GALACTIC_RELAY` (provisional Heiau & 2:15 — 2:15 radial ∩ the H-ring @ 1555 m, measured from 2025's "Herbert"; replace with the BM API geocode / 2026 Golden Spike when they land); `campGuidance` (ego→camp bearing+distance over `PlayaProjection`); `SunTimes` (local NOAA sunrise/sunset, no API, verified vs NOAA reference).
+- **UI:** ambient bottom **ops strip** over every concept (BRC clock · RISE/SET · CAMP distance + a heading-relative ▲). Rendered inside `burnInScaffold` so it dims/sleeps with the cockpit.
+
+**S9+ bring-up + fixes (verified on-device, One UI 8 / Android 16 / SM-X810).**
+- **Edge-to-edge:** targetSdk 35 forces edge-to-edge on Android 15+, so the strip drew under the system bars. Fixed: `MainActivity` now draws edge-to-edge + **immersive** (hides status/nav bars, transient-on-swipe) — full-panel kiosk chrome. Strip also gets `WindowInsets.safeContent` padding for gesture-nav.
+- **Strip tuning:** opaque-black HUD bar + phosphor divider (was a translucent veil dimming the bottom); **reserve** `OPS_STRIP_HEIGHT_DP` at the bottom of the concept dispatch so concepts render above it (was overlapping the recenter button).
+- **OLED burn-in verified on the panel (caveat closed):** the visual breathe/dim layer was gated off on the LCD Fire, so it had never rendered. On the S9+ (Adreno/Vulkan) all four phases render clean — DIM = uniform 30% with **no `ModulateAlpha` blend artifacts**, DEEP_IDLE = CRT STANDBY on true-black, SLEEP = pixels off. The Adreno-vs-LCD precision concern (same family as the deferred pixel-cache) is resolved for this layer.
+
+**Deploy gotcha (in `reference_build_deploy_env`):** the S9+ was in Samsung **desktop/DeX windowing** — apps open freeform with a forced taskbar that overlaps the app bottom (looks "cut off"), can't be toggled off via adb, and reverts on reinstall. `adb pair` (wireless) kept racing the rotating pairing port; **USB `tcpip 5555` then wifi connect** is the reliable path. For a clean dashboard: screen-pin/kiosk (no taskbar). `screencap` captures the app framebuffer without the taskbar overlay.
+
+**Still open:** per-concept strip polish beyond the reservation (sizing/segment spacing across all four) if wanted; broader operational features (return-to-camp as its own affordance, weather/NWS/BM-API — need the network layer) remain future increments.
+
+---
+
 ## 2026-06-20 — Fleet adds Samsung (S9+ main dashboard); OLED burn-in mitigation shipped
 
 **Hardware target widened: Fire + Samsung.** The fleet is no longer Fire-only — Samsung Galaxy Tabs are now a target, and the **main dashboard display switched to the Galaxy Tab S9+** (12.4" Dynamic AMOLED 2X, 2800×1752, 120Hz, Snapdragon 8 Gen 2, 12GB). Candidate fleet models: S9, S9+, S10, maybe FE. They span **2-3 GPU families** — S9/S9+ = Adreno 740 (Qualcomm, Vulkan), S9 FE = Mali-G68 (Exynos), S10 = MediaTek Immortalis. Consequences: (1) the deferred **GPU pixel-cache** map optimization now needs an **Adreno device** in its visual-validation loop (the Fire's Mali-GLES can't certify Vulkan-Adreno halo precision); the Fire HD 10 stays the **perf floor**, the FE is the only Samsung near it. (2) The OLED panels introduce **burn-in risk** over multi-day playa deployment — addressed below.
