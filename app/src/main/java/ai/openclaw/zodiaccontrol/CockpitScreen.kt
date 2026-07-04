@@ -6,13 +6,16 @@ import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.ui.concepts.instrumentBayScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.motionTrackerScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.perspectiveGridScreen
+import ai.openclaw.zodiaccontrol.ui.ops.OPS_STRIP_HEIGHT_DP
 import ai.openclaw.zodiaccontrol.ui.ops.opsStrip
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
@@ -33,13 +36,18 @@ fun cockpitScreen(
 
     burnInScaffold(manager = burnInManager) {
         Box(Modifier.fillMaxSize()) {
-            when (concept) {
-                CockpitConcept.A -> crtVectorScreen(viewModel = viewModel, onCycleConcept = cycle)
-                CockpitConcept.B -> perspectiveGridScreen(viewModel = viewModel, onCycleConcept = cycle)
-                CockpitConcept.C -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
-                CockpitConcept.D -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
+            // Reserve the strip's band so every concept (and its bottom-corner
+            // chrome, e.g. the recenter button) renders above the footer rather
+            // than under it.
+            Box(Modifier.fillMaxSize().padding(bottom = OPS_STRIP_HEIGHT_DP.dp)) {
+                when (concept) {
+                    CockpitConcept.A -> crtVectorScreen(viewModel = viewModel, onCycleConcept = cycle)
+                    CockpitConcept.B -> perspectiveGridScreen(viewModel = viewModel, onCycleConcept = cycle)
+                    CockpitConcept.C -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
+                    CockpitConcept.D -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
+                }
             }
-            // Ambient operational strip over every concept. Collects its own
+            // Ambient operational strip in the reserved band. Collects its own
             // narrow state, so its per-second tick doesn't recompose the dispatch.
             opsStrip(viewModel = viewModel, modifier = Modifier.align(Alignment.BottomCenter))
         }

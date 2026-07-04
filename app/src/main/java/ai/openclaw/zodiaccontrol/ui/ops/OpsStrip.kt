@@ -51,7 +51,9 @@ private val Amber = Color(0xFFFFD166)
 private val StripBg = Color(0xFF000000)
 private val Divider = Color(0x5900FF66)
 private const val DIVIDER_PX = 2f
-private const val STRIP_HEIGHT_DP = 30
+
+/** Height of the ambient strip; concepts reserve this at their bottom so it doesn't overlap their chrome. */
+const val OPS_STRIP_HEIGHT_DP = 30
 private const val TICK_MS = 1_000L
 private const val METERS_PER_KM = 1_000.0
 private const val KM_CUTOVER_M = 950.0
@@ -96,7 +98,7 @@ fun opsStrip(
                 // ~0 in true fullscreen/kiosk, so the bar hugs the edge there.
                 .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
                 .fillMaxWidth()
-                .height(STRIP_HEIGHT_DP.dp)
+                .height(OPS_STRIP_HEIGHT_DP.dp)
                 .background(StripBg)
                 .drawBehind {
                     drawLine(Divider, Offset(0f, 0f), Offset(size.width, 0f), DIVIDER_PX)
