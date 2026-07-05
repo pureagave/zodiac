@@ -3,7 +3,6 @@ package ai.openclaw.zodiaccontrol.ui.concepts
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.model.MapMode
-import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
@@ -70,18 +69,6 @@ fun conceptControlStrip(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
             )
-        }
-
-        sectionLabel("> DRIVE TO", theme.primary)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            NavTarget.entries.forEach { target ->
-                themedChip(
-                    label = target.label,
-                    selected = state.navTarget == target,
-                    theme = theme,
-                    onClick = { viewModel.setNavTarget(target) },
-                )
-            }
         }
 
         sectionLabel("> GPS", theme.primary)

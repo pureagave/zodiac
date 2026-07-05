@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
+import ai.openclaw.zodiaccontrol.ui.ops.driveToBar
 import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.scanlineOverlay
@@ -222,6 +223,13 @@ fun motionTrackerScreen(
                 }
             }
 
+            Spacer(Modifier.height(6.dp))
+            driveToBar(
+                theme = theme,
+                active = state.navTarget,
+                onSelect = viewModel::setNavTarget,
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(6.dp))
             opsReadout(
                 theme = theme,

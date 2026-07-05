@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
+import ai.openclaw.zodiaccontrol.ui.ops.driveToBar
 import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPointStyle
@@ -168,6 +169,12 @@ fun instrumentBayScreen(
                 }
             }
 
+            driveToBar(
+                theme = theme,
+                active = state.navTarget,
+                onSelect = viewModel::setNavTarget,
+                modifier = Modifier.fillMaxWidth(),
+            )
             // Operational readout footer: BRC clock / sunrise-sunset / return-to-camp,
             // in the bay's tile aesthetic (replaced the decorative hazard chevron).
             opsReadout(
