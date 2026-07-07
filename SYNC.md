@@ -6,6 +6,14 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-06 — Handoff/state doc; drive-to selector → prominent bar
+
+- **`HANDOFF.md` (repo root)** — wrote a consolidated current-state + roadmap doc (context was ~90% full) so a fresh session gets up to speed fast for the next big feature. It points at the likely next work: the **network/data layer** (Starlink onboard → weather/dust alerts + playa discovery; see memory `project_data_ecosystem`). Read HANDOFF first, then SYNC for history.
+- **Drive-to selector → prominent bar.** Moved destination selection from tiny buried control-strip chips to a **full-width HOME/MAN/TEMPLE button bar** above the ops footer (active = blue); verified on the S9+ (HOME 1.6km ↔ MAN 0m switching).
+- **Testing-display discipline** (memory `feedback_s9_testing_display`): sleep the display after every screenshot; keep brightness manual + low (20) for all testing. "No burn-in until the Burn."
+
+---
+
 ## 2026-07-04 — Two concepts (RADAR + MAP); drive-to nav (HOME/MAN/TEMPLE)
 
 - **Consolidated to two concepts.** Dropped Concept A (CRT VECTOR; B was already gone) + `CRTVectorScreen`. Renamed C→RADAR, D→MAP and dropped the letter designations (`CockpitConcept` lost `tag`; the switcher shows just the name). Cycle RADAR↔MAP; default RADAR; a stale persisted A/B/C/D falls back to RADAR via the enum-name guard.
