@@ -6,6 +6,19 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-10 — Playa discovery Phase 3: RADAR contacts (blips on the M41A scope)
+
+The flagship discovery surface: nearby art + camps now plot as **contacts on the RADAR sweep scope**, driven by the offline-first `DiscoveryRepository`.
+
+- **Data flow.** `DiscoveryRepository.pois` → `CockpitUiState.pois` → `MapUiInputs.pois` (smart-skip slice) → `PlayaMapPanel` contacts overlay. The ViewModel takes a plain `poisFlow: StateFlow<List<PlayaPoi>>` (defaulted empty) rather than the whole repo, so it depends only on what it renders and the 19 existing `CockpitViewModelTest` factory sites needed **zero changes**. `MainActivity` wires `app.discoveryRepository.pois`.
+- **Pure geometry, unit-tested.** `core/ops/RadarContact.kt`: `contactsWithinRange(pois, center, rangeM, max)` (nearest-N inside the scope radius, drops unplaceable POIs) + `contactPulse(sweepDeg, blipAngle)` (M41A "ping": full-bright as the arm passes, linear fade to a floor so contacts persist between sweeps). Both Compose-free → `RadarContactTest`.
+- **Render.** `ui/concepts/RadarContactBlips.kt` `drawContacts` (a `DrawScope` ext): projects each POI through the *same* viewport as the map, culls to the circular scope, and — matching the lit map's own encoding — draws **art = pink diamond, camps = purple dot**, with the active drive-to **target = a ringed blue blip**. The blip alpha reads the sweep angle *inside the draw scope* (same trick as the sweep arm) so the 60 fps ticker invalidates draw, not composition. `ContactsOverlay` is an optional field on `PlayaMapPanelStyle` (RADAR sets it; MAP leaves it null for now).
+- **detekt.** Bumped `LongParameterList.constructorThreshold` 7→8 (manual-DI VM/factory gained `poisFlow`) with a rationale comment; split the blip drawers into their own file to stay under `TooManyFunctions.thresholdInFiles` (12); named `RadarContact.kt` after its data class (`MatchingDeclarationName`).
+- **Verified on the S9+** (real 2025 data): 806 of 1726 API POIs are placeable (the rest are plaza/portal addresses the projector drops, as designed). With the FAKE ego parked at the Man, the scope shows pink art diamonds + purple camp dots clustered near centre, brighter in the swept sector, dimmer at the floor elsewhere. HOME (1.6 km) sits beyond the 846 m scope range so its target ring is clipped off-scope while the footer still guides to it.
+- **Device gotcha (offline bring-up):** the S9+'s wifi couldn't reach `api.burningman.org` (DNS resolves, no route), and `DiscoveryRepository` swallows fetch errors by design → empty scope. To verify deterministically, fetched + projected the real 2025 dataset on the Mac (`/api/art` + `/api/camp`, same projection math) and streamed the app-format cache straight into the app's private dir via `adb shell "run-as PKG sh -c 'cat > cache/discovery_2025.json'" < file`. Note: `run-as PKG <cmd>` uses the app-home cwd, but `run-as PKG sh -c '<cmd>'` resets cwd to `/` — use the direct form when poking app files (absolute paths are SELinux-blocked).
+
+---
+
 ## 2026-07-06 — Handoff/state doc; drive-to selector → prominent bar
 
 - **`HANDOFF.md` (repo root)** — wrote a consolidated current-state + roadmap doc (context was ~90% full) so a fresh session gets up to speed fast for the next big feature. It points at the likely next work: the **network/data layer** (Starlink onboard → weather/dust alerts + playa discovery; see memory `project_data_ecosystem`). Read HANDOFF first, then SYNC for history.

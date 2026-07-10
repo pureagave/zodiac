@@ -190,6 +190,16 @@ fun motionTrackerScreen(
                                             coneFwdDeg = FORWARD_CONE_DEG,
                                             coneFill = Color(0x267EFF62),
                                         ),
+                                    contacts =
+                                        ContactsOverlay(
+                                            // Match the lit map's own encoding: art in pink,
+                                            // camps in data-purple; active target in status-blue.
+                                            artColor = TrackerLitPalette.artMajor,
+                                            campColor = DataPurple,
+                                            targetColor = StatusBlue,
+                                            target = state.navTarget.location,
+                                            sweepDeg = { sweepDeg.floatValue },
+                                        ),
                                 ),
                             modifier = Modifier.fillMaxSize(),
                         )

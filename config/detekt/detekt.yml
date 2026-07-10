@@ -13,6 +13,12 @@ style:
 complexity:
   LongMethod:
     active: false
+  LongParameterList:
+    # Manual DI (no Hilt): CockpitViewModel + its factory take one collaborator
+    # per dependency, so the constructor grows by one each time the cockpit gains
+    # a real data source (poisFlow for playa-discovery contacts was the latest).
+    # Bumped from the default 7 to keep just above the current count.
+    constructorThreshold: 8
   TooManyFunctions:
     # Default 11 was tight for CockpitViewModel which exposes one method per
     # discrete cockpit operation. Bumped each time a discrete cockpit action

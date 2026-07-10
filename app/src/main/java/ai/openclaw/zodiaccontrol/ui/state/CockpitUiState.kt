@@ -10,6 +10,7 @@ import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
 import ai.openclaw.zodiaccontrol.core.ops.NavTarget
+import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -49,6 +50,12 @@ data class CockpitUiState(
     val navCue: NavigationCue = NavigationCue.Unknown,
     /** Active "drive to" destination — the ops readout guides to this (default HOME/camp). */
     val navTarget: NavTarget = NavTarget.HOME,
+    /**
+     * Playa-discovery points of interest (art + camps) from the offline-first
+     * [ai.openclaw.zodiaccontrol.data.discovery.DiscoveryRepository]. Rendered
+     * as RADAR contacts / MAP markers; empty until the cache/first sync lands.
+     */
+    val pois: List<PlayaPoi> = emptyList(),
     /**
      * Short message describing the most recent failed vehicle command send
      * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced

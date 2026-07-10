@@ -1,11 +1,13 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
 import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
+import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.geo.PlayaViewport
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
+import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 import ai.openclaw.zodiaccontrol.ui.playamap.LabelLayouts
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
@@ -69,6 +71,7 @@ data class MapUiInputs(
     val tiltDeg: Int,
     val mapMode: MapMode,
     val headingDeg: Int,
+    val pois: List<PlayaPoi>,
 ) {
     companion object {
         fun from(state: CockpitUiState): MapUiInputs =
@@ -81,6 +84,7 @@ data class MapUiInputs(
                 tiltDeg = state.tiltDeg,
                 mapMode = state.mapMode,
                 headingDeg = state.headingDeg,
+                pois = state.pois,
             )
     }
 }
@@ -102,6 +106,11 @@ data class PlayaMapPanelStyle(
     val clipCircular: Boolean = false,
     val showRetroGrid: Boolean = false,
     val sweep: SweepOverlay? = null,
+    /**
+     * When set, plot nearby discovery POIs ([MapUiInputs.pois]) as scope
+     * contacts. Kept off (null) for concepts that don't want the overlay.
+     */
+    val contacts: ContactsOverlay? = null,
     /**
      * When true the camera is pinned to the ego (the car) and one-finger pan
      * is disabled — the vehicle stays at the scope centre and the map scrolls
@@ -133,6 +142,25 @@ data class SweepOverlay(
     val armColor: Color,
     val coneFwdDeg: Float,
     val coneFill: Color,
+)
+
+/**
+ * RADAR contact overlay: plots the nearest [maxContacts] discovery POIs that
+ * fall inside the scope's visible radius as blips (art = diamond, camp = dot),
+ * plus the active drive-to [target] as a distinct ringed blip.
+ *
+ * [sweepDeg] is the optional M41A sweep angle (same lambda the [SweepOverlay]
+ * uses, read at *draw* time): when present, blips pulse bright as the arm
+ * passes and fade to a floor between pings; when null they hold steady. The
+ * colours come from the concept palette so the overlay stays on-system.
+ */
+data class ContactsOverlay(
+    val artColor: Color,
+    val campColor: Color,
+    val targetColor: Color,
+    val target: LatLon?,
+    val sweepDeg: (() -> Float)? = null,
+    val maxContacts: Int = DEFAULT_MAX_CONTACTS,
 )
 
 private const val TILT_CAMERA_DISTANCE: Float = 8f
@@ -259,6 +287,7 @@ fun playaMapPanel(
                 tiltDeg = inputs.tiltDeg,
             ),
         )
+        style.contacts?.let { contactsCanvas(inputs.pois, projection, viewport, it) }
         egoOverlayCanvas(
             EgoOverlayInputs(
                 inputs = inputs,
@@ -407,6 +436,21 @@ private fun egoOverlayCanvas(inputs: EgoOverlayInputs) {
 private fun sweepArmCanvas(sweep: SweepOverlay) {
     Canvas(modifier = Modifier.fillMaxSize()) { drawSweepArm(sweep) }
 }
+
+@Composable
+private fun contactsCanvas(
+    pois: List<PlayaPoi>,
+    projection: PlayaProjection,
+    viewport: PlayaViewport?,
+    overlay: ContactsOverlay,
+) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val vp = viewport ?: return@Canvas
+        drawContacts(pois, projection, vp, overlay)
+    }
+}
+
+private const val DEFAULT_MAX_CONTACTS: Int = 40
 
 /**
  * Concept-C "ping" overlay: re-blit the same cached [ProjectedMap] in the

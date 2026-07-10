@@ -14,6 +14,7 @@ import ai.openclaw.zodiaccontrol.core.navigation.PlayaCityModel
 import ai.openclaw.zodiaccontrol.core.navigation.computeNavigationCue
 import ai.openclaw.zodiaccontrol.core.navigation.toCityModel
 import ai.openclaw.zodiaccontrol.core.ops.NavTarget
+import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
@@ -41,6 +42,12 @@ class CockpitViewModel(
     private val locationSource: RoutedLocationSource,
     private val preferences: CockpitPreferences,
     private val fakeLocationSource: FakeLocationSource,
+    /**
+     * Offline-first discovery POIs (art + camps). A plain flow rather than the
+     * whole repository so the ViewModel depends only on what it renders and
+     * stays trivially testable; defaults to empty for tests / pre-wiring.
+     */
+    private val poisFlow: StateFlow<List<PlayaPoi>> = MutableStateFlow(emptyList()),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CockpitUiState())
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
@@ -156,6 +163,14 @@ class CockpitViewModel(
                         )
                     }
                     recomputeNavCue()
+                }
+            }
+            launch {
+                // Offline-first discovery POIs (art + camps). Serves the disk
+                // cache instantly and re-emits after each background sync; the
+                // cockpit renders them as RADAR contacts / MAP markers.
+                poisFlow.collect { pois ->
+                    _uiState.update { it.copy(pois = pois) }
                 }
             }
             // select() is a no-op when the saved type matches the registry's
@@ -400,6 +415,7 @@ class CockpitViewModelFactory(
     private val locationSource: RoutedLocationSource,
     private val preferences: CockpitPreferences,
     private val fakeLocationSource: FakeLocationSource,
+    private val poisFlow: StateFlow<List<PlayaPoi>> = MutableStateFlow(emptyList()),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -411,6 +427,7 @@ class CockpitViewModelFactory(
                 locationSource = locationSource,
                 preferences = preferences,
                 fakeLocationSource = fakeLocationSource,
+                poisFlow = poisFlow,
             ) as T
         }
         error("Unknown ViewModel class: ${modelClass.name}")

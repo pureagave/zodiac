@@ -60,6 +60,7 @@ private fun zodiacApp() {
                     locationSource = app.locationSource,
                     preferences = app.preferences,
                     fakeLocationSource = app.fakeLocationSource,
+                    poisFlow = app.discoveryRepository.pois,
                 ),
         )
 
