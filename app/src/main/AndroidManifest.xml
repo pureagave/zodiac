@@ -6,10 +6,11 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!--
-      TODO(NET source): the production GPS path streams NMEA over UDP 10110 on
-      the car WiFi (NetworkLocationSource, not yet built). UDP sockets need
-      android.permission.INTERNET — add it when that source lands.
+      Playa discovery via the Burning Man API (over Starlink), and the future
+      NET GPS source (NMEA over UDP 10110). Both need INTERNET.
     -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Bluetooth Classic SPP for NMEA GPS receivers (Phase 4d). -->
     <uses-permission

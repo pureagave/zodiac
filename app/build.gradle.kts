@@ -1,3 +1,11 @@
+import java.util.Properties
+
+// Local, gitignored secrets (see local.properties). Absent on CI → key is "".
+private val localSecrets =
+    Properties().apply {
+        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    }
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -21,6 +29,9 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Burning Man API key, injected from local.properties (never committed).
+        buildConfigField("String", "BM_API_KEY", "\"${localSecrets.getProperty("BM_API_KEY", "")}\"")
     }
 
     // Release signing is opt-in: set ZODIAC_KEYSTORE_FILE (plus the matching
@@ -73,6 +84,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

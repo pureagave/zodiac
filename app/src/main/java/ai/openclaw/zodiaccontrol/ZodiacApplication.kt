@@ -9,6 +9,8 @@ import ai.openclaw.zodiaccontrol.data.FakeTelemetryRepository
 import ai.openclaw.zodiaccontrol.data.RoutedVehicleGateway
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
 import ai.openclaw.zodiaccontrol.data.VehicleConnectionGateway
+import ai.openclaw.zodiaccontrol.data.discovery.BmApiClient
+import ai.openclaw.zodiaccontrol.data.discovery.DiscoveryRepository
 import ai.openclaw.zodiaccontrol.data.playa.AssetsPlayaMapRepository
 import ai.openclaw.zodiaccontrol.data.playa.PlayaMapBinaryCache
 import ai.openclaw.zodiaccontrol.data.playa.PlayaMapRepository
@@ -127,6 +129,23 @@ class ZodiacApplication : Application() {
 
                     override suspend fun write(config: BurnInConfig) = preferences.setBurnInConfig(config)
                 },
+        )
+    }
+
+    /**
+     * Playa discovery (art + camps) from the Burning Man API — offline-first:
+     * serves its disk cache immediately, refreshes over Starlink when reachable,
+     * and keeps the cache when offline. Process-lifetime so the cache survives
+     * Activity recreation.
+     */
+    val discoveryRepository: DiscoveryRepository by lazy {
+        DiscoveryRepository(
+            source = BmApiClient(),
+            scope = applicationScope,
+            cacheDir = cacheDir,
+            // 2025 = latest year with released locations; 2026 locations are
+            // embargoed until ~3 weeks pre-event (and hidden from users per ToS).
+            year = 2025,
         )
     }
 }
