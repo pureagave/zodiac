@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -41,7 +43,11 @@ fun conceptControlStrip(
         modifier =
             modifier
                 .border(1.dp, theme.primary)
-                .padding(8.dp),
+                .padding(8.dp)
+                // The MAP concept adds the TOP/TILT row, which can push the strip
+                // past its allotted height and clip the last controls; scroll so
+                // everything stays reachable (also readies it for portrait).
+                .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         sectionLabel("> TRANSPORT", theme.primary)

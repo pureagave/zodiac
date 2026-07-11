@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
+import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.ui.ops.driveSelectionOf
 import ai.openclaw.zodiaccontrol.ui.ops.driveToBar
 import ai.openclaw.zodiaccontrol.ui.ops.headingGuidanceBar
@@ -123,12 +124,25 @@ fun instrumentBayScreen(
                 tile(theme = theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
                     val zoomLabel =
                         remember(state.pixelsPerMeter) { "%.2f".format(state.pixelsPerMeter) }
-                    Text(
-                        text = "GROUND TRACK // ZOOM $zoomLabel px/m",
-                        color = theme.primary,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                    )
+                    // Title row with the TOP/TILT toggle on the right — kept here on
+                    // the map (always visible) rather than in the overflow-prone
+                    // control strip where it was getting clipped.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "GROUND TRACK // ZOOM $zoomLabel px/m",
+                            color = theme.primary,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            themedChip("TOP", state.mapMode == MapMode.TOP, theme) { viewModel.setMapMode(MapMode.TOP) }
+                            themedChip("TILT", state.mapMode == MapMode.TILT, theme) { viewModel.setMapMode(MapMode.TILT) }
+                        }
+                    }
                     Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
                         playaMapPanel(
                             inputs = mapInputs,
@@ -169,6 +183,8 @@ fun instrumentBayScreen(
                             viewModel = viewModel,
                             theme = theme,
                             modifier = Modifier.fillMaxSize(),
+                            // TOP/TILT lives on the map header now, not in this strip.
+                            showTiltToggle = false,
                         )
                     }
                 }

@@ -182,6 +182,9 @@ private const val TILT_CAMERA_DISTANCE: Float = 8f
 private const val TILT_ANCHOR_Y: Double = 0.78
 private const val TOP_ANCHOR_Y: Double = 0.5
 private const val TILT_ZOOM_BOOST: Double = 1.0
+
+/** The perspective tilt angle applied in TILT mode (fixed; see the graphicsLayer note). */
+private const val TILT_ANGLE_DEG: Float = 45f
 private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
 
 /**
@@ -291,7 +294,11 @@ fun playaMapPanel(
             modifier =
                 if (tilt) {
                     Modifier.fillMaxSize().graphicsLayer {
-                        rotationX = inputs.tiltDeg.toFloat()
+                        // Fixed tilt angle. (A runtime-computed rotationX from
+                        // inputs.tiltDeg wouldn't render in this graphicsLayer on the
+                        // S9+ — only a compile-time constant does — and tiltDeg isn't
+                        // user-adjustable, so a constant is both correct and robust.)
+                        rotationX = TILT_ANGLE_DEG
                         cameraDistance = TILT_CAMERA_DISTANCE * density
                         transformOrigin = TransformOrigin(0.5f, 0.5f)
                     }
