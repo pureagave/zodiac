@@ -43,7 +43,7 @@ import kotlin.math.roundToInt
 private val Scrim = Color(0xE6000000)
 private val PanelBg = Color(0xFF020602)
 private const val FLASH_MS = 10_000L
-private val RING_NAMES = listOf("Esp", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K")
+private val RING_NAMES = listOf("Esp", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K")
 
 private enum class Stage { CLOCK, RING, FLASH }
 
