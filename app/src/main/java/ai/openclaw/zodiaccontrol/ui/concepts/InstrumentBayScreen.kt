@@ -7,6 +7,7 @@ import ai.openclaw.zodiaccontrol.ui.ops.headingGuidanceBar
 import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPointStyle
+import ai.openclaw.zodiaccontrol.ui.state.CockpitUiState
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -71,6 +73,8 @@ fun instrumentBayScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val mapInputs by remember { derivedStateOf { MapUiInputs.from(state) } }
     val theme = ThemeInstrumentBay
+    val config = LocalConfiguration.current
+    val portrait = config.screenHeightDp > config.screenWidthDp
 
     Box(
         modifier =
@@ -98,94 +102,52 @@ fun instrumentBayScreen(
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Left column: heading dial + speed gauge stacked
-                Column(
-                    modifier = Modifier.fillMaxHeight().width(160.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    tile(theme = theme, modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        Text("HEADING", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
-                            headingDial(theme = theme, headingDeg = state.headingDeg)
-                        }
+            if (portrait) {
+                // Portrait: map on top, gauges + cells in a row, controls below.
+                Column(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    bayMapTile(mapInputs, viewModel, state, theme, Modifier.fillMaxWidth().weight(1f))
+                    Row(modifier = Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        headingTile(theme, state.headingDeg, Modifier.weight(1f).fillMaxHeight())
+                        speedTile(theme, state.speedKph, Modifier.weight(1f).fillMaxHeight())
+                        cellsTile(theme, Modifier.weight(1f).fillMaxHeight())
                     }
-                    tile(theme = theme, modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        Text("SPEED KPH", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
-                            speedGauge(theme = theme, speedKph = state.speedKph)
-                        }
-                    }
+                    conceptControlStrip(
+                        state = state,
+                        viewModel = viewModel,
+                        theme = theme,
+                        modifier = Modifier.fillMaxWidth().height(170.dp),
+                        showTiltToggle = false,
+                    )
                 }
-
-                // Center: large map tile — real BRC playa rendered with D's
-                // blocky orange palette, honouring TOP/TILT toggle and the
-                // shared zoom/pan/recenter controls.
-                tile(theme = theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    val zoomLabel =
-                        remember(state.pixelsPerMeter) { "%.2f".format(state.pixelsPerMeter) }
-                    // Title row with the TOP/TILT toggle on the right — kept here on
-                    // the map (always visible) rather than in the overflow-prone
-                    // control strip where it was getting clipped.
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
+            } else {
+                // Landscape: left gauges | centre map | right throttle/cells/controls.
+                Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier.fillMaxHeight().width(160.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(
-                            text = "GROUND TRACK // ZOOM $zoomLabel px/m",
-                            color = theme.primary,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            themedChip("TOP", state.mapMode == MapMode.TOP, theme) { viewModel.setMapMode(MapMode.TOP) }
-                            themedChip("TILT", state.mapMode == MapMode.TILT, theme) { viewModel.setMapMode(MapMode.TILT) }
+                        headingTile(theme, state.headingDeg, Modifier.fillMaxWidth().weight(1f))
+                        speedTile(theme, state.speedKph, Modifier.fillMaxWidth().weight(1f))
+                    }
+                    bayMapTile(mapInputs, viewModel, state, theme, Modifier.weight(1f).fillMaxHeight())
+                    Column(
+                        modifier = Modifier.fillMaxHeight().width(280.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        tile(theme = theme, modifier = Modifier.fillMaxWidth().height(120.dp)) {
+                            Text("THROTTLE TRACE", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                            Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) { throttleTrace(theme = theme) }
                         }
-                    }
-                    Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
-                        playaMapPanel(
-                            inputs = mapInputs,
-                            viewModel = viewModel,
-                            style =
-                                PlayaMapPanelStyle(
-                                    palette = InstrumentBayPalette,
-                                    egoStyle = EgoStyle.TRIANGLE,
-                                    egoColor = theme.accent,
-                                    allowTilt = true,
-                                    showRetroGrid = false,
-                                    routeColor = theme.secondary,
-                                ),
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                // Right column: throttle trace + cell bars + control strip
-                Column(
-                    modifier = Modifier.fillMaxHeight().width(280.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    tile(theme = theme, modifier = Modifier.fillMaxWidth().height(120.dp)) {
-                        Text("THROTTLE TRACE", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
-                            throttleTrace(theme = theme)
+                        cellsTile(theme, Modifier.fillMaxWidth().height(80.dp))
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            conceptControlStrip(
+                                state = state,
+                                viewModel = viewModel,
+                                theme = theme,
+                                modifier = Modifier.fillMaxSize(),
+                                showTiltToggle = false,
+                            )
                         }
-                    }
-                    tile(theme = theme, modifier = Modifier.fillMaxWidth().height(80.dp)) {
-                        cellBar(theme = theme, label = "CELL A", percent = 70)
-                        Spacer(Modifier.height(4.dp))
-                        cellBar(theme = theme, label = "CELL B", percent = 45)
-                    }
-                    Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        conceptControlStrip(
-                            state = state,
-                            viewModel = viewModel,
-                            theme = theme,
-                            modifier = Modifier.fillMaxSize(),
-                            // TOP/TILT lives on the map header now, not in this strip.
-                            showTiltToggle = false,
-                        )
                     }
                 }
             }
@@ -239,6 +201,92 @@ private fun tile(
     content: @Composable () -> Unit,
 ) {
     Column(modifier = modifier.border(2.dp, theme.primary).padding(8.dp)) { content() }
+}
+
+/** The centre map tile (title + TOP/TILT toggle + BRC ground-track), sized by [modifier]. */
+@Composable
+private fun bayMapTile(
+    mapInputs: MapUiInputs,
+    viewModel: CockpitViewModel,
+    state: CockpitUiState,
+    theme: ConceptTheme,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        val zoomLabel = remember(state.pixelsPerMeter) { "%.2f".format(state.pixelsPerMeter) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "GROUND TRACK // ZOOM $zoomLabel px/m",
+                color = theme.primary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                themedChip("TOP", state.mapMode == MapMode.TOP, theme) { viewModel.setMapMode(MapMode.TOP) }
+                themedChip("TILT", state.mapMode == MapMode.TILT, theme) { viewModel.setMapMode(MapMode.TILT) }
+            }
+        }
+        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+            playaMapPanel(
+                inputs = mapInputs,
+                viewModel = viewModel,
+                style =
+                    PlayaMapPanelStyle(
+                        palette = InstrumentBayPalette,
+                        egoStyle = EgoStyle.TRIANGLE,
+                        egoColor = theme.accent,
+                        allowTilt = true,
+                        showRetroGrid = false,
+                        routeColor = theme.secondary,
+                    ),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun headingTile(
+    theme: ConceptTheme,
+    headingDeg: Int,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        Text("HEADING", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+            headingDial(theme = theme, headingDeg = headingDeg)
+        }
+    }
+}
+
+@Composable
+private fun speedTile(
+    theme: ConceptTheme,
+    speedKph: Int,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        Text("SPEED KPH", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+            speedGauge(theme = theme, speedKph = speedKph)
+        }
+    }
+}
+
+@Composable
+private fun cellsTile(
+    theme: ConceptTheme,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        cellBar(theme = theme, label = "CELL A", percent = 70)
+        Spacer(Modifier.height(4.dp))
+        cellBar(theme = theme, label = "CELL B", percent = 45)
+    }
 }
 
 @Composable

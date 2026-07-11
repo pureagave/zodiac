@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
+import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.ui.ops.driveSelectionOf
 import ai.openclaw.zodiaccontrol.ui.ops.driveToBar
 import ai.openclaw.zodiaccontrol.ui.ops.headingGuidanceBar
@@ -32,6 +33,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,6 +85,8 @@ fun motionTrackerScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val mapInputs by remember { derivedStateOf { MapUiInputs.from(state) } }
     val theme = ThemeTracker
+    val config = LocalConfiguration.current
+    val portrait = config.screenHeightDp > config.screenWidthDp
 
     // Backing state for the sweep angle. Deliberately NOT read in this
     // composable's body — only the map/arm draw lambdas read it (via the
@@ -157,96 +161,66 @@ fun motionTrackerScreen(
             )
             Spacer(Modifier.height(4.dp))
 
-            Row(Modifier.weight(1f)) {
-                trackerStatColumn(
-                    pair =
-                        StatPair(
-                            title1 = "BEARING",
-                            value1 = "%03d".format(state.headingDeg),
-                            title2 = "SPEED",
-                            value2 = "%03d".format(state.speedKph),
-                        ),
-                    theme = theme,
-                    modifier = Modifier.fillMaxHeight().width(170.dp),
-                )
+            val bearingSpeed =
+                StatPair("BEARING", "%03d".format(state.headingDeg), "SPEED", "%03d".format(state.speedKph))
+            val rangeZoom =
+                StatPair("RANGE", "%.0fm".format(rangeMetres(state.pixelsPerMeter)), "ZOOM", "%.2f".format(state.pixelsPerMeter))
 
-                Spacer(Modifier.width(8.dp))
-
-                Box(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxHeight()
-                                .aspectRatio(1f)
-                                .border(2.dp, theme.primary),
-                    ) {
-                        playaMapPanel(
-                            inputs = mapInputs,
-                            viewModel = viewModel,
-                            style =
-                                PlayaMapPanelStyle(
-                                    palette = TrackerBasePalette,
-                                    egoStyle = EgoStyle.TRIANGLE,
-                                    egoColor = theme.accent,
-                                    allowTilt = false,
-                                    clipCircular = true,
-                                    lockCameraToEgo = true,
-                                    routeColor = theme.secondary,
-                                    sweep =
-                                        SweepOverlay(
-                                            sweepDeg = { sweepDeg.floatValue },
-                                            sweepWidthDeg = SWEEP_WIDTH_DEG,
-                                            litPalette = TrackerLitPalette,
-                                            armColor = theme.primary,
-                                            coneFwdDeg = FORWARD_CONE_DEG,
-                                            coneFill = Color(0x267EFF62),
-                                        ),
-                                    contacts =
-                                        ContactsOverlay(
-                                            // Match the lit map's own encoding: art in pink,
-                                            // camps in data-purple; active target in status-blue.
-                                            artColor = TrackerLitPalette.artMajor,
-                                            campColor = DataPurple,
-                                            targetColor = StatusBlue,
-                                            target = state.activeDriveTarget?.location,
-                                            sweepDeg = { sweepDeg.floatValue },
-                                        ),
-                                ),
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
-
-                Spacer(Modifier.width(8.dp))
-
-                Column(
-                    modifier = Modifier.fillMaxHeight().width(260.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    trackerStatColumn(
-                        pair =
-                            StatPair(
-                                title1 = "RANGE",
-                                value1 = "%.0fm".format(rangeMetres(state.pixelsPerMeter)),
-                                title2 = "ZOOM",
-                                value2 = "%.2f".format(state.pixelsPerMeter),
-                            ),
+            if (portrait) {
+                // Portrait: scope on top (square, full width), stats + scrollable
+                // controls stacked below.
+                Column(Modifier.weight(1f)) {
+                    radarScope(
+                        mapInputs = mapInputs,
+                        viewModel = viewModel,
                         theme = theme,
-                        modifier = Modifier.fillMaxWidth(),
+                        sweepDeg = { sweepDeg.floatValue },
+                        activeTargetLocation = state.activeDriveTarget?.location,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
                     )
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        trackerStatColumn(pair = bearingSpeed, theme = theme, modifier = Modifier.weight(1f))
+                        trackerStatColumn(pair = rangeZoom, theme = theme, modifier = Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(6.dp))
                     conceptControlStrip(
                         state = state,
                         viewModel = viewModel,
                         theme = theme,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                         showTiltToggle = false,
                     )
+                }
+            } else {
+                // Landscape: left stats | centre scope | right stats + controls.
+                Row(Modifier.weight(1f)) {
+                    trackerStatColumn(pair = bearingSpeed, theme = theme, modifier = Modifier.fillMaxHeight().width(170.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        radarScope(
+                            mapInputs = mapInputs,
+                            viewModel = viewModel,
+                            theme = theme,
+                            sweepDeg = { sweepDeg.floatValue },
+                            activeTargetLocation = state.activeDriveTarget?.location,
+                            modifier = Modifier.fillMaxHeight().aspectRatio(1f),
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Column(
+                        modifier = Modifier.fillMaxHeight().width(260.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        trackerStatColumn(pair = rangeZoom, theme = theme, modifier = Modifier.fillMaxWidth())
+                        conceptControlStrip(
+                            state = state,
+                            viewModel = viewModel,
+                            theme = theme,
+                            modifier = Modifier.fillMaxWidth(),
+                            showTiltToggle = false,
+                        )
+                    }
                 }
             }
 
@@ -290,6 +264,54 @@ fun motionTrackerScreen(
             onClick = viewModel::recenterPan,
             // Raised above the ops footer so it doesn't cover the CAMP readout.
             modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 58.dp),
+        )
+    }
+}
+
+/** The M41A scope (bordered circular map with sweep + contacts), sized by [modifier]. */
+@Composable
+private fun radarScope(
+    mapInputs: MapUiInputs,
+    viewModel: CockpitViewModel,
+    theme: ConceptTheme,
+    sweepDeg: () -> Float,
+    activeTargetLocation: LatLon?,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier = modifier.border(2.dp, theme.primary)) {
+        playaMapPanel(
+            inputs = mapInputs,
+            viewModel = viewModel,
+            style =
+                PlayaMapPanelStyle(
+                    palette = TrackerBasePalette,
+                    egoStyle = EgoStyle.TRIANGLE,
+                    egoColor = theme.accent,
+                    allowTilt = false,
+                    clipCircular = true,
+                    lockCameraToEgo = true,
+                    routeColor = theme.secondary,
+                    sweep =
+                        SweepOverlay(
+                            sweepDeg = sweepDeg,
+                            sweepWidthDeg = SWEEP_WIDTH_DEG,
+                            litPalette = TrackerLitPalette,
+                            armColor = theme.primary,
+                            coneFwdDeg = FORWARD_CONE_DEG,
+                            coneFill = Color(0x267EFF62),
+                        ),
+                    contacts =
+                        ContactsOverlay(
+                            // Match the lit map's own encoding: art in pink, camps in
+                            // data-purple; active target in status-blue.
+                            artColor = TrackerLitPalette.artMajor,
+                            campColor = DataPurple,
+                            targetColor = StatusBlue,
+                            target = activeTargetLocation,
+                            sweepDeg = sweepDeg,
+                        ),
+                ),
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }

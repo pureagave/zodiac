@@ -14,6 +14,7 @@ For the running decision log (architecture choices, audit follow-ups, hardware l
 - **targetSdk / compileSdk:** 35
 - **UI stack:** Jetpack Compose + Material3
 - **Target displays:** Amazon Fire HD 10 (LCD, perf floor) and Samsung Galaxy Tab (S9 / S9+ / S10) — the **S9+** 12.4" OLED is the main dashboard.
+- **Orientation:** responsive — landscape *or* portrait (`fullUser`); each concept reflows its layout to the screen shape, so it runs on portrait-mounted small tablets too.
 
 ## What is implemented
 

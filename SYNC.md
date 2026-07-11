@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-11 — Portrait mode (responsive layout for small tablets)
+
+The app was landscape-locked; now it reflows for portrait so it can run on small portrait-mounted screens (fleet has mixed orientations — S9 landscape, small tablets portrait).
+
+- **Orientation.** Manifest `screenOrientation` `landscape` → **`fullUser`** (each device shows its *locked* mount orientation without flipping mid-drive), plus `configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"` so rotating reflows instantly instead of recreating the Activity.
+- **Responsive branch.** Each concept detects `portrait = LocalConfiguration.screenHeightDp > screenWidthDp` and branches the middle content (landscape layouts unchanged):
+  - **RADAR** — landscape is `left stats | centre scope | right stats+controls`; portrait stacks **scope (square, full width) → BEARING/SPEED + RANGE/ZOOM row → scrollable controls**. Extracted `radarScope(...)` so both branches share it.
+  - **MAP** — landscape is `left gauges | centre map | right throttle/cells/controls`; portrait stacks **map tile → HEADING/SPEED/CELLS row → controls** (drops the decorative throttle trace). Extracted `bayMapTile/headingTile/speedTile/cellsTile` helpers.
+- **Control strip** is `verticalScroll`-able (added in the tilt cleanup) so it fits either shape.
+- **Verified on the S9+ forced to portrait** (via a temporary manifest `portrait` for the shot — `fullUser` + adb `user_rotation` didn't take, likely DeX/freeform ignoring it): both concepts render cleanly stacked — RADAR's big circular scope up top with the route line, MAP's ground-track up top. Reverted the manifest to `fullUser`, restored the device to landscape.
+- First pass — functional on the S9; polish the spacing/sizing on the actual small tablets when they're in hand.
+
+---
+
 ## 2026-07-11 — Address keypad polish: retro-futurism font, bigger, longer flash
 
 Feedback after testing the address nav on the S9+.
