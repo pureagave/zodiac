@@ -6,6 +6,19 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-10 — Heading-guidance chevron (MAP 2nd card) + BATH (nearest-toilet) target
+
+Repurposed the InstrumentBay's decorative header card (`NOSTROMO // STATION 04`) into a **big glance-and-steer heading guide**, on request — the driver needs one obvious "which way do I turn" cue.
+
+- **`ui/ops/HeadingGuidanceBar`** — a thick chevron rides a horizontal track. Position = `0.5 + Δ/360` where Δ = signed heading error to the active drive-to target (dead-ahead → centre; 90° right → 75%; ±180° → hard against an edge). The chevron **points the way to turn** (► right / ◄ left) and flips to **status-blue ▲ "ON COURSE"** within a ±4° dead-band. Centre reference notch + `L`/`R` ends + the exact `°OFF`. Computes its own guidance from the live fix (like `opsReadout`).
+- **Generalised drive-to** — new `core/ops/DriveTarget` (label + LatLon) unifies the fixed HOME/MAN/TEMPLE presets with a dynamic destination. `CockpitUiState.activeDriveTarget` resolves it; the chevron, ops footer (`opsReadout` now takes a `DriveTarget?`), and the RADAR target blip all steer to the same thing.
+- **BATH target** — a 4th `DRIVE TO` button targets the **nearest toilet bank** (`PlayaMap.toilets` centroids), re-resolved from `activeDriveTarget` as the ego moves so it always points at the closest one. `core/ops/nearestDriveTarget` + `relativeBearingDeg` are pure/unit-tested.
+- **detekt.** `LongParameterList.functionThreshold` 6→7 (`driveToBar` = theme + active + bathActive + 2 callbacks + modifier — idiomatic Compose shape); `TooManyFunctions.thresholdInClasses` 20→21 (`driveToNearestToilet`).
+- **Verified on the S9+** (MAP concept, FAKE ego parked at the Man): HOME → `112°R` purple ► right-of-centre (2:15 radial on H st = 112.5° true — exact); BATH → nearest toilet `164m / 90°R`; MAN → blue ▲ `ON COURSE`. Chevron only lives in MAP for now (RADAR keeps its scope blip + footer arrow).
+- **Deferred** from the earlier Phase-3 plan: the nearby-POI *picker* panel (drive-to any camp/art). BATH covered the most-wanted dynamic destination; the panel can come later.
+
+---
+
 ## 2026-07-10 — Playa discovery Phase 3: RADAR contacts (blips on the M41A scope)
 
 The flagship discovery surface: nearby art + camps now plot as **contacts on the RADAR sweep scope**, driven by the offline-first `DiscoveryRepository`.

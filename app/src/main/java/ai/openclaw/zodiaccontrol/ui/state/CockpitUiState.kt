@@ -2,15 +2,20 @@ package ai.openclaw.zodiaccontrol.ui.state
 
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
+import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
 import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
+import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.core.model.CockpitMode
 import ai.openclaw.zodiaccontrol.core.model.FollowMode
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.PlayaMap
 import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
+import ai.openclaw.zodiaccontrol.core.ops.DriveTarget
 import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
+import ai.openclaw.zodiaccontrol.core.ops.nearestDriveTarget
+import ai.openclaw.zodiaccontrol.core.ops.toDriveTarget
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
@@ -48,8 +53,14 @@ data class CockpitUiState(
     val mapLoadError: String? = null,
     val concept: CockpitConcept = CockpitConcept.RADAR,
     val navCue: NavigationCue = NavigationCue.Unknown,
-    /** Active "drive to" destination — the ops readout guides to this (default HOME/camp). */
+    /** Active "drive to" preset — HOME/MAN/TEMPLE (default HOME/camp). */
     val navTarget: NavTarget = NavTarget.HOME,
+    /**
+     * When true the active drive-to is the *nearest toilet bank* (the dynamic
+     * "BATH" destination) instead of [navTarget] — see [activeDriveTarget]. It
+     * re-resolves as the ego moves. Cleared whenever a preset is re-selected.
+     */
+    val driveToBath: Boolean = false,
     /**
      * Playa-discovery points of interest (art + camps) from the offline-first
      * [ai.openclaw.zodiaccontrol.data.discovery.DiscoveryRepository]. Rendered
@@ -91,4 +102,25 @@ data class CockpitUiState(
     }
 
     val egoFix: GpsFix? = (locationState as? LocationSourceState.Active)?.fix
+
+    /**
+     * The destination the cockpit is actually guiding to: the live nearest
+     * toilet when [driveToBath] is set (null if there's no fix / no toilets
+     * loaded), otherwise the active [navTarget] preset. The heading-guidance
+     * chevron, the ops footer, and the RADAR target blip all steer to this.
+     */
+    val activeDriveTarget: DriveTarget? =
+        if (driveToBath) {
+            nearestDriveTarget(
+                label = "BATH",
+                ego = egoFix?.location,
+                candidates = playaMap?.toilets?.mapNotNull { it.centroid }.orEmpty(),
+                projection = NAV_PROJECTION,
+            )
+        } else {
+            navTarget.toDriveTarget()
+        }
 }
+
+/** Shared projection for drive-to resolution (nearest-toilet distances). */
+private val NAV_PROJECTION = PlayaProjection(GoldenSpike.Y2025)

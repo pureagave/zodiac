@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
 import ai.openclaw.zodiaccontrol.ui.ops.driveToBar
+import ai.openclaw.zodiaccontrol.ui.ops.headingGuidanceBar
 import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPointStyle
@@ -79,17 +80,18 @@ fun instrumentBayScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             navCueBar(cue = state.navCue, theme = theme)
-            // Top header strip: title + system code
-            Row(modifier = Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Top strip: live heading-guidance chevron to the active drive-to
+            // target (replaced the decorative NOSTROMO/STATION flavour header) —
+            // slide + point shows which way to steer to HOME/MAN/TEMPLE/BATH.
+            Row(modifier = Modifier.fillMaxWidth().height(76.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 tile(theme = theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    Text(
-                        text = "NOSTROMO  //  ZODIAC INSTRUMENT BAY  //  STATION 04",
-                        color = theme.primary,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
+                    headingGuidanceBar(
+                        theme = theme,
+                        egoFix = state.egoFix,
+                        headingDeg = state.headingDeg,
+                        target = state.activeDriveTarget,
+                        modifier = Modifier.fillMaxSize(),
                     )
-                    Text("SYS:ZD :BL: 76.75 :OB:", color = theme.dim, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 }
             }
 
@@ -172,7 +174,9 @@ fun instrumentBayScreen(
             driveToBar(
                 theme = theme,
                 active = state.navTarget,
+                bathActive = state.driveToBath,
                 onSelect = viewModel::setNavTarget,
+                onSelectBath = viewModel::driveToNearestToilet,
                 modifier = Modifier.fillMaxWidth(),
             )
             // Operational readout footer: BRC clock / sunrise-sunset / return-to-camp,
@@ -181,7 +185,7 @@ fun instrumentBayScreen(
                 theme = theme,
                 egoFix = state.egoFix,
                 headingDeg = state.headingDeg,
-                navTarget = state.navTarget,
+                target = state.activeDriveTarget,
                 modifier =
                     Modifier
                         .fillMaxWidth()

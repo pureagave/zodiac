@@ -197,7 +197,7 @@ fun motionTrackerScreen(
                                             artColor = TrackerLitPalette.artMajor,
                                             campColor = DataPurple,
                                             targetColor = StatusBlue,
-                                            target = state.navTarget.location,
+                                            target = state.activeDriveTarget?.location,
                                             sweepDeg = { sweepDeg.floatValue },
                                         ),
                                 ),
@@ -237,7 +237,9 @@ fun motionTrackerScreen(
             driveToBar(
                 theme = theme,
                 active = state.navTarget,
+                bathActive = state.driveToBath,
                 onSelect = viewModel::setNavTarget,
+                onSelectBath = viewModel::driveToNearestToilet,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(6.dp))
@@ -245,7 +247,7 @@ fun motionTrackerScreen(
                 theme = theme,
                 egoFix = state.egoFix,
                 headingDeg = state.headingDeg,
-                navTarget = state.navTarget,
+                target = state.activeDriveTarget,
                 modifier =
                     Modifier
                         .fillMaxWidth()

@@ -24,16 +24,20 @@ private const val BAR_HEIGHT_DP = 40
 
 /**
  * Prominent "drive to" destination selector — a full-width row of large
- * HOME / MAN / TEMPLE buttons for glance-and-tap while driving. The [active]
- * target is highlighted blue (selected-status, per the colour system) with a
- * faint fill; the others are plain green. Tapping calls [onSelect]; the ops
- * footer ([opsReadout]) then guides to it.
+ * HOME / MAN / TEMPLE + BATH buttons for glance-and-tap while driving. The
+ * active target is highlighted blue (selected-status, per the colour system)
+ * with a faint fill; the others are plain green. BATH ([bathActive]) targets
+ * the nearest toilet bank and re-resolves as you move. Tapping a preset calls
+ * [onSelect] (and clears BATH); tapping BATH calls [onSelectBath]. The chevron
+ * card + ops footer then guide to whichever is active.
  */
 @Composable
 fun driveToBar(
     theme: ConceptTheme,
     active: NavTarget,
+    bathActive: Boolean,
     onSelect: (NavTarget) -> Unit,
+    onSelectBath: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -41,27 +45,49 @@ fun driveToBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         NavTarget.entries.forEach { target ->
-            val selected = target == active
-            val color = if (selected) theme.secondary else theme.primary
-            Box(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .border(if (selected) 2.dp else 1.dp, color)
-                        .background(if (selected) theme.secondary.copy(alpha = SELECTED_FILL_ALPHA) else theme.background)
-                        .clickable { onSelect(target) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = target.label,
-                    color = color,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                )
-            }
+            driveToButton(
+                label = target.label,
+                selected = !bathActive && target == active,
+                theme = theme,
+                onClick = { onSelect(target) },
+                modifier = Modifier.weight(1f),
+            )
         }
+        driveToButton(
+            label = "BATH",
+            selected = bathActive,
+            theme = theme,
+            onClick = onSelectBath,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun driveToButton(
+    label: String,
+    selected: Boolean,
+    theme: ConceptTheme,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val color = if (selected) theme.secondary else theme.primary
+    Box(
+        modifier =
+            modifier
+                .fillMaxHeight()
+                .border(if (selected) 2.dp else 1.dp, color)
+                .background(if (selected) theme.secondary.copy(alpha = SELECTED_FILL_ALPHA) else theme.background)
+                .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+        )
     }
 }
 

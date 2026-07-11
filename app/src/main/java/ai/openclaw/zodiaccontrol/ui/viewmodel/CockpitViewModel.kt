@@ -362,9 +362,18 @@ class CockpitViewModel(
         viewModelScope.launch { preferences.setConcept(next) }
     }
 
-    /** Set the active "drive to" destination (HOME / MAN / TEMPLE). Session state. */
+    /** Set the active "drive to" preset (HOME / MAN / TEMPLE); clears a BATH lock. Session state. */
     fun setNavTarget(target: NavTarget) {
-        _uiState.update { it.copy(navTarget = target) }
+        _uiState.update { it.copy(navTarget = target, driveToBath = false) }
+    }
+
+    /**
+     * Drive to the nearest toilet bank. Session state; the target re-resolves
+     * from [CockpitUiState.activeDriveTarget] as the ego moves, so it always
+     * points at the closest one.
+     */
+    fun driveToNearestToilet() {
+        _uiState.update { it.copy(driveToBath = true) }
     }
 
     /**
