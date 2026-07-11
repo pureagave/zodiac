@@ -6,6 +6,12 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-10 — Heading-guidance chevron added to RADAR too
+
+Supersedes the "chevron only lives in MAP" note below: on request, the same `headingGuidanceBar` now also renders in the RADAR concept — a bordered full-width bar between the nav-cue bar and the scope. Both concepts share the identical guide (position + point + on-course recolour) off `activeDriveTarget`. Verified on the S9+ (RADAR: HOME `112°R`, purple ► right-of-centre).
+
+---
+
 ## 2026-07-10 — Heading-guidance chevron (MAP 2nd card) + BATH (nearest-toilet) target
 
 Repurposed the InstrumentBay's decorative header card (`NOSTROMO // STATION 04`) into a **big glance-and-steer heading guide**, on request — the driver needs one obvious "which way do I turn" cue.

@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
 import ai.openclaw.zodiaccontrol.ui.ops.driveToBar
+import ai.openclaw.zodiaccontrol.ui.ops.headingGuidanceBar
 import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
 import ai.openclaw.zodiaccontrol.ui.playamap.MapPalette
 import ai.openclaw.zodiaccontrol.ui.scanlineOverlay
@@ -139,6 +140,19 @@ fun motionTrackerScreen(
 
             Spacer(Modifier.height(4.dp))
             navCueBar(cue = state.navCue, theme = theme)
+            Spacer(Modifier.height(4.dp))
+            headingGuidanceBar(
+                theme = theme,
+                egoFix = state.egoFix,
+                headingDeg = state.headingDeg,
+                target = state.activeDriveTarget,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .border(1.dp, theme.primary)
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+            )
             Spacer(Modifier.height(4.dp))
 
             Row(Modifier.weight(1f)) {
