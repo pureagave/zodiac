@@ -22,22 +22,43 @@ import androidx.compose.ui.unit.sp
 
 private const val BAR_HEIGHT_DP = 40
 
+/** Which drive-to destination is currently active — drives the bar's highlight. */
+sealed interface DriveSelection {
+    data class Preset(val target: NavTarget) : DriveSelection
+
+    data object Bath : DriveSelection
+
+    data object Address : DriveSelection
+}
+
+/** Resolve the active [DriveSelection] from the cockpit's drive-to state. */
+fun driveSelectionOf(
+    customActive: Boolean,
+    bathActive: Boolean,
+    preset: NavTarget,
+): DriveSelection =
+    when {
+        customActive -> DriveSelection.Address
+        bathActive -> DriveSelection.Bath
+        else -> DriveSelection.Preset(preset)
+    }
+
 /**
  * Prominent "drive to" destination selector — a full-width row of large
- * HOME / MAN / TEMPLE + BATH buttons for glance-and-tap while driving. The
- * active target is highlighted blue (selected-status, per the colour system)
- * with a faint fill; the others are plain green. BATH ([bathActive]) targets
- * the nearest toilet bank and re-resolves as you move. Tapping a preset calls
- * [onSelect] (and clears BATH); tapping BATH calls [onSelectBath]. The chevron
+ * HOME / MAN / TEMPLE + BATH + ADDR buttons for glance-and-tap while driving.
+ * The [active] destination is highlighted blue (selected-status) with a faint
+ * fill; the rest are plain green. BATH targets the nearest toilet bank; ADDR
+ * opens the address keypad ([onOpenAddress]) and stays lit while a typed-in
+ * address is the active target. Tapping a preset calls [onSelect]. The chevron
  * card + ops footer then guide to whichever is active.
  */
 @Composable
 fun driveToBar(
     theme: ConceptTheme,
-    active: NavTarget,
-    bathActive: Boolean,
+    active: DriveSelection,
     onSelect: (NavTarget) -> Unit,
     onSelectBath: () -> Unit,
+    onOpenAddress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -47,19 +68,14 @@ fun driveToBar(
         NavTarget.entries.forEach { target ->
             driveToButton(
                 label = target.label,
-                selected = !bathActive && target == active,
+                selected = active == DriveSelection.Preset(target),
                 theme = theme,
                 onClick = { onSelect(target) },
                 modifier = Modifier.weight(1f),
             )
         }
-        driveToButton(
-            label = "BATH",
-            selected = bathActive,
-            theme = theme,
-            onClick = onSelectBath,
-            modifier = Modifier.weight(1f),
-        )
+        driveToButton("BATH", active == DriveSelection.Bath, theme, onSelectBath, Modifier.weight(1f))
+        driveToButton("ADDR", active == DriveSelection.Address, theme, onOpenAddress, Modifier.weight(1f))
     }
 }
 

@@ -6,6 +6,19 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-10 — Address keypad (type a city address to drive to)
+
+An `ADDR` button on the DRIVE TO bar opens a full-screen glove-friendly keypad to punch in any BRC address and route to it.
+
+- **Flow:** big numeric pad → type the clock (auto-advancing: leading 2–9 = 3-digit `H:MM`, leading 1 = 4-digit `10:MM`, validated to 2:00–10:00) → a large **Esp/A–K ring picker** → a ~5-second **HDG nnn°** flash → auto-closes to the live chevron + street route. `ui/ops/AddressEntryPanel.kt`; rendered as a shared overlay in `CockpitScreen` gated on `addressEntryOpen`.
+- **Pure + tested:** `core/navigation/ClockEntry.kt` (`parseClockEntry` / `requiredClockDigits`) → `ClockEntryTest`. `core/ops/addressTarget(clock, ring, projection)` resolves clock+letter to a point via `clockToBearing` + the measured `StreetRingRadiiM`.
+- **Custom target:** re-added `CockpitUiState.customTarget: DriveTarget?` (priority over BATH/preset in `activeDriveTarget`); `CockpitViewModel.driveToAddress` sets it, `setNavTarget`/`driveToNearestToilet` clear it. The chevron/footer/route all pick it up for free.
+- **Drive-to bar:** refactored to a `DriveSelection` (Preset / Bath / Address) so the 5th `ADDR` button fit without blowing the param cap; `driveSelectionOf(...)` computes the active highlight from state.
+- **Verified on the S9+ end-to-end:** ADDR → typed `2:15` → picked `H` → flashed `HDG 112°` (2:15 = 112.5°, correct) → landed on live nav to `2:15 & H`, ADDR lit, route drawn. (2:15 & H == the HOME camp, so distance matched HOME's 1.6 km — nice cross-check.)
+- **detekt:** `parseClockEntry` to 2 returns + an `isCityClock` helper (ReturnCount / ComplexCondition); `TooManyFunctions.thresholdInClasses` 22→24. **Flagged in the config: `CockpitViewModel` is becoming a god-object — due for a delegate split before it grows more.**
+
+---
+
 ## 2026-07-10 — Street-aware routing across the BRC polar grid
 
 The guidance was "as the crow flies" — it pointed straight at the destination, ignoring that you drive on streets. Now it routes the way you actually drive BRC.

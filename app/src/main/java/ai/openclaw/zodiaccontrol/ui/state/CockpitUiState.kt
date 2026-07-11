@@ -63,6 +63,14 @@ data class CockpitUiState(
      */
     val driveToBath: Boolean = false,
     /**
+     * A typed-in address (or other arbitrary destination) that overrides the
+     * preset / BATH as the active drive-to. Cleared when a preset or BATH is
+     * chosen. Set via the address keypad ([addressEntryOpen]).
+     */
+    val customTarget: DriveTarget? = null,
+    /** Whether the full-screen address-entry keypad is showing (overlay in `CockpitScreen`). */
+    val addressEntryOpen: Boolean = false,
+    /**
      * Street-aware route to [activeDriveTarget] across the BRC polar grid, in
      * playa metres (see `core/navigation/PlayaRouter`). Empty when there's no
      * route (no fix / target / city model). Drawn on the map.
@@ -125,16 +133,17 @@ data class CockpitUiState(
      * chevron, the ops footer, and the RADAR target blip all steer to this.
      */
     val activeDriveTarget: DriveTarget? =
-        if (driveToBath) {
-            nearestDriveTarget(
-                label = "BATH",
-                ego = egoFix?.location,
-                candidates = playaMap?.toilets?.mapNotNull { it.centroid }.orEmpty(),
-                projection = NAV_PROJECTION,
-            )
-        } else {
-            navTarget.toDriveTarget()
-        }
+        customTarget
+            ?: if (driveToBath) {
+                nearestDriveTarget(
+                    label = "BATH",
+                    ego = egoFix?.location,
+                    candidates = playaMap?.toilets?.mapNotNull { it.centroid }.orEmpty(),
+                    projection = NAV_PROJECTION,
+                )
+            } else {
+                navTarget.toDriveTarget()
+            }
 }
 
 /** Shared projection for drive-to resolution (nearest-toilet distances). */

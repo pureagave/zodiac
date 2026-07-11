@@ -9,6 +9,7 @@ import ai.openclaw.zodiaccontrol.core.model.FollowMode
 import ai.openclaw.zodiaccontrol.core.model.MapLoadResult
 import ai.openclaw.zodiaccontrol.core.model.MapMode
 import ai.openclaw.zodiaccontrol.core.model.VehicleCommand
+import ai.openclaw.zodiaccontrol.core.navigation.ClockTime
 import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
 import ai.openclaw.zodiaccontrol.core.navigation.PlayaCityModel
 import ai.openclaw.zodiaccontrol.core.navigation.computeNavigationCue
@@ -17,6 +18,7 @@ import ai.openclaw.zodiaccontrol.core.navigation.routeTo
 import ai.openclaw.zodiaccontrol.core.navigation.toCityModel
 import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
+import ai.openclaw.zodiaccontrol.core.ops.addressTarget
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
@@ -368,7 +370,7 @@ class CockpitViewModel(
 
     /** Set the active "drive to" preset (HOME / MAN / TEMPLE); clears a BATH lock. Session state. */
     fun setNavTarget(target: NavTarget) {
-        _uiState.update { it.copy(navTarget = target, driveToBath = false) }
+        _uiState.update { it.copy(navTarget = target, driveToBath = false, customTarget = null) }
         recomputeRoute()
     }
 
@@ -378,7 +380,26 @@ class CockpitViewModel(
      * points at the closest one.
      */
     fun driveToNearestToilet() {
-        _uiState.update { it.copy(driveToBath = true) }
+        _uiState.update { it.copy(driveToBath = true, customTarget = null) }
+        recomputeRoute()
+    }
+
+    /** Show/hide the full-screen address-entry keypad. */
+    fun setAddressEntryOpen(open: Boolean) {
+        _uiState.update { it.copy(addressEntryOpen = open) }
+    }
+
+    /**
+     * Drive to a typed-in city address (clock + ring letter, e.g. 2:15 & H).
+     * Resolves it to a point on the polar grid and makes it the active custom
+     * target so the chevron + route guide there. No-op on an unknown ring.
+     */
+    fun driveToAddress(
+        clock: ClockTime,
+        ringName: String,
+    ) {
+        val target = addressTarget(clock, ringName, projection) ?: return
+        _uiState.update { it.copy(customTarget = target, driveToBath = false) }
         recomputeRoute()
     }
 

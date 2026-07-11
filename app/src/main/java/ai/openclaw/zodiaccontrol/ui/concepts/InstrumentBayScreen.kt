@@ -1,5 +1,6 @@
 package ai.openclaw.zodiaccontrol.ui.concepts
 
+import ai.openclaw.zodiaccontrol.ui.ops.driveSelectionOf
 import ai.openclaw.zodiaccontrol.ui.ops.driveToBar
 import ai.openclaw.zodiaccontrol.ui.ops.headingGuidanceBar
 import ai.openclaw.zodiaccontrol.ui.ops.opsReadout
@@ -175,10 +176,10 @@ fun instrumentBayScreen(
 
             driveToBar(
                 theme = theme,
-                active = state.navTarget,
-                bathActive = state.driveToBath,
+                active = driveSelectionOf(state.customTarget != null, state.driveToBath, state.navTarget),
                 onSelect = viewModel::setNavTarget,
                 onSelectBath = viewModel::driveToNearestToilet,
+                onOpenAddress = { viewModel.setAddressEntryOpen(true) },
                 modifier = Modifier.fillMaxWidth(),
             )
             // Operational readout footer: BRC clock / sunrise-sunset / return-to-camp,
