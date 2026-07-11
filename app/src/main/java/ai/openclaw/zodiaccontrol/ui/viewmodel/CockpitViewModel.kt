@@ -15,6 +15,7 @@ import ai.openclaw.zodiaccontrol.core.navigation.PlayaCityModel
 import ai.openclaw.zodiaccontrol.core.navigation.computeNavigationCue
 import ai.openclaw.zodiaccontrol.core.navigation.nextWaypoint
 import ai.openclaw.zodiaccontrol.core.navigation.routeTo
+import ai.openclaw.zodiaccontrol.core.navigation.streetLabel
 import ai.openclaw.zodiaccontrol.core.navigation.toCityModel
 import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
@@ -73,6 +74,10 @@ class CockpitViewModel(
      * pending revert rather than stacking.
      */
     private var autoRecenterJob: Job? = null
+
+    /** Last street the ego was on, and the timer that clears its flash popup. */
+    private var lastStreetLabel: String? = null
+    private var streetPopupJob: Job? = null
 
     init {
         // One outer launch with sequential child launches: persisted prefs are
@@ -438,6 +443,21 @@ class CockpitViewModel(
                 NavigationCue.Unknown
             }
         if (cue != state.navCue) _uiState.update { it.copy(navCue = cue) }
+
+        // Flash the street name whenever the ego moves onto a new street (or, out
+        // a radial, crosses into a new ring). Inlined here rather than a new VM
+        // method to keep the god-object's function count in check.
+        val street = cue.streetLabel()
+        if (street != null && street != lastStreetLabel) {
+            _uiState.update { it.copy(streetPopup = street) }
+            streetPopupJob?.cancel()
+            streetPopupJob =
+                viewModelScope.launch {
+                    delay(STREET_POPUP_MS)
+                    _uiState.update { it.copy(streetPopup = null) }
+                }
+        }
+        lastStreetLabel = street
     }
 
     /**
@@ -467,6 +487,9 @@ class CockpitViewModel(
 
 /** Degrees in a full revolution — used to normalize accumulated view rotation. */
 private const val FULL_CIRCLE_DEG: Double = 360.0
+
+/** How long a street-crossing name stays flashed before it clears. */
+private const val STREET_POPUP_MS: Long = 2_500L
 
 class CockpitViewModelFactory(
     private val telemetryRepository: TelemetryRepository,

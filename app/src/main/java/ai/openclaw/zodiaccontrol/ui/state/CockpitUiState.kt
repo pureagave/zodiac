@@ -54,6 +54,8 @@ data class CockpitUiState(
     val mapLoadError: String? = null,
     val concept: CockpitConcept = CockpitConcept.RADAR,
     val navCue: NavigationCue = NavigationCue.Unknown,
+    /** Street name to flash big as the ego drives onto/past a street; null when nothing to show. */
+    val streetPopup: String? = null,
     /** Active "drive to" preset — HOME/MAN/TEMPLE (default HOME/camp). */
     val navTarget: NavTarget = NavTarget.HOME,
     /**

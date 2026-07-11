@@ -7,6 +7,7 @@ import ai.openclaw.zodiaccontrol.ui.concepts.ThemeTracker
 import ai.openclaw.zodiaccontrol.ui.concepts.instrumentBayScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.motionTrackerScreen
 import ai.openclaw.zodiaccontrol.ui.ops.addressEntryPanel
+import ai.openclaw.zodiaccontrol.ui.ops.streetCrossingPopup
 import ai.openclaw.zodiaccontrol.ui.viewmodel.CockpitViewModel
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +39,7 @@ fun cockpitScreen(
                 CockpitConcept.RADAR -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
                 CockpitConcept.MAP -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
             }
+            state.streetPopup?.let { streetCrossingPopup(theme = ThemeTracker, name = it) }
             if (state.addressEntryOpen) {
                 addressEntryPanel(
                     theme = ThemeTracker,

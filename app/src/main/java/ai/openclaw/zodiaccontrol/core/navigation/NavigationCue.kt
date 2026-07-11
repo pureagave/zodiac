@@ -49,3 +49,17 @@ sealed class NavigationCue {
      */
     data class OnArc(val arcName: String, val clock: ClockTime) : NavigationCue()
 }
+
+/**
+ * The street identity to announce as you drive: the arc you're on, the radial
+ * you're on (inbound), or — driving *out* a radial — the arc you most recently
+ * crossed (so it ticks Esplanade → A → B … as you pass each street). Null when
+ * off-street. Drives the street-crossing popup, which flashes it on change.
+ */
+fun NavigationCue.streetLabel(): String? =
+    when (this) {
+        is NavigationCue.OnArc -> arcName
+        is NavigationCue.OnRadialInbound -> radialName
+        is NavigationCue.OnRadialOutbound -> lastArc
+        else -> null
+    }

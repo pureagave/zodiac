@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-10 — Street-crossing popups (flash the street as you pass it)
+
+As the ego drives the city, the street it's on/crossing flashes big top-centre — situational awareness without looking down.
+
+- **`core/navigation/streetLabel(NavigationCue)`** (unit-tested, `StreetLabelTest`): the street to announce — the arc you're on, the radial (inbound), or, driving *out* a radial, the arc you most recently crossed (so it ticks Esplanade → A → B … as you pass each street).
+- **VM:** inlined into `recomputeNavCue` (no new method — the VM is already a god-object): on a `streetLabel` change it sets `CockpitUiState.streetPopup` and starts a 2.5 s clear timer (`streetPopupJob`). Reuses the existing nav-cue street snapping, so it costs almost nothing.
+- **`ui/ops/StreetCrossingPopup.kt`** — a big top-centre "ENTERING <STREET>" banner (no pointer modifiers, so map gestures pass through), a shared overlay in `CockpitScreen`.
+- **Verified on the S9+** by driving the FAKE ego out the 2:30 radial (HDG 120 / SPD 120 via the debug chips) and burst-capturing: it flashed **ENTERING ATWOOD** (A) then **ENTERING DICK** (D) as it crossed each lettered street — the names are the real 2025 GIS street names (theme words per letter), which is what BRC street signs actually say.
+- Follow-up idea: also announce the radials you cross while driving *along* an arc (the clock ticks in the cue but doesn't flash) — left for later.
+
+---
+
 ## 2026-07-10 — Address keypad (type a city address to drive to)
 
 An `ADDR` button on the DRIVE TO bar opens a full-screen glove-friendly keypad to punch in any BRC address and route to it.
