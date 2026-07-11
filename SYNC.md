@@ -6,6 +6,17 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-10 — "Passing" callouts for notable art (passenger flavour)
+
+When the ego drives within range of a notable art piece, its name flashes as a bottom callout — "◂ PASSING <art>".
+
+- **VM:** inlined into `recomputeNavCue` (reuses the projected ego): nearest `PoiKind.ART` within `PASS_RADIUS_M` (120 m) via the existing `contactsWithinRange`; on a *new* piece it sets `CockpitUiState.passingCallout` + a 3 s clear timer (`passingJob`). New-uid-only so it doesn't re-fire on the same piece.
+- **`ui/ops/PassingCallout.kt`** — a bottom-centre "◂ PASSING <name>" banner (above the drive-to bar), shared overlay in `CockpitScreen`, no pointer modifiers.
+- **Verified on the S9+** by driving the FAKE ego through the art-dense inner playa: flashed **◂ PASSING S.A.N. Forest Interface** (a real 2025 art piece) as it passed within range. Uses the offline-first discovery cache (same data as the RADAR contacts).
+- Together with the street popups this completes the "flash overlays" set: street name top-centre while driving, art name bottom-centre when passing.
+
+---
+
 ## 2026-07-10 — Street-crossing popups (flash the street as you pass it)
 
 As the ego drives the city, the street it's on/crossing flashes big top-centre — situational awareness without looking down.

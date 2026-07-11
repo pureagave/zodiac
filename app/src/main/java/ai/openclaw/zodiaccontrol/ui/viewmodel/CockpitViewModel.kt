@@ -19,7 +19,9 @@ import ai.openclaw.zodiaccontrol.core.navigation.streetLabel
 import ai.openclaw.zodiaccontrol.core.navigation.toCityModel
 import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
+import ai.openclaw.zodiaccontrol.core.ops.PoiKind
 import ai.openclaw.zodiaccontrol.core.ops.addressTarget
+import ai.openclaw.zodiaccontrol.core.ops.contactsWithinRange
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceState
 import ai.openclaw.zodiaccontrol.core.sensor.LocationSourceType
 import ai.openclaw.zodiaccontrol.data.TelemetryRepository
@@ -78,6 +80,10 @@ class CockpitViewModel(
     /** Last street the ego was on, and the timer that clears its flash popup. */
     private var lastStreetLabel: String? = null
     private var streetPopupJob: Job? = null
+
+    /** Last art whose passing was announced, and the timer that clears its callout. */
+    private var lastPassingUid: String? = null
+    private var passingJob: Job? = null
 
     init {
         // One outer launch with sequential child launches: persisted prefs are
@@ -458,6 +464,25 @@ class CockpitViewModel(
                 }
         }
         lastStreetLabel = street
+
+        // Passing callout: flash the nearest notable art the ego is within range
+        // of (passenger flavour). New art only, and cleared on a timer.
+        if (ego != null) {
+            val nearest =
+                contactsWithinRange(state.pois.filter { it.kind == PoiKind.ART }, ego, PASS_RADIUS_M, max = 1)
+                    .firstOrNull()
+            val uid = nearest?.poi?.uid
+            if (uid != null && uid != lastPassingUid) {
+                _uiState.update { it.copy(passingCallout = nearest.poi.name) }
+                passingJob?.cancel()
+                passingJob =
+                    viewModelScope.launch {
+                        delay(PASSING_CALLOUT_MS)
+                        _uiState.update { it.copy(passingCallout = null) }
+                    }
+            }
+            lastPassingUid = uid
+        }
     }
 
     /**
@@ -490,6 +515,10 @@ private const val FULL_CIRCLE_DEG: Double = 360.0
 
 /** How long a street-crossing name stays flashed before it clears. */
 private const val STREET_POPUP_MS: Long = 2_500L
+
+/** Proximity (metres) at which we announce passing a notable art piece, and how long the callout stays. */
+private const val PASS_RADIUS_M: Double = 120.0
+private const val PASSING_CALLOUT_MS: Long = 3_000L
 
 class CockpitViewModelFactory(
     private val telemetryRepository: TelemetryRepository,

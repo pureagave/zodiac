@@ -56,6 +56,8 @@ data class CockpitUiState(
     val navCue: NavigationCue = NavigationCue.Unknown,
     /** Street name to flash big as the ego drives onto/past a street; null when nothing to show. */
     val streetPopup: String? = null,
+    /** Notable art the ego is currently passing (within range), flashed as a bottom callout; null when none. */
+    val passingCallout: String? = null,
     /** Active "drive to" preset — HOME/MAN/TEMPLE (default HOME/camp). */
     val navTarget: NavTarget = NavTarget.HOME,
     /**
