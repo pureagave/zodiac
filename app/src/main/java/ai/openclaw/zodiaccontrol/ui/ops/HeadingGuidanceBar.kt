@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.ops
 
 import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
+import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.ops.DriveTarget
 import ai.openclaw.zodiaccontrol.core.ops.campGuidance
@@ -52,14 +53,26 @@ fun headingGuidanceBar(
     egoFix: GpsFix?,
     headingDeg: Int,
     target: DriveTarget?,
+    aim: LatLon? = null,
     modifier: Modifier = Modifier,
 ) {
     val projection = remember { PlayaProjection(GoldenSpike.Y2025) }
+    // Label + distance refer to the final destination; the chevron steers toward
+    // [aim] — the next route corner (e.g. the 2:30 entrance) — falling back to the
+    // destination itself when there's no street route.
+    val aimLoc = aim ?: target?.location
     val guidance =
         remember(egoFix?.location, target) {
             if (egoFix != null && target != null) campGuidance(egoFix.location, target.location, projection) else null
         }
-    val rel = guidance?.let { relativeBearingDeg(it.bearingDeg, headingDeg.toDouble()) }
+    val rel =
+        remember(egoFix?.location, aimLoc, headingDeg) {
+            if (egoFix != null && aimLoc != null) {
+                relativeBearingDeg(campGuidance(egoFix.location, aimLoc, projection).bearingDeg, headingDeg.toDouble())
+            } else {
+                null
+            }
+        }
     val onCourse = rel != null && abs(rel) <= ON_COURSE_DEG
     val chevronColor = if (onCourse) theme.secondary else theme.accent
 

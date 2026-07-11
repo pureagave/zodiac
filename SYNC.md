@@ -6,6 +6,19 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-10 — Street-aware routing across the BRC polar grid
+
+The guidance was "as the crow flies" — it pointed straight at the destination, ignoring that you drive on streets. Now it routes the way you actually drive BRC.
+
+- **`core/navigation/PlayaRoute.kt`** (`routeTo` + `nextWaypoint`, pure + unit-tested). Model: you may cut straight across the **open playa** (inside the Esplanade, the 10:00–2:00 mouth, or past the outer road), but inside the city annulus you follow the grid — so a camp routes **playa → nearest entrance radial ∩ Esplanade → out that radial to the destination ring → along the ring to the address**. Everything is polar (clock bearing + ring radius) over the projected `PlayaCityModel` (its radials/arcs/Esplanade). `nextWaypoint` snaps the ego to the nearest route leg and returns that leg's far corner (stateless, so it survives recompute).
+- **Retargeted guidance.** `CockpitViewModel.recomputeRoute()` (runs alongside the nav cue) stashes `routeWaypointsM` + `nextWaypoint` in state. The chevron and ops-footer arrow now steer toward the **next corner** (an `aim: LatLon?` param) while the label + distance still refer to the final destination. Free-drive targets (MAN, TEMPLE, inner-playa) collapse to a single leg → straight-line as before.
+- **Drawn on the map.** `ui/concepts/RouteOverlay.kt` `drawRoute` renders the dashed route (ego → corners → dest, dots + a ring on the target) in status-blue on both RADAR and MAP, projected through the same viewport.
+- **detekt.** `routeTo` refactored to 3 returns (ReturnCount); `PlayaRoute.kt` named after its data class (MatchingDeclarationName); `TooManyFunctions.thresholdInClasses` 21→22 (`recomputeRoute`).
+- **Verification:** CI-green + router unit tests pass (`PlayaRouteTest`). **On-device visual check of the route line + retargeted chevron is still pending — the S9+ dropped off USB/wifi mid-verify.** Re-verify when it's reconnected.
+- Chosen with the user: polar-waypoint heuristic (not full A* graph) + draw the route. Known limit: approximate when you're already deep in the grid (the entrance leg is skipped past the Esplanade, but a straight hop to the ring∩radial corner can clip a block).
+
+---
+
 ## 2026-07-10 — Heading-guidance chevron added to RADAR too
 
 Supersedes the "chevron only lives in MAP" note below: on request, the same `headingGuidanceBar` now also renders in the RADAR concept — a bordered full-width bar between the nav-cue bar and the scope. Both concepts share the identical guide (position + point + on-course recolour) off `activeDriveTarget`. Verified on the S9+ (RADAR: HOME `112°R`, purple ► right-of-centre).

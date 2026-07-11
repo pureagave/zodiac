@@ -1,6 +1,7 @@
 package ai.openclaw.zodiaccontrol.ui.ops
 
 import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
+import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.ops.DriveTarget
 import ai.openclaw.zodiaccontrol.core.ops.campGuidance
@@ -50,6 +51,7 @@ fun opsReadout(
     egoFix: GpsFix?,
     headingDeg: Int,
     target: DriveTarget?,
+    aim: LatLon? = null,
     modifier: Modifier = Modifier,
 ) {
     val zone = remember { ZoneId.of("America/Los_Angeles") }
@@ -63,9 +65,16 @@ fun opsReadout(
         }
     }
     val sun = remember(now.toLocalDate()) { sunTimes(now.toLocalDate(), GoldenSpike.Y2025.lat, GoldenSpike.Y2025.lon, zone) }
+    // Distance to the final destination; the arrow points at [aim] (the next
+    // route corner) so it agrees with the guidance chevron.
+    val aimLoc = aim ?: target?.location
     val guidance =
         remember(egoFix?.location, target) {
             if (egoFix != null && target != null) campGuidance(egoFix.location, target.location, projection) else null
+        }
+    val aimBearing =
+        remember(egoFix?.location, aimLoc) {
+            if (egoFix != null && aimLoc != null) campGuidance(egoFix.location, aimLoc, projection).bearingDeg else null
         }
 
     Row(
@@ -94,15 +103,15 @@ fun opsReadout(
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
             )
-            if (guidance != null) {
+            if (aimBearing != null) {
                 Text(
                     text = " ▲",
                     color = theme.accent,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
-                    // Track-up: 0° = straight ahead; rotate to camp relative to heading.
-                    modifier = Modifier.rotate((guidance.bearingDeg - headingDeg).toFloat()),
+                    // Track-up: 0° = straight ahead; rotate toward the next route corner.
+                    modifier = Modifier.rotate((aimBearing - headingDeg).toFloat()),
                 )
             }
         }

@@ -146,6 +146,7 @@ fun motionTrackerScreen(
                 egoFix = state.egoFix,
                 headingDeg = state.headingDeg,
                 target = state.activeDriveTarget,
+                aim = state.nextWaypoint,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -195,6 +196,7 @@ fun motionTrackerScreen(
                                     allowTilt = false,
                                     clipCircular = true,
                                     lockCameraToEgo = true,
+                                    routeColor = theme.secondary,
                                     sweep =
                                         SweepOverlay(
                                             sweepDeg = { sweepDeg.floatValue },
@@ -262,6 +264,7 @@ fun motionTrackerScreen(
                 egoFix = state.egoFix,
                 headingDeg = state.headingDeg,
                 target = state.activeDriveTarget,
+                aim = state.nextWaypoint,
                 modifier =
                     Modifier
                         .fillMaxWidth()

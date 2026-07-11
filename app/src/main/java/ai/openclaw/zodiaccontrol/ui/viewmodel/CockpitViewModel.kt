@@ -12,6 +12,8 @@ import ai.openclaw.zodiaccontrol.core.model.VehicleCommand
 import ai.openclaw.zodiaccontrol.core.navigation.NavigationCue
 import ai.openclaw.zodiaccontrol.core.navigation.PlayaCityModel
 import ai.openclaw.zodiaccontrol.core.navigation.computeNavigationCue
+import ai.openclaw.zodiaccontrol.core.navigation.nextWaypoint
+import ai.openclaw.zodiaccontrol.core.navigation.routeTo
 import ai.openclaw.zodiaccontrol.core.navigation.toCityModel
 import ai.openclaw.zodiaccontrol.core.ops.NavTarget
 import ai.openclaw.zodiaccontrol.core.ops.PlayaPoi
@@ -131,6 +133,7 @@ class CockpitViewModel(
                     if (result is MapLoadResult.Loaded) {
                         cityModel = result.map.toCityModel(projection)
                         recomputeNavCue()
+                        recomputeRoute()
                     }
                 }
             }
@@ -163,6 +166,7 @@ class CockpitViewModel(
                         )
                     }
                     recomputeNavCue()
+                    recomputeRoute()
                 }
             }
             launch {
@@ -365,6 +369,7 @@ class CockpitViewModel(
     /** Set the active "drive to" preset (HOME / MAN / TEMPLE); clears a BATH lock. Session state. */
     fun setNavTarget(target: NavTarget) {
         _uiState.update { it.copy(navTarget = target, driveToBath = false) }
+        recomputeRoute()
     }
 
     /**
@@ -374,6 +379,7 @@ class CockpitViewModel(
      */
     fun driveToNearestToilet() {
         _uiState.update { it.copy(driveToBath = true) }
+        recomputeRoute()
     }
 
     /**
@@ -411,6 +417,30 @@ class CockpitViewModel(
                 NavigationCue.Unknown
             }
         if (cue != state.navCue) _uiState.update { it.copy(navCue = cue) }
+    }
+
+    /**
+     * Recompute the street-aware route to the active drive-to target and the
+     * next corner to steer toward. Same inputs as the nav cue (fix / city model
+     * / target). Clears to an empty route when any input is missing. The router
+     * is cheap vector math, so this runs on every fix without a cache.
+     */
+    private fun recomputeRoute() {
+        val cm = cityModel
+        val state = _uiState.value
+        val ego = state.egoFix?.location?.let(projection::project)
+        val target = state.activeDriveTarget?.location?.let(projection::project)
+        if (cm == null || ego == null || target == null) {
+            if (state.routeWaypointsM.isNotEmpty() || state.nextWaypoint != null) {
+                _uiState.update { it.copy(routeWaypointsM = emptyList(), nextWaypoint = null, entranceRadial = null) }
+            }
+            return
+        }
+        val route = routeTo(ego, target, cm)
+        val next = nextWaypoint(route.waypointsM, ego)?.let(projection::unproject)
+        _uiState.update {
+            it.copy(routeWaypointsM = route.waypointsM, nextWaypoint = next, entranceRadial = route.entranceRadial)
+        }
     }
 }
 

@@ -72,6 +72,7 @@ data class MapUiInputs(
     val mapMode: MapMode,
     val headingDeg: Int,
     val pois: List<PlayaPoi>,
+    val routeM: List<PlayaPoint>,
 ) {
     companion object {
         fun from(state: CockpitUiState): MapUiInputs =
@@ -85,6 +86,7 @@ data class MapUiInputs(
                 mapMode = state.mapMode,
                 headingDeg = state.headingDeg,
                 pois = state.pois,
+                routeM = state.routeWaypointsM,
             )
     }
 }
@@ -111,6 +113,11 @@ data class PlayaMapPanelStyle(
      * contacts. Kept off (null) for concepts that don't want the overlay.
      */
     val contacts: ContactsOverlay? = null,
+    /**
+     * When set, draw the street-aware route ([MapUiInputs.routeM]) from the ego
+     * through its corners to the destination in this colour. Null = no route line.
+     */
+    val routeColor: Color? = null,
     /**
      * When true the camera is pinned to the ego (the car) and one-finger pan
      * is disabled — the vehicle stays at the scope centre and the map scrolls
@@ -287,6 +294,7 @@ fun playaMapPanel(
                 tiltDeg = inputs.tiltDeg,
             ),
         )
+        style.routeColor?.let { routeCanvas(inputs.egoFix, inputs.routeM, projection, viewport, it) }
         style.contacts?.let { contactsCanvas(inputs.pois, projection, viewport, it) }
         egoOverlayCanvas(
             EgoOverlayInputs(
@@ -447,6 +455,20 @@ private fun contactsCanvas(
     Canvas(modifier = Modifier.fillMaxSize()) {
         val vp = viewport ?: return@Canvas
         drawContacts(pois, projection, vp, overlay)
+    }
+}
+
+@Composable
+private fun routeCanvas(
+    egoFix: GpsFix?,
+    routeM: List<PlayaPoint>,
+    projection: PlayaProjection,
+    viewport: PlayaViewport?,
+    color: Color,
+) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val vp = viewport ?: return@Canvas
+        drawRoute(egoFix, routeM, projection, vp, color)
     }
 }
 

@@ -27,10 +27,10 @@ complexity:
     # Default 11 was tight for CockpitViewModel which exposes one method per
     # discrete cockpit operation. Bumped each time a discrete cockpit action
     # is added (concept cycling; the private sendCommand dispatch helper;
-    # setNavTarget; driveToNearestToilet for the BATH target was the latest);
-    # kept just above the actual count so the next addition still requires a
-    # deliberate decision.
-    thresholdInClasses: 21
+    # setNavTarget; driveToNearestToilet for the BATH target; recomputeRoute for
+    # street-aware routing was the latest); kept just above the actual count so
+    # the next addition still requires a deliberate decision.
+    thresholdInClasses: 22
     # CRTVectorScreen.kt is the canonical screen — header / left / right
     # rail / center viewport / chips all live as private composables in
     # one file. 12 fits the current shape with a touch of headroom.

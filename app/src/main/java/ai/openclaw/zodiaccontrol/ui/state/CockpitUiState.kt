@@ -3,6 +3,7 @@ package ai.openclaw.zodiaccontrol.ui.state
 import ai.openclaw.zodiaccontrol.core.connection.ConnectionPhase
 import ai.openclaw.zodiaccontrol.core.connection.TransportType
 import ai.openclaw.zodiaccontrol.core.geo.GoldenSpike
+import ai.openclaw.zodiaccontrol.core.geo.LatLon
 import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.geo.PlayaProjection
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
@@ -61,6 +62,20 @@ data class CockpitUiState(
      * re-resolves as the ego moves. Cleared whenever a preset is re-selected.
      */
     val driveToBath: Boolean = false,
+    /**
+     * Street-aware route to [activeDriveTarget] across the BRC polar grid, in
+     * playa metres (see `core/navigation/PlayaRouter`). Empty when there's no
+     * route (no fix / target / city model). Drawn on the map.
+     */
+    val routeWaypointsM: List<PlayaPoint> = emptyList(),
+    /**
+     * The next corner along [routeWaypointsM] the driver should steer toward —
+     * what the guidance chevron + ops arrow actually aim at (vs. the final
+     * destination, which the label/distance still refer to). Null = no route.
+     */
+    val nextWaypoint: LatLon? = null,
+    /** The clock street the route enters the city on (e.g. "2:30"), for display; null when free-drive. */
+    val entranceRadial: String? = null,
     /**
      * Playa-discovery points of interest (art + camps) from the offline-first
      * [ai.openclaw.zodiaccontrol.data.discovery.DiscoveryRepository]. Rendered

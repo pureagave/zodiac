@@ -90,6 +90,7 @@ fun instrumentBayScreen(
                         egoFix = state.egoFix,
                         headingDeg = state.headingDeg,
                         target = state.activeDriveTarget,
+                        aim = state.nextWaypoint,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -138,6 +139,7 @@ fun instrumentBayScreen(
                                     egoColor = theme.accent,
                                     allowTilt = true,
                                     showRetroGrid = false,
+                                    routeColor = theme.secondary,
                                 ),
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -186,6 +188,7 @@ fun instrumentBayScreen(
                 egoFix = state.egoFix,
                 headingDeg = state.headingDeg,
                 target = state.activeDriveTarget,
+                aim = state.nextWaypoint,
                 modifier =
                     Modifier
                         .fillMaxWidth()
