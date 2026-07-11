@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-11 — Address keypad polish: retro-futurism font, bigger, longer flash
+
+Feedback after testing the address nav on the S9+.
+
+- **Retro-futurism font.** Bundled **Orbitron** (variable TTF, SIL OFL — `app/src/main/res/font/orbitron.ttf`, license in `licenses/Orbitron-OFL.txt`) as `ui/RetroFont.kt` (`FontFamily` pulling Medium/Bold/Black off the `wght` axis via `FontVariation`, `@OptIn(ExperimentalTextApi)`). Applied to the whole address flow — keypad, entry display, ring picker, heading flash — for a Tron-ish sci-fi feel distinct from the monospace terminal chrome. Left the rest of the cockpit monospace.
+- **Bigger:** panel 520→620 dp, keypad digits 26→34 sp, entry 44→60 sp, ring keys 34 sp, heading flash **72→104 sp** (Black weight).
+- **Longer flash:** `FLASH_MS` 5 s → **10 s**.
+- **Dropped the "A" ring** from the picker per request (Esp → B → …). NOTE surfaced to the user: Esplanade and A street are actually *different* rings (Esp ≈ 752 m, A ≈ 894 m), so A-street addresses are no longer typeable — flagged in case that was a slip vs. intentional.
+- Verified on the S9+: keypad / picker / flash all render in Orbitron, bigger, "A" gone, `HDG 112°` flash big and holding longer, then hands off to the routed nav.
+
+---
+
 ## 2026-07-10 — "Passing" callouts for notable art (passenger flavour)
 
 When the ego drives within range of a notable art piece, its name flashes as a bottom callout — "◂ PASSING <art>".

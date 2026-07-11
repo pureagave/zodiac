@@ -8,6 +8,7 @@ import ai.openclaw.zodiaccontrol.core.navigation.requiredClockDigits
 import ai.openclaw.zodiaccontrol.core.ops.addressTarget
 import ai.openclaw.zodiaccontrol.core.ops.campGuidance
 import ai.openclaw.zodiaccontrol.core.sensor.GpsFix
+import ai.openclaw.zodiaccontrol.ui.RetroFont
 import ai.openclaw.zodiaccontrol.ui.concepts.ConceptTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,7 +34,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,8 +42,8 @@ import kotlin.math.roundToInt
 
 private val Scrim = Color(0xE6000000)
 private val PanelBg = Color(0xFF020602)
-private const val FLASH_MS = 5_000L
-private val RING_NAMES = listOf("Esp", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K")
+private const val FLASH_MS = 10_000L
+private val RING_NAMES = listOf("Esp", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K")
 
 private enum class Stage { CLOCK, RING, FLASH }
 
@@ -51,10 +51,11 @@ private data class FlashInfo(val label: String, val bearingDeg: Double?)
 
 /**
  * Full-screen address-entry keypad. Type a clock time on the big numeric pad
- * (2–9 → `H:MM`, 1 → `10:MM`, auto-advancing), pick a ring letter, then a
- * 5-second heading flash before the live chevron + street route take over.
+ * (2–9 → `H:MM`, 1 → `10:MM`, auto-advancing), pick a ring street, then a
+ * 10-second heading flash before the live chevron + street route take over.
  * [onDriveToAddress] hands the resolved (clock, ring) to the ViewModel; the
- * scrim / DONE close via [onClose]. Big keys for gloves and dust.
+ * scrim / DONE close via [onClose]. Big keys + retro-futurism font for gloves
+ * and dust.
  */
 @Composable
 fun addressEntryPanel(
@@ -76,10 +77,10 @@ fun addressEntryPanel(
         Column(
             modifier =
                 Modifier
-                    .width(520.dp)
+                    .width(620.dp)
                     .background(PanelBg)
                     .border(2.dp, theme.primary)
-                    .padding(20.dp)
+                    .padding(22.dp)
                     .clickable(enabled = false) {},
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -139,18 +140,18 @@ private fun clockStage(
     Text(
         text = entryDisplay(entry),
         color = theme.accent,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = RetroFont,
         fontWeight = FontWeight.Bold,
-        fontSize = 44.sp,
+        fontSize = 60.sp,
     )
-    Spacer(Modifier.height(14.dp))
+    Spacer(Modifier.height(16.dp))
     listOf("123", "456", "789").forEach { rowChars ->
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             rowChars.forEach { c -> bigKey(theme, c.toString(), Modifier.weight(1f)) { onDigit(c) } }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         bigKey(theme, "DEL", Modifier.weight(1f), color = theme.dim, onClick = onDel)
         bigKey(theme, "0", Modifier.weight(1f)) { onDigit('0') }
         bigKey(theme, "✕", Modifier.weight(1f), color = theme.error, onClick = onClose)
@@ -164,15 +165,15 @@ private fun ringStage(
     onRing: (String) -> Unit,
 ) {
     header(theme, "${clock?.format() ?: "--"}  —  PICK STREET")
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(12.dp))
     RING_NAMES.chunked(4).forEach { row ->
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             row.forEach { name ->
                 val ring = if (name == "Esp") "Esplanade" else name
                 bigKey(theme, name, Modifier.weight(1f)) { onRing(ring) }
             }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
     }
 }
 
@@ -187,16 +188,16 @@ private fun flashStage(
         onDone()
     }
     header(theme, "DRIVE TO ${info?.label ?: ""}")
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(18.dp))
     Text(
         text = "HDG ${info?.bearingDeg?.roundToInt()?.let { "%03d".format(((it % 360) + 360) % 360) } ?: "---"}°",
         color = theme.accent,
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-        fontSize = 72.sp,
+        fontFamily = RetroFont,
+        fontWeight = FontWeight.Black,
+        fontSize = 104.sp,
     )
-    Spacer(Modifier.height(16.dp))
-    Text("▸ ROUTING…", color = theme.secondary, fontFamily = FontFamily.Monospace, fontSize = 16.sp)
+    Spacer(Modifier.height(18.dp))
+    Text("▸ ROUTING…", color = theme.secondary, fontFamily = RetroFont, fontWeight = FontWeight.Medium, fontSize = 18.sp)
 }
 
 @Composable
@@ -207,12 +208,12 @@ private fun header(
     Text(
         text = text,
         color = theme.primary,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = RetroFont,
         fontWeight = FontWeight.Bold,
-        fontSize = 16.sp,
-        letterSpacing = 2.sp,
+        fontSize = 20.sp,
+        letterSpacing = 3.sp,
     )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(14.dp))
 }
 
 @Composable
@@ -231,7 +232,7 @@ private fun bigKey(
                 .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = color, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 26.sp)
+        Text(label, color = color, fontFamily = RetroFont, fontWeight = FontWeight.Bold, fontSize = 34.sp)
     }
 }
 
