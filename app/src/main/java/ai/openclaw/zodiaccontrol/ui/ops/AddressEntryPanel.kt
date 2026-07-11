@@ -209,9 +209,9 @@ private fun header(
         text = text,
         color = theme.primary,
         fontFamily = RetroFont,
-        fontWeight = FontWeight.Bold,
-        fontSize = 20.sp,
-        letterSpacing = 3.sp,
+        fontWeight = FontWeight.Black,
+        fontSize = 27.sp,
+        letterSpacing = 2.sp,
     )
     Spacer(Modifier.height(14.dp))
 }
@@ -232,7 +232,7 @@ private fun bigKey(
                 .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = color, fontFamily = RetroFont, fontWeight = FontWeight.Bold, fontSize = 34.sp)
+        Text(label, color = color, fontFamily = RetroFont, fontWeight = FontWeight.Black, fontSize = 44.sp)
     }
 }
 
