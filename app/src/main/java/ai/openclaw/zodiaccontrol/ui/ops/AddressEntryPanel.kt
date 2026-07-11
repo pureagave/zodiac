@@ -188,15 +188,27 @@ private fun flashStage(
         onDone()
     }
     header(theme, "DRIVE TO ${info?.label ?: ""}")
-    Spacer(Modifier.height(18.dp))
+    Spacer(Modifier.height(10.dp))
+    // "HEADING" label above the big degrees — keeping the big line to just the
+    // number (4 glyphs) so wide values like 345° never wrap to a second line.
     Text(
-        text = "HDG ${info?.bearingDeg?.roundToInt()?.let { "%03d".format(((it % 360) + 360) % 360) } ?: "---"}°",
+        text = "HEADING",
+        color = theme.primary,
+        fontFamily = RetroFont,
+        fontWeight = FontWeight.Bold,
+        fontSize = 18.sp,
+        letterSpacing = 3.sp,
+    )
+    Text(
+        text = "${info?.bearingDeg?.roundToInt()?.let { "%03d".format(((it % 360) + 360) % 360) } ?: "---"}°",
         color = theme.accent,
         fontFamily = RetroFont,
         fontWeight = FontWeight.Black,
         fontSize = 104.sp,
+        maxLines = 1,
+        softWrap = false,
     )
-    Spacer(Modifier.height(18.dp))
+    Spacer(Modifier.height(12.dp))
     Text("▸ ROUTING…", color = theme.secondary, fontFamily = RetroFont, fontWeight = FontWeight.Medium, fontSize = 18.sp)
 }
 
