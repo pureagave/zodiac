@@ -283,29 +283,45 @@ fun playaMapPanel(
                     onRotate = viewModel::nudgeViewRotation,
                 ),
     ) {
-        mapBaseCanvas(
-            MapBaseInputs(
-                viewport = viewport,
-                projected = projected,
-                retroGrid = retroGrid,
-                labelLayouts = labelLayouts,
-                style = style,
-                tilt = tilt,
-                tiltDeg = inputs.tiltDeg,
-            ),
-        )
-        style.routeColor?.let { routeCanvas(inputs.egoFix, inputs.routeM, projection, viewport, it) }
-        style.contacts?.let { contactsCanvas(inputs.pois, projection, viewport, it) }
-        egoOverlayCanvas(
-            EgoOverlayInputs(
-                inputs = inputs,
-                projection = projection,
-                viewport = viewport,
-                style = style,
-                tilt = tilt,
-                egoColor = egoColor,
-            ),
-        )
+        // In TILT the whole map *plane* — base features, route, contacts, and the
+        // ego — must share one 3D rotation so the overlays stay on the tilted
+        // ground instead of floating flat above it. The sweep arm (RADAR only,
+        // never tilted) draws from the flat canvas centre and stays outside.
+        Box(
+            modifier =
+                if (tilt) {
+                    Modifier.fillMaxSize().graphicsLayer {
+                        rotationX = inputs.tiltDeg.toFloat()
+                        cameraDistance = TILT_CAMERA_DISTANCE * density
+                        transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    }
+                } else {
+                    Modifier.fillMaxSize()
+                },
+        ) {
+            mapBaseCanvas(
+                MapBaseInputs(
+                    viewport = viewport,
+                    projected = projected,
+                    retroGrid = retroGrid,
+                    labelLayouts = labelLayouts,
+                    style = style,
+                    tilt = tilt,
+                ),
+            )
+            style.routeColor?.let { routeCanvas(inputs.egoFix, inputs.routeM, projection, viewport, it) }
+            style.contacts?.let { contactsCanvas(inputs.pois, projection, viewport, it) }
+            egoOverlayCanvas(
+                EgoOverlayInputs(
+                    inputs = inputs,
+                    projection = projection,
+                    viewport = viewport,
+                    style = style,
+                    tilt = tilt,
+                    egoColor = egoColor,
+                ),
+            )
+        }
         style.sweep?.let { sweepArmCanvas(it) }
     }
 }
@@ -364,25 +380,15 @@ private data class MapBaseInputs(
     val labelLayouts: LabelLayouts,
     val style: PlayaMapPanelStyle,
     val tilt: Boolean,
-    val tiltDeg: Int,
 )
 
 @Composable
 private fun mapBaseCanvas(inputs: MapBaseInputs) {
     val tilt = inputs.tilt
     val style = inputs.style
-    Canvas(
-        modifier =
-            if (tilt) {
-                Modifier.fillMaxSize().graphicsLayer {
-                    rotationX = inputs.tiltDeg.toFloat()
-                    cameraDistance = TILT_CAMERA_DISTANCE * density
-                    transformOrigin = TransformOrigin(0.5f, 0.5f)
-                }
-            } else {
-                Modifier.fillMaxSize()
-            },
-    ) {
+    // Tilt is applied by the shared wrapper in [playaMapPanel] so the overlays
+    // (route / contacts / ego) rotate with the base map onto one plane.
+    Canvas(modifier = Modifier.fillMaxSize()) {
         val viewport = inputs.viewport ?: return@Canvas
         if (style.showRetroGrid || tilt) drawRetroGrid(inputs.retroGrid, style.palette.grid)
         val projected = inputs.projected

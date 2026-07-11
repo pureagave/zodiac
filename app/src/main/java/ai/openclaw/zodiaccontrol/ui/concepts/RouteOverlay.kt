@@ -45,8 +45,8 @@ private fun PlayaPoint.toOffset(viewport: PlayaViewport): Offset {
     return Offset(s.x.toFloat(), s.y.toFloat())
 }
 
-private const val ROUTE_STROKE = 3f
-private const val ROUTE_DOT = 4f
-private const val ROUTE_DEST_RING = 11f
-private const val ROUTE_DASH_ON = 12f
+private const val ROUTE_STROKE = 6f
+private const val ROUTE_DOT = 6f
+private const val ROUTE_DEST_RING = 13f
+private const val ROUTE_DASH_ON = 16f
 private const val ROUTE_DASH_OFF = 9f
