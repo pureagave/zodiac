@@ -3,17 +3,15 @@ package ai.openclaw.zodiaccontrol.core.navigation
 import ai.openclaw.zodiaccontrol.core.geo.PlayaPoint
 import ai.openclaw.zodiaccontrol.core.model.StreetKind
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.hypot
-import kotlin.math.roundToInt
-import kotlin.math.sin
 
 /**
- * A drivable route across the BRC polar grid. [waypointsM] are the ordered
- * corners from the first approach point to the destination (the arc leg is
- * sampled into several points so it curves along the ring). [entranceRadial]
- * is the clock street we enter the city on (e.g. "2:30"), or null when the
- * destination is out on the open playa and a straight line is legal.
+ * A drivable route across Black Rock City. [waypointsM] are the ordered corners
+ * from the first approach point to the destination; inside the city they are
+ * lifted straight off the real GIS street polylines (radial + ring arc), so the
+ * drawn line lies on the drawn streets rather than on an idealised circle.
+ * [entranceRadial] is the clock street we enter the city on (e.g. "5:30"), or
+ * null when the destination is out on the open playa and a straight line is legal.
  */
 data class PlayaRoute(
     val waypointsM: List<PlayaPoint>,
@@ -29,11 +27,15 @@ data class PlayaRoute(
  *   playa → nearest entrance **radial** ∩ Esplanade → out that radial to the
  *   destination **ring** → along the ring to the address.
  *
- * Pure geometry over the projected [city] model — unit-testable, no Compose.
- * When the destination is on the open playa (or there are no arcs to route
- * against) the route is a single straight leg. Being deep in the grid already
- * is handled approximately (the entrance leg is skipped once you're past the
- * Esplanade) — see [nextWaypoint] for how guidance advances along the legs.
+ * Unlike the earlier idealised-polar version, every in-city corner is snapped
+ * to the nearest vertex of the actual [city] street polylines: the entrance
+ * radial's real points from the Esplanade out to the ring, then the ring arc's
+ * real points along to the address. That keeps the route on the streets instead
+ * of cutting across camps. Pure geometry over the projected [city] model —
+ * unit-testable, no Compose. When the destination is on the open playa (or the
+ * ring/radial can't be resolved) the route is a single straight leg. Being deep
+ * in the grid already is handled approximately (the radial approach is skipped
+ * once you're past the Esplanade) — see [nextWaypoint] for how guidance advances.
  */
 fun routeTo(
     egoM: PlayaPoint,
@@ -57,26 +59,69 @@ fun routeTo(
         clockHours in CITY_MIN_CLOCK..CITY_MAX_CLOCK &&
             destR > esplanadeR + RING_MARGIN_M &&
             destR <= city.cityOuterRadiusM + OUTER_MARGIN_M
-    val entrance =
-        city.streetsM
-            .filter { it.kind == StreetKind.Radial }
-            .minByOrNull { angularDistanceDeg(radialBearing(it), destBearing) }
-    if (!inCity || entrance == null) return straight
 
-    val entBearing = radialBearing(entrance)
-    val ringR = city.arcRadiiM.minByOrNull { abs(it.value - destR) }?.value ?: destR
+    // Real street polylines for the destination's ring (nearest by radius) and
+    // its entrance radial (nearest by bearing). Both are gathered across every
+    // matching GIS segment; when the target is open playa these come out empty.
+    val ringName = if (inCity) city.arcRadiiM.minByOrNull { abs(it.value - destR) }?.key else null
+    val arcPts = city.streetsM.filter { it.kind == StreetKind.Arc && it.name == ringName }.flatMap { it.pointsM }
+    val entranceName =
+        if (inCity) {
+            city.streetsM
+                .filter { it.kind == StreetKind.Radial }
+                .minByOrNull { angularDistanceDeg(radialBearing(it), destBearing) }
+                ?.name
+        } else {
+            null
+        }
+    val radialPts = city.streetsM.filter { it.kind == StreetKind.Radial && it.name == entranceName }.flatMap { it.pointsM }
+    if (arcPts.isEmpty() || radialPts.isEmpty()) return straight
+
+    val ringR = city.arcRadiiM.getValue(requireNotNull(ringName))
+    return PlayaRoute(cityWaypoints(egoM, destM, esplanadeR, ringR, radialPts, arcPts), entranceName)
+}
+
+/**
+ * Walk the real street polylines from the ego's approach to the address: out
+ * the entrance radial's vertices from the Esplanade to the ring corner, then
+ * along the ring arc's vertices to the point nearest the address. All corners
+ * are snapped to actual street vertices, so the result lies on the streets.
+ */
+private fun cityWaypoints(
+    egoM: PlayaPoint,
+    destM: PlayaPoint,
+    esplanadeR: Double,
+    ringR: Double,
+    radialPts: List<PlayaPoint>,
+    arcPts: List<PlayaPoint>,
+): List<PlayaPoint> {
+    // The corner where the entrance radial crosses the ring, and where on the
+    // ring the address sits — both snapped to real street vertices.
+    val corner = radialPts.minByOrNull { abs(distanceFromOrigin(it) - ringR) } ?: radialPts.first()
+    val destOnArc = arcPts.minByOrNull { hypot(it.eastM - destM.eastM, it.northM - destM.northM) } ?: arcPts.first()
 
     val waypoints = mutableListOf<PlayaPoint>()
-    // Skip the Esplanade entrance once you're already out in the grid.
-    if (distanceFromOrigin(egoM) < esplanadeR) waypoints += polarPoint(esplanadeR, entBearing)
-    waypoints += polarPoint(ringR, entBearing) // ring ∩ entrance radial
-    // Curve along the ring from the entrance radial to the address.
-    val span = signedDeltaDeg(destBearing, entBearing)
-    val segments = (abs(span) / ARC_STEP_DEG).roundToInt().coerceAtLeast(1)
-    for (i in 1 until segments) waypoints += polarPoint(ringR, entBearing + span * i / segments)
-    waypoints += destM
+    // Approach: from the open inner playa, run out the radial's real vertices
+    // from its inner (Esplanade) end to the ring corner. Once already out in
+    // the grid, skip straight to the corner.
+    if (distanceFromOrigin(egoM) < esplanadeR) {
+        waypoints +=
+            radialPts
+                .sortedBy(::distanceFromOrigin)
+                .filter { distanceFromOrigin(it) <= distanceFromOrigin(corner) + RADIAL_SLACK_M }
+    } else {
+        waypoints += corner
+    }
+    // Along the ring: the arc's real vertices between the corner and the
+    // address, ordered so the polyline runs corner → address.
+    val cornerBearing = bearingFromOriginTo(corner)
+    val destBearingOnArc = bearingFromOriginTo(destOnArc)
+    val lo = minOf(cornerBearing, destBearingOnArc)
+    val hi = maxOf(cornerBearing, destBearingOnArc)
+    val arcLeg = arcPts.filter { bearingFromOriginTo(it) in lo..hi }.sortedBy(::bearingFromOriginTo)
+    waypoints += if (cornerBearing <= destBearingOnArc) arcLeg else arcLeg.reversed()
 
-    return PlayaRoute(waypoints, entrance.name)
+    return waypoints
 }
 
 /**
@@ -123,14 +168,6 @@ fun nextWaypoint(
 private fun radialBearing(street: PlayaStreet): Double =
     bearingFromOriginTo(street.pointsM.maxByOrNull(::distanceFromOrigin) ?: street.pointsM.first())
 
-private fun polarPoint(
-    radiusM: Double,
-    bearingDeg: Double,
-): PlayaPoint {
-    val rad = Math.toRadians(bearingDeg)
-    return PlayaPoint(eastM = radiusM * sin(rad), northM = radiusM * cos(rad))
-}
-
 /** Signed smallest angle from [b] to [a], in (−180, 180]. */
 private fun signedDeltaDeg(
     a: Double,
@@ -155,7 +192,7 @@ private const val CITY_MIN_CLOCK = 2.0
 private const val CITY_MAX_CLOCK = 10.0
 private const val RING_MARGIN_M = 40.0
 private const val OUTER_MARGIN_M = 150.0
-private const val ARC_STEP_DEG = 6.0
+private const val RADIAL_SLACK_M = 30.0
 private const val FULL_CIRCLE = 360.0
 private const val HALF_CIRCLE = 180.0
 private const val SEGMENT_EPSILON = 1e-6

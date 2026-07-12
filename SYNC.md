@@ -6,6 +6,25 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-11 — City routing follows real street polylines (not idealised polar)
+
+Feedback: an entered address (e.g. 5:45 & C) "isn't on a road when it hits the city — routes across camp sites." Root cause in `core/navigation/PlayaRoute.routeTo`: it built the in-city legs from **idealised polar geometry** — `polarPoint(esplanadeR, entBearing)`, `polarPoint(ringR, entBearing)`, and a coarsely-sampled arc chord — on *perfect circles* at mean radii. That sits near but not on the real GIS streets, so the drawn line drifted across blocks. Compounded by two radius sources (address uses `StreetRingRadiiM`, route used `arcRadiiM`) and off-radial addresses (5:45 has no radial → enters at 5:30/6:00, then a chord).
+
+- **Fix:** every in-city corner is now snapped to the **nearest vertex of the actual `city.streetsM` polylines**. Pick the ring arc (nearest `arcRadiiM` by radius) and the entrance radial (nearest by bearing), gather all their GIS segments, then walk: radial's real vertices from the Esplanade out to the ring corner → the ring arc's real vertices from the corner along to the vertex nearest the address. No `polarPoint` generation left; the route lies on the drawn streets by construction.
+- **Free-drive unchanged:** open playa (inside Esplanade, 10–2 mouth, past the outer road) still returns a single straight leg. Verified TEMPLE → straight.
+- **Known limit:** the ego-already-out-in-the-grid case is still approximate (jumps to the ring corner, then arcs) — fine for driving *out along* a route (ego→corner runs along the radial you're already on), but a cross-town trip from a deep-city ego can still cut across. Left as-is; the reported case (drive-to-address from the Man) is handled.
+- **Test:** `PlayaRouterTest` rewritten with *dense* synthetic radials/arcs (the old inner/outer-pair streets can't exercise vertex-snapping). New `in_city_route_stays_on_the_radial_then_the_ring` asserts every waypoint is on the entrance radial (±1°) or on the ring (±20 m) — the rigorous proof of "on streets."
+- **Detekt:** `routeTo` tipped over CyclomaticComplexity 15 → extracted the polyline walk into `cityWaypoints(...)`.
+- **On-device (S9+):** verified 5:45 & C, HOME (2:15), TEMPLE render sensibly. Visual caveat: with the fake ego parked at the Man, a radial route and a straight line nearly coincide (ego at centre), and adb can't pinch-zoom on the non-rooted device (`sendevent` = permission denied, `input` has no pinch) — so the pixel-on-street proof is the unit test, not the screenshot.
+
+---
+
+## 2026-07-11 — Address heading flash: stop the big degrees wrapping
+
+`ui/ops/AddressEntryPanel` flash showed `HDG 345°` at 104 sp; wide digit values overran the 620 dp panel and wrapped to two lines (narrow ones like `112°` fit, so it was intermittent). Now the big line is just the number (≤4 glyphs) with a small "HEADING" label above, plus `maxLines=1`/`softWrap=false`. Verified on the S9+ with 10:00 (345°) — single line.
+
+---
+
 ## 2026-07-11 — Portrait mode (responsive layout for small tablets)
 
 The app was landscape-locked; now it reflows for portrait so it can run on small portrait-mounted screens (fleet has mixed orientations — S9 landscape, small tablets portrait).
