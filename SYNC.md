@@ -6,6 +6,12 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-16 — DRIVER HUD: contact figure shape decided (distance LOD)
+
+Resolved the open figure-shape question (user picked from a 10-shape menu): the contact figure is now **distance level-of-detail** — distant/small contacts draw a compact **head+shoulders "bust"** (stays legible at a few pixels), and once close they switch to a full striding **"walking" figure** that reads unmistakably as a person. Threshold `NEAR_SHAPE_THRESHOLD = 0.5` on the contact's size. `figureBust` / `figureWalking` replace the old head+trapezoid `figure`. Verified live on the S9+.
+
+---
+
 ## 2026-07-16 — DRIVER night HUD, Phase 1 (Star Wars '83 vector display)
 
 New third cockpit concept **`DRIVER`** (`CockpitConcept.DRIVER`, cycles RADAR→MAP→DRIVER) — a dim, hollow-vector night display for the person driving in the dark, styled after the 1983 Atari *Star Wars* vector cabinet. Intended eventual home is the small OLED phone (A54), but built as a selectable concept so it runs/tests on the S9 now. See [[project_night_driver_and_sensors]].

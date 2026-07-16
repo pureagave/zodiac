@@ -55,6 +55,12 @@ private const val KPH_TO_MPH = 0.621371
 private const val ARCH_HALF_SPAN_DEG = 29f
 private const val THERMAL_HALF_FOV_DEG = 28f
 
+// Level-of-detail swap for the contact figure: distant contacts (small) draw a
+// compact head+shoulders "bust" that stays legible at a few pixels; once close
+// (and there's detail to carry it) they switch to a full striding "walking"
+// figure that reads unmistakably as a person.
+private const val NEAR_SHAPE_THRESHOLD = 0.5f
+
 private val PLACEHOLDER_THREATS =
     listOf(
         DriverThreat(relAzDeg = -16f, size = 0.20f),
@@ -226,7 +232,11 @@ private fun DrawScope.drawThreat(
     val color = if (t.collision) NightRed else NightGreen
     val bracketColor = if (t.collision) DeepRed else NightGreen
     val stroke = if (t.collision) 3f else 2f
-    figure(x, feetY, figH, color, stroke)
+    if (t.size < NEAR_SHAPE_THRESHOLD) {
+        figureBust(x, feetY, figH, color, stroke)
+    } else {
+        figureWalking(x, feetY, figH, color, stroke)
+    }
     if (t.collision || t.size > 0.4f) {
         val halfW = figH * 0.42f
         bracket(x - halfW, feetY - figH * 1.02f, x + halfW, feetY + figH * 0.04f, bracketColor, if (t.collision) 3f else 2f)
@@ -234,26 +244,48 @@ private fun DrawScope.drawThreat(
     }
 }
 
-private fun DrawScope.figure(
+/** Distant contact: compact head + shoulders, legible when only a few pixels. */
+private fun DrawScope.figureBust(
     cx: Float,
     feetY: Float,
     figH: Float,
     color: Color,
     stroke: Float,
 ) {
-    val hr = figH / 7f
-    drawCircle(color, hr, Offset(cx, feetY - figH + hr), style = Stroke(stroke))
-    val bodyTop = feetY - figH + 2 * hr
-    val bw = figH / 4f
-    val body =
+    val hr = figH / 5.2f
+    val top = feetY - figH
+    drawCircle(color, hr, Offset(cx, top + hr), style = Stroke(stroke))
+    val bodyTop = top + 2 * hr
+    val bw = figH / 2.2f
+    val shoulders =
         Path().apply {
-            moveTo(cx - bw * 0.55f, bodyTop)
-            lineTo(cx + bw * 0.55f, bodyTop)
-            lineTo(cx + bw * 0.8f, feetY)
-            lineTo(cx - bw * 0.8f, feetY)
+            moveTo(cx - bw * 0.4f, bodyTop)
+            lineTo(cx + bw * 0.4f, bodyTop)
+            lineTo(cx + bw * 0.75f, feetY)
+            lineTo(cx - bw * 0.75f, feetY)
             close()
         }
-    drawPath(body, color, style = Stroke(stroke))
+    drawPath(shoulders, color, style = Stroke(stroke))
+}
+
+/** Close contact: full striding figure that reads unmistakably as a person. */
+private fun DrawScope.figureWalking(
+    cx: Float,
+    feetY: Float,
+    figH: Float,
+    color: Color,
+    stroke: Float,
+) {
+    val hr = figH / 9f
+    val top = feetY - figH
+    drawCircle(color, hr, Offset(cx, top + hr), style = Stroke(stroke))
+    val neck = top + 2 * hr
+    val hip = feetY - figH * 0.40f
+    drawLine(Offset(cx, neck), Offset(cx - figH * 0.05f, hip), color, stroke)
+    drawLine(Offset(cx, neck + figH * 0.04f), Offset(cx - figH * 0.26f, neck + figH * 0.18f), color, stroke)
+    drawLine(Offset(cx, neck + figH * 0.04f), Offset(cx + figH * 0.24f, neck + figH * 0.30f), color, stroke)
+    drawLine(Offset(cx - figH * 0.05f, hip), Offset(cx - figH * 0.24f, feetY), color, stroke)
+    drawLine(Offset(cx - figH * 0.05f, hip), Offset(cx + figH * 0.20f, feetY), color, stroke)
 }
 
 private fun DrawScope.bracket(
