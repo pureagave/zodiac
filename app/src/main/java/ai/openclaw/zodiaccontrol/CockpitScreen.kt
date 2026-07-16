@@ -4,6 +4,7 @@ import ai.openclaw.zodiaccontrol.burnin.BurnInMitigationManager
 import ai.openclaw.zodiaccontrol.burnin.burnInScaffold
 import ai.openclaw.zodiaccontrol.core.model.CockpitConcept
 import ai.openclaw.zodiaccontrol.ui.concepts.ThemeTracker
+import ai.openclaw.zodiaccontrol.ui.concepts.driverNightScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.instrumentBayScreen
 import ai.openclaw.zodiaccontrol.ui.concepts.motionTrackerScreen
 import ai.openclaw.zodiaccontrol.ui.ops.addressEntryPanel
@@ -39,6 +40,7 @@ fun cockpitScreen(
             when (state.concept) {
                 CockpitConcept.RADAR -> motionTrackerScreen(viewModel = viewModel, onCycleConcept = cycle)
                 CockpitConcept.MAP -> instrumentBayScreen(viewModel = viewModel, onCycleConcept = cycle)
+                CockpitConcept.DRIVER -> driverNightScreen(viewModel = viewModel, onCycleConcept = cycle)
             }
             state.streetPopup?.let { streetCrossingPopup(theme = ThemeTracker, name = it) }
             state.passingCallout?.let { passingCallout(theme = ThemeTracker, name = it) }

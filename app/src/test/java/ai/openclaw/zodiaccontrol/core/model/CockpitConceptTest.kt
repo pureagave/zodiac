@@ -7,24 +7,26 @@ import org.junit.Test
 class CockpitConceptTest {
     @Test
     fun next_cycles_and_wraps() {
-        // Two concepts remain: RADAR <-> MAP.
+        // Three concepts: RADAR -> MAP -> DRIVER -> RADAR.
         assertSame(CockpitConcept.MAP, CockpitConcept.RADAR.next())
-        assertSame(CockpitConcept.RADAR, CockpitConcept.MAP.next())
+        assertSame(CockpitConcept.DRIVER, CockpitConcept.MAP.next())
+        assertSame(CockpitConcept.RADAR, CockpitConcept.DRIVER.next())
     }
 
     @Test
     fun entries_are_in_order() {
         assertEquals(
-            listOf(CockpitConcept.RADAR, CockpitConcept.MAP),
+            listOf(CockpitConcept.RADAR, CockpitConcept.MAP, CockpitConcept.DRIVER),
             CockpitConcept.entries,
         )
-        assertEquals(2, CockpitConcept.entries.size)
+        assertEquals(3, CockpitConcept.entries.size)
     }
 
     @Test
     fun display_names_match_each_concept() {
         assertEquals("RADAR", CockpitConcept.RADAR.displayName)
         assertEquals("MAP", CockpitConcept.MAP.displayName)
+        assertEquals("DRIVER", CockpitConcept.DRIVER.displayName)
     }
 
     @Test

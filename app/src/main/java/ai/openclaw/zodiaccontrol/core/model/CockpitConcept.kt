@@ -17,6 +17,7 @@ enum class CockpitConcept(
 ) {
     RADAR("RADAR"),
     MAP("MAP"),
+    DRIVER("DRIVER"),
     ;
 
     fun next(): CockpitConcept = entries[(ordinal + 1) % entries.size]

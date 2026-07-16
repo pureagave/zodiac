@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-16 — DRIVER night HUD, Phase 1 (Star Wars '83 vector display)
+
+New third cockpit concept **`DRIVER`** (`CockpitConcept.DRIVER`, cycles RADAR→MAP→DRIVER) — a dim, hollow-vector night display for the person driving in the dark, styled after the 1983 Atari *Star Wars* vector cabinet. Intended eventual home is the small OLED phone (A54), but built as a selectable concept so it runs/tests on the S9 now. See [[project_night_driver_and_sensors]].
+
+- **Design (iterated with the user over mockups):** pure-black field; **hollow wireframe** thermal-contact figures (filled silhouettes emit too much light for night vision); palette restricted to **dim green + red + purple, no white/no yellow**; a perspective ground grid for the depth cue (nearer contact = lower + bigger). Heading **arch** across the top (the '83 "shield bar") with a purple marker that rotates to the drive-to bearing; **destination NAME at top-centre** (HOME/MAN/TEMPLE), **entrance clock/address boxed on the arch** (on-playa) — split apart per user feedback. Collision escalation: figure bright red, **four lock brackets in deep red** (`0xFF9E1224`, lower luminance than the alarm red), "! COLLISION COURSE !" / "! BRAKE !". On-playa vs in-city context from `entranceRadial`.
+- **Files:** `ui/concepts/DriverNightScreen.kt` (Compose `Canvas` + `nativeCanvas` text in Orbitron; nav data live from `CockpitUiState` — heading/speed/`activeDriveTarget`/`entranceRadial`; threats are **placeholder** `DriverThreat`s until the FLIR feed exists), `ui/concepts/DriverThreat.kt`, dispatch in `CockpitScreen`, enum in `CockpitConcept`.
+- **detekt:** `TooManyFunctions.thresholdInFiles` 12→18 (the HUD is a stack of small `DrawScope` helpers). Updated `CockpitConceptTest` + `CockpitViewModelTest` for the 3-concept cycle.
+- **Verified live on the S9+.** Testing gotcha logged: after a prior `KEYCODE_SLEEP` the display was OFF (`PROCESS_STATE_TOP_SLEEPING`), so every `screencap` was pure black and injected `input tap`s don't wake a sleeping screen — must `input keyevent KEYCODE_WAKEUP` + `wm dismiss-keyguard` (+ `svc power stayon true`) first.
+- **Next:** Phase 2 = `DriverThreat` data model + a fake *moving* threat source (mirrors `FakeLocationSource`); Phase 3 = wire real on-playa/in-city context + entrance selection; later = real FLIR feed + network broadcast. Figure *shape* is still open (user reviewing alternatives to the current head+trapezoid).
+
+---
+
 ## 2026-07-11 — City routing follows real street polylines (not idealised polar)
 
 Feedback: an entered address (e.g. 5:45 & C) "isn't on a road when it hits the city — routes across camp sites." Root cause in `core/navigation/PlayaRoute.routeTo`: it built the in-city legs from **idealised polar geometry** — `polarPoint(esplanadeR, entBearing)`, `polarPoint(ringR, entBearing)`, and a coarsely-sampled arc chord — on *perfect circles* at mean radii. That sits near but not on the real GIS streets, so the drawn line drifted across blocks. Compounded by two radius sources (address uses `StreetRingRadiiM`, route used `arcRadiiM`) and off-radial addresses (5:45 has no radial → enters at 5:30/6:00, then a chord).
