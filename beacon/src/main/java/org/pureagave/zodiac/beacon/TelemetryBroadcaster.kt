@@ -27,11 +27,14 @@ import kotlinx.coroutines.launch
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.MulticastSocket
 
 /**
  * The Zodiac Beacon engine: reads the phone's GNSS (raw NMEA) and magnetometer
- * heading and broadcasts them over UDP to the vehicle LAN (subnet broadcast,
- * port 10110) so every tablet's `NetworkLocationSource` picks them up. GNSS
+ * heading and sends them over UDP to the vehicle LAN — to the fixed fleet
+ * multicast group (239.7.7.10:10110, DHCP-independent) with a /24 subnet-directed
+ * broadcast fallback for APs that drop multicast — so every tablet's
+ * `NetworkLocationSource` picks them up. GNSS
  * sentences are forwarded verbatim; a true-heading `HDT` is synthesized from the
  * compass at a steady rate so heading updates even when the vehicle is stopped
  * (where GPS course is meaningless).
@@ -41,14 +44,21 @@ import java.net.InetAddress
  */
 object TelemetryBroadcaster : SensorEventListener {
     const val PORT = 10110
+
+    // Fixed telemetry multicast group (mirrors app FleetBus.TELEMETRY_GROUP) —
+    // DHCP-independent. We also send to the limited broadcast as a fallback for
+    // APs that rate-limit/drop multicast.
+    const val GROUP = "239.7.7.10"
+    private const val LIMITED_BROADCAST = "255.255.255.255"
+    private const val BYTE_MASK = 0xFF
+    private const val OCTET2_SHIFT = 8
+    private const val OCTET3_SHIFT = 16
+    private const val TTL = 1
     private const val HDT_INTERVAL_MS = 250L
     private const val GPS_MIN_INTERVAL_MS = 1000L
     private const val ROTATION_MATRIX_SIZE = 9
     private const val ORIENTATION_SIZE = 3
     private const val FULL_CIRCLE = 360.0
-    private const val OCTETS = 4
-    private const val BYTE_MASK = 0xFF
-    private const val BITS_PER_BYTE = 8
 
     private val _status = MutableStateFlow("Idle")
     val status: StateFlow<String> = _status.asStateFlow()
@@ -57,7 +67,7 @@ object TelemetryBroadcaster : SensorEventListener {
 
     private var scope: CoroutineScope? = null
     private var socket: DatagramSocket? = null
-    private var target: InetAddress? = null
+    private var targets: List<InetAddress> = emptyList()
     private var locationManager: LocationManager? = null
     private var sensorManager: SensorManager? = null
     private var nmeaListener: OnNmeaMessageListener? = null
@@ -73,8 +83,16 @@ object TelemetryBroadcaster : SensorEventListener {
     fun start(context: Context) {
         if (_running.value) return
         val app = context.applicationContext
-        target = broadcastAddress(app.getSystemService(Context.WIFI_SERVICE) as WifiManager)
-        socket = DatagramSocket().apply { broadcast = true }
+        // Primary: the fixed fleet multicast group. Fallback: the /24
+        // subnet-directed broadcast (reliably delivered by consumer APs, unlike
+        // the limited 255.255.255.255). Belt-and-suspenders → the fleet gets the
+        // telemetry whether or not the AP forwards multicast.
+        targets = listOf(InetAddress.getByName(GROUP), subnetBroadcast(app.getSystemService(Context.WIFI_SERVICE) as WifiManager))
+        socket =
+            MulticastSocket().apply {
+                timeToLive = TTL
+                broadcast = true
+            }
         val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = running
 
@@ -98,7 +116,7 @@ object TelemetryBroadcaster : SensorEventListener {
             }
         }
         _running.value = true
-        _status.value = "Broadcasting → ${target?.hostAddress}:$PORT"
+        _status.value = "Broadcasting → $GROUP:$PORT"
     }
 
     fun stop() {
@@ -121,19 +139,25 @@ object TelemetryBroadcaster : SensorEventListener {
             buildString {
                 append(if (loc != null) "GPS %.5f, %.5f".format(loc.latitude, loc.longitude) else "GPS acquiring…")
                 append("\nHeading ${headingDeg.toInt()}°   •   sent $sentences")
-                append("\n→ ${target?.hostAddress}:$PORT")
+                append("\n→ $GROUP:$PORT")
             }
     }
 
     private fun send(line: String) {
         val sock = socket ?: return
-        val dst = target ?: return
+        if (targets.isEmpty()) return
         scope?.launch {
-            runCatching {
-                val bytes = line.toByteArray(Charsets.US_ASCII)
-                sock.send(DatagramPacket(bytes, bytes.size, dst, PORT))
-                sentences++
+            val bytes = line.toByteArray(Charsets.US_ASCII)
+            var anySent = false
+            // Each target independently — a failing multicast send must not block
+            // the broadcast fallback (or vice versa).
+            targets.forEach { dst ->
+                runCatching {
+                    sock.send(DatagramPacket(bytes, bytes.size, dst, PORT))
+                    anySent = true
+                }
             }
+            if (anySent) sentences++
         }
     }
 
@@ -157,15 +181,16 @@ object TelemetryBroadcaster : SensorEventListener {
     ) = Unit
 
     /**
-     * Subnet-directed broadcast address from the current DHCP lease
-     * (`ip | ~netmask`) — recomputed each start so it survives dynamic DHCP.
-     * Falls back to the limited broadcast if DHCP info is unavailable.
+     * The /24 subnet-directed broadcast for the phone's current WiFi address
+     * (e.g. 192.168.0.234 → 192.168.0.255). Android reports `ipAddress`
+     * little-endian, so the low three octets are the address's first three.
      */
-    private fun broadcastAddress(wifi: WifiManager): InetAddress {
+    private fun subnetBroadcast(wifi: WifiManager): InetAddress {
         @Suppress("DEPRECATION")
-        val dhcp = wifi.dhcpInfo
-        val bcast = (dhcp?.ipAddress ?: 0) and (dhcp?.netmask ?: 0) or (dhcp?.netmask ?: 0).inv()
-        val bytes = ByteArray(OCTETS) { i -> (bcast shr (i * BITS_PER_BYTE) and BYTE_MASK).toByte() }
-        return runCatching { InetAddress.getByAddress(bytes) }.getOrDefault(InetAddress.getByName("255.255.255.255"))
+        val ip = wifi.dhcpInfo?.ipAddress ?: 0
+        val a = ip and BYTE_MASK
+        val b = (ip shr OCTET2_SHIFT) and BYTE_MASK
+        val c = (ip shr OCTET3_SHIFT) and BYTE_MASK
+        return runCatching { InetAddress.getByName("$a.$b.$c.255") }.getOrDefault(InetAddress.getByName(LIMITED_BROADCAST))
     }
 }

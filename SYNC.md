@@ -6,6 +6,15 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-18 — Fleet bus → fixed multicast group (broadcast-independent discovery)
+
+Migrated the one-to-many streams from UDP broadcast to a **fixed multicast group** so there are no hardcoded IPs and it survives dynamic DHCP (the group address is baked in). New `core/net/FleetBus` constants: telemetry `239.7.7.10:10110`, threats `239.7.7.20:10120`, TTL 1 (link-local). `NetworkLocationSource` + `NetworkThreatSource` now use a `MulticastSocket` that `joinGroup`s (still bound to the port, so they also receive unicast/broadcast — the loopback unit tests keep passing). The Beacon sends to the multicast **group + a /24 subnet-directed broadcast fallback** (belt-and-suspenders — the fleet gets telemetry whether or not the AP forwards multicast); each target sent independently so one failing can't block the other.
+
+- **Verified live on the S9+:** Beacon → tablet still delivers end-to-end after the migration — tablet showed HOME 429.3 km (the phone's SF position) + HDG 12° (compass), NET selected. Also confirmed the migrated `MulticastSocket` still receives a subnet broadcast (from a laptop) — reception not broken.
+- **Gotchas found + fixed:** (1) Beacon `send()` had an ordering bug where a failing first target aborted the rest → per-target `runCatching`. (2) `WifiManager.connectionInfo.ipAddress` returns 0 on Android 10 → compute the /24 broadcast from `dhcpInfo.ipAddress` instead. (3) laptop multicast sends are blocked by tailscale hijacking the `192.168.0.0/24` route (a Mac-side test-harness issue), so isolated multicast-only send from the laptop couldn't be tested — the phone (no tailscale) is the real multicast sender.
+- **Tests:** `FleetBusTest` (groups are valid, distinct multicast addresses). Existing `NetworkLocationSourceTest` / `NetworkThreatSourceTest` still green (unicast-to-port loopback).
+- **Still open (B):** mDNS/`NsdManager` service announcement was deferred (multicast groups already give discovery-free stream delivery; mDNS is for health/enumeration).
+
 ## 2026-07-18 — DRIVER HUD Phase 2: live threat sources (fake moving + network)
 
 The DRIVER night HUD is now driven by live thermal contacts instead of static placeholders. New `ThreatSource` abstraction (mirrors `LocationSource`): **`FakeThreatSource`** (three moving demo contacts — a crosser, an approacher that ramps into the red-lock collision on a loop, a far drifter; per-tick geometry is a pure `demo(tick)` fn), **`NetworkThreatSource`** (UDP consumer on port 10120, MulticastLock, parses `ThreatProtocol` frames, watchdog clears to all-clear when the feed goes stale), and **`RoutedThreatSource`** (prefers the network feed, falls back to the fake demo when silent — so the HUD is always alive and upgrades to real detections automatically). Wired through `CockpitUiState.threats` → ViewModel (`threatsFlow`, same pattern as `poisFlow`) → `DriverNightScreen` (renders `state.threats`). `ThreatProtocol` = compact `ZTHREAT;id:az:size:col;...` wire format (the Jetson emits, tablets parse).

@@ -11,13 +11,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.MulticastSocket
 import java.net.SocketTimeoutException
 
 /**
@@ -37,7 +40,8 @@ import java.net.SocketTimeoutException
 class NetworkLocationSource(
     private val scope: CoroutineScope,
     private val applicationContext: Context? = null,
-    private val port: Int = DEFAULT_PORT,
+    private val port: Int = FleetBus.TELEMETRY_PORT,
+    private val group: String = FleetBus.TELEMETRY_GROUP,
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.NET
 
@@ -96,18 +100,21 @@ class NetworkLocationSource(
     // state, never crash the IO coroutine. The SocketTimeoutException swallow is
     // also deliberate — a read timeout is the normal "nothing arrived this tick"
     // path that lets the loop re-check isActive so stop() unwinds promptly.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    @Suppress("TooGenericExceptionCaught", "SwallowedException", "DEPRECATION")
     private fun runListener(listenerScope: CoroutineScope) {
         val sock =
             try {
-                // NB: use also{}, not apply{} — inside apply the receiver is the
-                // DatagramSocket, whose `port` property shadows our constructor
-                // `port` (an unconnected socket reports port -1).
-                DatagramSocket(null).also { s ->
+                // NB: use also{}, not apply{} — inside apply the receiver's own
+                // `port` property (−1 when unconnected) would shadow our ctor port.
+                MulticastSocket(null).also { s ->
                     s.reuseAddress = true
                     s.bind(InetSocketAddress(port))
                     s.soTimeout = READ_TIMEOUT_MS
-                    s.broadcast = true
+                    // Join the fixed fleet multicast group. runCatching: a host
+                    // with no multicast-capable interface (some CI) fails the
+                    // join, but the socket still receives unicast/broadcast to
+                    // the port — so tests and any broadcast fallback keep working.
+                    runCatching { s.joinGroup(InetAddress.getByName(group)) }
                 }
             } catch (ex: Exception) {
                 _state.value = LocationSourceState.Error(detail = "NET: bind :$port failed — ${ex.message}")
@@ -131,6 +138,7 @@ class NetworkLocationSource(
                 _state.value = LocationSourceState.Error(detail = "NET: ${ex.message}")
             }
         } finally {
+            runCatching { sock.leaveGroup(InetAddress.getByName(group)) }
             runCatching { sock.close() }
         }
     }
@@ -152,9 +160,8 @@ class NetworkLocationSource(
         }
     }
 
-    companion object {
-        const val DEFAULT_PORT: Int = 10110
-        private const val BUFFER_BYTES: Int = 2048
-        private const val READ_TIMEOUT_MS: Int = 1_000
+    private companion object {
+        const val BUFFER_BYTES: Int = 2048
+        const val READ_TIMEOUT_MS: Int = 1_000
     }
 }

@@ -12,11 +12,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.ThreatProtocol
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.MulticastSocket
 import java.net.SocketTimeoutException
 
 /**
@@ -34,8 +37,9 @@ import java.net.SocketTimeoutException
 class NetworkThreatSource(
     private val scope: CoroutineScope,
     private val applicationContext: Context? = null,
-    private val port: Int = DEFAULT_PORT,
+    private val port: Int = FleetBus.THREAT_PORT,
     private val staleMs: Long = STALE_MS,
+    private val group: String = FleetBus.THREAT_GROUP,
 ) : ThreatSource {
     private val _threats = MutableStateFlow<List<DriverThreat>>(emptyList())
     override val threats: StateFlow<List<DriverThreat>> = _threats.asStateFlow()
@@ -76,15 +80,15 @@ class NetworkThreatSource(
 
     // Broad + timeout catches are deliberate (IO boundary): a timeout is the
     // normal "nothing this tick" path; other failures should not crash the loop.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    @Suppress("TooGenericExceptionCaught", "SwallowedException", "DEPRECATION")
     private fun runListener(listenerScope: CoroutineScope) {
         val sock =
             try {
-                DatagramSocket(null).also { s ->
+                MulticastSocket(null).also { s ->
                     s.reuseAddress = true
                     s.bind(InetSocketAddress(port))
                     s.soTimeout = READ_TIMEOUT_MS
-                    s.broadcast = true
+                    runCatching { s.joinGroup(InetAddress.getByName(group)) }
                 }
             } catch (ex: Exception) {
                 // No state channel for errors here; a dead socket just means no
@@ -109,6 +113,7 @@ class NetworkThreatSource(
         } catch (ex: Exception) {
             // socket closed on stop() → normal shutdown.
         } finally {
+            runCatching { sock.leaveGroup(InetAddress.getByName(group)) }
             runCatching { sock.close() }
         }
     }
@@ -130,7 +135,6 @@ class NetworkThreatSource(
     private fun nowMs(): Long = System.nanoTime() / NANOS_PER_MS
 
     companion object {
-        const val DEFAULT_PORT: Int = 10120
         const val STALE_MS: Long = 1_500L
         private const val BUFFER_BYTES: Int = 4096
         private const val READ_TIMEOUT_MS: Int = 500
