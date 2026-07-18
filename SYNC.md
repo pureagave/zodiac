@@ -6,6 +6,19 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-18 — ARCHITECTURE.md + fleet-bus / sensor-hub / Jetson decisions
+
+Wrote [`ARCHITECTURE.md`](ARCHITECTURE.md) — the living system-design reference (hardware devices & roles, the fleet network bus, sensors/detection, night-vision design, playa constraints, BOM, roadmap, decisions log). Baked in the decisions from today's design pass:
+
+- **Fleet bus = fixed multicast groups + mDNS.** Single subnet, dynamic DHCP → no hardcoded IPs. One-to-many streams (telemetry, threats, destination) ride fixed multicast groups (address baked in, DHCP-proof — a source announces itself by transmitting); mDNS/`NsdManager` for service discovery + health. All link-local → immune to Starlink outages (only the BM API cache / weather use the WAN, offline-first). `NetworkLocationSource` currently uses UDP broadcast + MulticastLock; migrating to multicast groups is the next step.
+- **GPS device → "Vehicle Sensor Hub": broadcast everything.** Not just position — GPS speed/course, **magnetometer compass heading** (distinct from GPS course, which is noise when stopped/crawling — matters for a slow art car), IMU, altitude, fix quality, time. Bring-up = GPSd Forwarder (NMEA only, proven today); production = custom broadcaster or the Pi + IMU.
+- **FLIR compute = Jetson Orin Nano Super** (~$249, 67 TOPS; scarce right now). Compute isn't the bottleneck — thermal *resolution* is. **ML plan given no playa data + an H100:** v1 classical CV (zero training data — blob/track/velocity/collision); v2 fine-tune a pretrained YOLO on *public* thermal datasets (Teledyne FLIR Free ADAS, LLVIP, KAIST) — no playa collection, night playa is an easier domain. Realistic: person detect ~20–30 m, count *separated* people, bike-vs-walker mostly from velocity. FLIR lives on the edge box (front), broadcasts *detections* (metadata) not raw video.
+- **DMX gimbal tracker light** (user owns the moving-head): slave it to detections — Jetson bearing→pan/tilt→USB-DMX (OpenDMX ~$25 / Enttec ~$140, OLA). Steerable "we-see-you" spotlight = safety + art.
+
+See [[project_night_driver_and_sensors]] for the running roadmap memory.
+
+---
+
 ## 2026-07-18 — NetworkLocationSource (NET): shared-WiFi GPS over UDP — verified end-to-end
 
 Built the production fleet GPS path: `data/sensor/NetworkLocationSource` listens for NMEA datagrams on UDP **10110**, splits each into lines, feeds the existing `NmeaParser`, and emits `LocationSourceState` like every other source. Added `LocationSourceType.NET` (the GPS chips auto-populate from `entries`, so a **NET** chip appeared with no UI change), registered it in `ZodiacApplication`, and wired the manifest. Prefs already deserialize the enum by name with a fallback, so NET persists safely.

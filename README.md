@@ -2,7 +2,7 @@
 
 Android tablet cockpit app for the mutant Zodiac vehicle (Judge Dredd taxi-inspired).
 
-For the running decision log (architecture choices, audit follow-ups, hardware lessons), see [`SYNC.md`](SYNC.md). Current open items live in [`tasks/open.md`](tasks/open.md).
+For the full system design (hardware devices, the fleet network bus, sensors, roadmap), see [`ARCHITECTURE.md`](ARCHITECTURE.md). For the running decision log (architecture choices, audit follow-ups, hardware lessons), see [`SYNC.md`](SYNC.md). Current open items live in [`tasks/open.md`](tasks/open.md).
 
 ## Current build
 
