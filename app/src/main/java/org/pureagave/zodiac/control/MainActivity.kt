@@ -61,6 +61,7 @@ private fun zodiacApp() {
                     preferences = app.preferences,
                     fakeLocationSource = app.fakeLocationSource,
                     poisFlow = app.discoveryRepository.pois,
+                    threatsFlow = app.threatSource.threats,
                 ),
         )
 

@@ -33,6 +33,7 @@ import org.pureagave.zodiac.control.R
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.ops.campGuidance
+import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import kotlin.math.cos
@@ -61,21 +62,15 @@ private const val THERMAL_HALF_FOV_DEG = 28f
 // figure that reads unmistakably as a person.
 private const val NEAR_SHAPE_THRESHOLD = 0.5f
 
-private val PLACEHOLDER_THREATS =
-    listOf(
-        DriverThreat(relAzDeg = -16f, size = 0.20f),
-        DriverThreat(relAzDeg = 14f, size = 0.22f),
-        DriverThreat(relAzDeg = -3f, size = 0.82f, collision = true),
-    )
-
 /**
  * The "DRIVER" cockpit surface: a dim, hollow-vector night HUD (1983-arcade
  * lineage) for the person actually driving the vehicle in the dark. Thermal
  * contacts are drawn as hollow wireframe figures on a perspective grid; a
  * heading arch across the top shows the bearing to the active drive-to target
  * (on the open playa it reads the city entrance; in the city it reads the
- * destination). Nav data is live from [CockpitUiState]; the thermal contacts are
- * placeholder until the FLIR feed lands.
+ * destination). Nav data and the thermal contacts are live from [CockpitUiState]
+ * — the contacts come from the routed threat source (a fake moving demo until
+ * the FLIR edge box broadcasts real detections).
  */
 @Composable
 fun driverNightScreen(
@@ -86,7 +81,7 @@ fun driverNightScreen(
     val context = LocalContext.current
     val typeface = remember { ResourcesCompat.getFont(context, R.font.orbitron) }
     val projection = remember { PlayaProjection(GoldenSpike.Y2025) }
-    val threats = PLACEHOLDER_THREATS
+    val threats = state.threats
 
     // Relative bearing to the active target, clamped onto the heading arch.
     val relDeg =

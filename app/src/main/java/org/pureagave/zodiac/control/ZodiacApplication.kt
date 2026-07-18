@@ -8,6 +8,7 @@ import androidx.datastore.preferences.preferencesDataStoreFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.pureagave.zodiac.control.burnin.BurnInConfig
 import org.pureagave.zodiac.control.burnin.BurnInConfigStore
 import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
@@ -33,6 +34,9 @@ import org.pureagave.zodiac.control.data.sensor.SystemLocationSource
 import org.pureagave.zodiac.control.data.sensor.UsbLocationSource
 import org.pureagave.zodiac.control.data.transport.FakeTransportAdapter
 import org.pureagave.zodiac.control.data.transport.TransportRegistry
+import org.pureagave.zodiac.control.data.vision.FakeThreatSource
+import org.pureagave.zodiac.control.data.vision.NetworkThreatSource
+import org.pureagave.zodiac.control.data.vision.RoutedThreatSource
 
 /**
  * Process-lifetime owner for the cockpit's manual DI graph. Replaces the
@@ -112,6 +116,20 @@ class ZodiacApplication : Application() {
             scope = applicationScope,
             initialType = LocationSourceType.FAKE,
         )
+    }
+
+    /**
+     * Thermal contacts for the DRIVER HUD: prefers the network feed (the Jetson
+     * edge box broadcasting detections on UDP 10120), falling back to a fake
+     * moving demo when the feed is silent — so the HUD is always alive and
+     * upgrades to real detections automatically. Started on first access.
+     */
+    val threatSource: RoutedThreatSource by lazy {
+        RoutedThreatSource(
+            network = NetworkThreatSource(applicationContext = this, scope = applicationScope),
+            fake = FakeThreatSource(scope = applicationScope),
+            scope = applicationScope,
+        ).also { source -> applicationScope.launch { source.start() } }
     }
 
     /**

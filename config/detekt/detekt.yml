@@ -17,8 +17,9 @@ complexity:
     # Manual DI (no Hilt): CockpitViewModel + its factory take one collaborator
     # per dependency, so the constructor grows by one each time the cockpit gains
     # a real data source (poisFlow for playa-discovery contacts was the latest).
-    # Bumped from the default 7 to keep just above the current count.
-    constructorThreshold: 8
+    # Bumped from the default 7 to keep just above the current count (threatsFlow
+    # for the DRIVER thermal contacts was the latest data source added).
+    constructorThreshold: 9
     # Compose components idiomatically take theme + a few data/callbacks + a
     # trailing Modifier; e.g. driveToBar (theme, active, bathActive, onSelect,
     # onSelectBath, modifier). Bumped from the default 6 to 7 for that shape.

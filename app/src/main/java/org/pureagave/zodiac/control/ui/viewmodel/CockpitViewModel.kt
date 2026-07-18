@@ -34,6 +34,7 @@ import org.pureagave.zodiac.control.core.ops.addressTarget
 import org.pureagave.zodiac.control.core.ops.contactsWithinRange
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.VehicleConnectionGateway
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
@@ -55,6 +56,12 @@ class CockpitViewModel(
      * stays trivially testable; defaults to empty for tests / pre-wiring.
      */
     private val poisFlow: StateFlow<List<PlayaPoi>> = MutableStateFlow(emptyList()),
+    /**
+     * Thermal contacts for the DRIVER HUD (routed threat source → real network
+     * feed or fake demo). Same plain-flow pattern as [poisFlow]; empty for
+     * tests / pre-wiring.
+     */
+    private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CockpitUiState())
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
@@ -188,6 +195,12 @@ class CockpitViewModel(
                 // cockpit renders them as RADAR contacts / MAP markers.
                 poisFlow.collect { pois ->
                     _uiState.update { it.copy(pois = pois) }
+                }
+            }
+            launch {
+                // Thermal contacts for the DRIVER HUD (network feed or fake demo).
+                threatsFlow.collect { threats ->
+                    _uiState.update { it.copy(threats = threats) }
                 }
             }
             // select() is a no-op when the saved type matches the registry's
@@ -528,6 +541,7 @@ class CockpitViewModelFactory(
     private val preferences: CockpitPreferences,
     private val fakeLocationSource: FakeLocationSource,
     private val poisFlow: StateFlow<List<PlayaPoi>> = MutableStateFlow(emptyList()),
+    private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -540,6 +554,7 @@ class CockpitViewModelFactory(
                 preferences = preferences,
                 fakeLocationSource = fakeLocationSource,
                 poisFlow = poisFlow,
+                threatsFlow = threatsFlow,
             ) as T
         }
         error("Unknown ViewModel class: ${modelClass.name}")

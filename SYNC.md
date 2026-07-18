@@ -6,6 +6,14 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-18 — DRIVER HUD Phase 2: live threat sources (fake moving + network)
+
+The DRIVER night HUD is now driven by live thermal contacts instead of static placeholders. New `ThreatSource` abstraction (mirrors `LocationSource`): **`FakeThreatSource`** (three moving demo contacts — a crosser, an approacher that ramps into the red-lock collision on a loop, a far drifter; per-tick geometry is a pure `demo(tick)` fn), **`NetworkThreatSource`** (UDP consumer on port 10120, MulticastLock, parses `ThreatProtocol` frames, watchdog clears to all-clear when the feed goes stale), and **`RoutedThreatSource`** (prefers the network feed, falls back to the fake demo when silent — so the HUD is always alive and upgrades to real detections automatically). Wired through `CockpitUiState.threats` → ViewModel (`threatsFlow`, same pattern as `poisFlow`) → `DriverNightScreen` (renders `state.threats`). `ThreatProtocol` = compact `ZTHREAT;id:az:size:col;...` wire format (the Jetson emits, tablets parse).
+
+- **Verified live on the S9+:** DRIVER HUD shows moving contacts (22k px change between frames), collision escalates dynamically. Then broadcasting synthetic `ZTHREAT` frames from a laptop (stand-in Jetson) → the HUD switched to those exact contacts, proving the network-override / "edge box → display" path on real hardware.
+- **Tests:** `ThreatProtocolTest` (round-trip, garbage→null, empty frame→all-clear, skips malformed), `FakeThreatSourceTest` (3 contacts, motion, collision cycle, size ramp), `NetworkThreatSourceTest` (real loopback UDP → threats; stale→cleared), `RoutedThreatSourceTest` (network-preferred / fake-fallback). detekt constructorThreshold 8→9 for `threatsFlow`.
+- Test tool: `/tmp/threat_send.py` broadcasts `ZTHREAT` frames. Threat port = **10120** (NMEA stays 10110).
+
 ## 2026-07-18 — Package rename: `ai.openclaw.*` → `org.pureagave.zodiac.*`
 
 Scrubbed the legacy `ai.openclaw` namespace (a leftover from the original Feb-2026 scaffold — the project isn't "openclaw") and moved to the owner's domain. App: `ai.openclaw.zodiaccontrol` → **`org.pureagave.zodiac.control`**; beacon: `ai.openclaw.zodiacbeacon` → **`org.pureagave.zodiac.beacon`** (shared `org.pureagave.zodiac` root). Mechanical: 142 files rewritten (package decls, imports, `namespace`/`applicationId`, manifests, docs incl. this log), source trees moved `.../ai/openclaw/...` → `.../org/pureagave/zodiac/...`, `ktlintFormat` re-sorted imports for the new prefix. Gate green. **applicationId changed → the app installs as a new package** (old `ai.openclaw.*` installs should be uninstalled from the fleet). Two non-app "openclaw" strings intentionally left: `.gitignore`'s `.openclaw/` (agent working-dir ignore) and an avatar path in `IDENTITY.md` — tooling scaffolding, not the project.

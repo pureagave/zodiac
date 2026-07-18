@@ -20,6 +20,7 @@ import org.pureagave.zodiac.control.core.ops.toDriveTarget
 import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.vision.DriverThreat
 
 data class CockpitUiState(
     val headingDeg: Int = 0,
@@ -94,6 +95,12 @@ data class CockpitUiState(
      * as RADAR contacts / MAP markers; empty until the cache/first sync lands.
      */
     val pois: List<PlayaPoi> = emptyList(),
+    /**
+     * Thermal contacts for the DRIVER night HUD, from the routed threat source
+     * (real network feed from the Jetson edge box, else a fake moving demo).
+     * Empty = all clear.
+     */
+    val threats: List<DriverThreat> = emptyList(),
     /**
      * Short message describing the most recent failed vehicle command send
      * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced
