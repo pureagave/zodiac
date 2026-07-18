@@ -19,6 +19,7 @@ import ai.openclaw.zodiaccontrol.data.prefs.DataStoreCockpitPreferences
 import ai.openclaw.zodiaccontrol.data.sensor.BleLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.FakeLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.LocationSourceRegistry
+import ai.openclaw.zodiaccontrol.data.sensor.NetworkLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.RoutedLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.SystemLocationSource
 import ai.openclaw.zodiaccontrol.data.sensor.UsbLocationSource
@@ -103,6 +104,7 @@ class ZodiacApplication : Application() {
                             applicationContext = this,
                             scope = applicationScope,
                         ),
+                        NetworkLocationSource(applicationContext = this, scope = applicationScope),
                     ),
             )
         RoutedLocationSource(

@@ -6,6 +6,20 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-18 — NetworkLocationSource (NET): shared-WiFi GPS over UDP — verified end-to-end
+
+Built the production fleet GPS path: `data/sensor/NetworkLocationSource` listens for NMEA datagrams on UDP **10110**, splits each into lines, feeds the existing `NmeaParser`, and emits `LocationSourceState` like every other source. Added `LocationSourceType.NET` (the GPS chips auto-populate from `entries`, so a **NET** chip appeared with no UI change), registered it in `ZodiacApplication`, and wired the manifest. Prefs already deserialize the enum by name with a fallback, so NET persists safely.
+
+- **Verified live on the S9+** with the XCover on the same WiFi: broadcast synthetic NMEA (a track heading north) from the Mac → the tablet's NO FIX cleared, the drive-to distance/BRC clock came alive, and the HEADING needle swung to north (matching the RMC course). This is the first real proof of the shared-WiFi GPS architecture.
+- **Two hard-won networking lessons (both now baked into the code):**
+  1. **Android silently filters broadcast/multicast UDP** from apps to save power — the app must hold a `WifiManager.MulticastLock` or it receives nothing. Added it (acquire on start / release on stop; needs `CHANGE_WIFI_MULTICAST_STATE`). This was the whole reason "NO FIX" persisted at first. `NetworkLocationSource` now takes an optional `Context` for the lock (null in unit tests).
+  2. **Deliver via subnet broadcast (`x.x.x.255`), not unicast.** From the Mac, unicast to the tablet failed with `EHOSTUNREACH` (stale ARP / tailscale grabbing the `192.168.0.0/24` route); broadcast needs no ARP and is the right fleet design anyway (one GPS → all tablets). Client-isolation is OFF on this AP (ping worked), so broadcast reaches every tablet.
+- **`also{}` not `apply{}` gotcha:** inside `apply` the receiver's `DatagramSocket.port` (−1 when unconnected) shadowed the constructor `port`, so it tried to bind :−1. Unit test caught it.
+- **Tests:** `NetworkLocationSourceTest` drives real loopback UDP — a valid GGA → `Active` fix (lat/lon asserted), junk → stays `Searching`. Re-sends across a window to beat the listener's bind race.
+- **Test tooling:** `/tmp/nmea_send.py` broadcasts checksummed GGA+RMC walking north from the Golden Spike — reuse it to exercise NET. Next: point the XCover's forwarder app (Android-GPSd-Forwarder or Share GPS) at `x.x.x.255:10110` to replace the Mac with the real phone GPS. See [[project_night_driver_and_sensors]].
+
+---
+
 ## 2026-07-17 — Fix: route "bird" chord across the city when navigating back in
 
 Reported: the blue route line back to the city drew "like we are a bird" — a straight diagonal across the built blocks instead of following streets. Root cause in `PlayaRoute.cityWaypoints`: when the ego was **outside the Esplanade** it did `waypoints += corner` — a straight jump to the destination's entrance corner, which for a far-side ego chords clear across town. (The earlier real-streets fix only covered ego-at-the-Man; the "navigate back from the open playa" case was untested.)
