@@ -18,3 +18,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "ZodiacControl"
 include(":app")
+
+// Zodiac Beacon — the standalone vehicle sensor-hub app (broadcasts GNSS +
+// compass + telemetry over UDP to the tablet fleet). Runs on the rugged phone.
+include(":beacon")

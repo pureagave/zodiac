@@ -31,6 +31,23 @@ object NmeaParser {
         }
     }
 
+    /**
+     * True/magnetic heading in degrees from a heading sentence — HDT (true),
+     * HDG/HDM (magnetic), or VTG (track made good) — normalized to [0, 360).
+     * The Zodiac Beacon synthesizes HDT from the phone's compass; the network
+     * source merges it into the fix so heading stays live even when the vehicle
+     * is stopped (where GPS course is meaningless). Null for any other sentence.
+     */
+    fun parseHeadingDeg(line: String): Double? {
+        val sentence = line.trim().trimEnd('\r', '\n')
+        if (!sentence.startsWith("$") || !checksumValid(sentence)) return null
+        val fields = sentence.substringBefore('*').drop(1).split(',')
+        return when (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN)) {
+            "HDT", "HDG", "HDM", "VTG" -> parseCourseDeg(fields.getOrElse(HEADING_FIELD) { "" })
+            else -> null
+        }
+    }
+
     private fun parseGga(fields: List<String>): GpsFix? {
         if (fields.size < GGA_MIN_FIELDS) return null
         val fixQuality = fields[GGA_FIX_QUALITY].toIntOrNull()?.takeIf { it != 0 }
@@ -141,6 +158,9 @@ object NmeaParser {
     private const val RMC_LON_HEMI = 6
     private const val RMC_SPEED_KNOTS = 7
     private const val RMC_COURSE = 8
+
+    // HDT/HDG/HDM/VTG all carry the heading/track in the first field.
+    private const val HEADING_FIELD = 1
 
     private const val NMEA_LAT_DEG_DIVISOR = 100.0
     private const val MINUTES_PER_DEGREE = 60.0

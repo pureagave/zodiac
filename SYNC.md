@@ -6,6 +6,17 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-18 — Zodiac Beacon (new `:beacon` module) — telemetry hub, verified end-to-end
+
+Built the **Vehicle Sensor Hub** as a standalone app: a new Gradle module `:beacon` (app "Zodiac Beacon", `ai.openclaw.zodiacbeacon`, plain Views — no Compose, same detekt/ktlint gates). It reads the phone's GNSS (raw NMEA via `LocationManager.addNmeaListener`) + **magnetometer** (`TYPE_ROTATION_VECTOR` → azimuth, corrected to true north via `GeomagneticField` declination) and **broadcasts** them over UDP to the subnet broadcast (computed from DHCP; falls back to `255.255.255.255`) on port 10110, from a **foreground service** so it keeps running screen-off. GNSS forwarded verbatim; a true-heading **`HDT`** synthesized from the compass at 4 Hz (so heading is live even stopped).
+
+- **minSdk 29** (the XCover Pro is Android 10 — the app's minSdk 30 blocks install; the beacon runs on the *phone*).
+- **Tablet side:** `NmeaParser.parseHeadingDeg` (HDT/HDG/HDM/VTG) + `NetworkLocationSource` now does a **stateful merge** — holds last position (GGA/RMC) + last compass heading (HDT), emits a fix preferring the compass over GPS course (compass is valid when stopped; course is noise). Unit test drives real loopback UDP: GGA + HDT → fix carries the HDT heading.
+- **Verified live on the S9+:** Zodiac Beacon on the XCover broadcast its real GNSS + compass; the tablet showed position (SF, HOME 429.4 km) and **BEARING 012° = the compass heading while SPEED 000** — proving it's the magnetometer (HDT), not GPS course. First real telemetry-hub proof.
+- Replaces the bring-up GPSd Forwarder with our own controllable app. Next: broadcast IMU + richer telemetry; migrate broadcast → multicast group.
+
+---
+
 ## 2026-07-18 — ARCHITECTURE.md + fleet-bus / sensor-hub / Jetson decisions
 
 Wrote [`ARCHITECTURE.md`](ARCHITECTURE.md) — the living system-design reference (hardware devices & roles, the fleet network bus, sensors/detection, night-vision design, playa constraints, BOM, roadmap, decisions log). Baked in the decisions from today's design pass:

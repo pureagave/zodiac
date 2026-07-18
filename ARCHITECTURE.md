@@ -33,7 +33,7 @@ Two principles shape everything:
 | **Hero dashboard** | Main cockpit — address entry, full map, all concepts | Galaxy Tab S9+ (SM-X810), Android 13/14 | 12.4" OLED | ✅ in use |
 | **Driver night display** (×2, 1 spare) | Dim night HUD for the driver — thermal threats + minimal nav | Galaxy A54, OLED | 6.4" OLED | 🚧 HUD built; phones to buy ~2026-07-23 |
 | **Fleet tablets** | Passenger / crew displays (RADAR / MAP) | mixed Fire HD 10 / Galaxy Tab | LCD / OLED | ✅ |
-| **Vehicle Sensor Hub** | Broadcasts vehicle telemetry (GPS + compass + speed + IMU) | XCover Pro (SM-G715U) now; Pi + u-blox + IMU later | (screen off) | 🚧 GPS path proven |
+| **Vehicle Sensor Hub** | Broadcasts vehicle telemetry (GPS + compass + speed + IMU) | XCover Pro (SM-G715U) now; Pi + u-blox + IMU later | (screen off) | ✅ Zodiac Beacon app (`:beacon`) — GPS + compass verified |
 | **Thermal edge box** | Pedestrian detection at the vehicle front; drives the DMX light | Jetson Orin Nano Super (~$249, 67 TOPS) + FLIR camera | — | 📋 |
 | **DMX tracker light** | Steerable "we-see-you" spotlight slaved to thermal detections | user's gimbal moving-head + USB-DMX | — | 📋 |
 | **Proximity alarm** | Cheap, robust "something's close in front" hard alarm | ESP32 + 24GHz radar / TF-Luna LiDAR + red beacon | red beacon | 📋 |
@@ -170,6 +170,19 @@ Package `ai.openclaw.zodiaccontrol`. Kotlin + Jetpack Compose. Reactive core:
 - **Output:** broadcast **detections** (small metadata), *not* raw video —
   every device renders its own view. Raw thermal MJPEG/RTSP available as a
   separate opt-in stream for anyone who wants the actual picture.
+
+### Standard vision (RGB) camera — 24-hour capability 📋
+
+A cheap USB/CSI RGB webcam (~$15–40) alongside the thermal, co-boresighted so
+their bearings align. It fills exactly the gap thermal has:
+- **Daylight** — thermal degrades midday (playa hotter than skin, contrast
+  inverts); RGB is great in daylight. Complementary: RGB by day, thermal by
+  night, both at dusk → **24-hour coverage.**
+- **The ML is *easier*** — RGB person/bike detection is a solved problem
+  (COCO-pretrained YOLO, **zero custom training data**).
+- **Fusion** — RGB (detail/classification) + thermal (night/heat) is more
+  robust than either alone; the Jetson has the inputs (2× CSI + USB) and
+  headroom (67 TOPS) to run both and merge their detections onto the bus.
 
 ### DMX gimbal tracker light 📋
 

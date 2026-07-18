@@ -71,6 +71,37 @@ class NetworkLocationSourceTest {
             }
         }
 
+    @Test
+    fun compass_heading_from_hdt_merges_into_the_fix() =
+        runBlocking {
+            val port = 10178
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                // Position (GGA, no heading) + a compass heading (HDT) arrive as
+                // separate sentences; the fix must carry the HDT heading.
+                val ok =
+                    waitUntil(4_000) {
+                        sendUdp(validGga, port)
+                        sendUdp(nmea("GPHDT,123.4,T"), port)
+                        val st = source.state.value
+                        st is LocationSourceState.Active && (st.fix.headingDeg ?: -1.0) in 123.0..124.0
+                    }
+                assertTrue("HDT heading should merge into the network fix", ok)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    /** Wrap a sentence body in `$...*<checksum>` NMEA framing. */
+    private fun nmea(body: String): String {
+        var c = 0
+        for (ch in body) c = c xor ch.code
+        return "\$$body*%02X\r\n".format(c)
+    }
+
     private fun sendUdp(
         msg: String,
         port: Int,
