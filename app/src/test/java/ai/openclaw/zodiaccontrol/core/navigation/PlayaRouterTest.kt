@@ -37,7 +37,8 @@ class PlayaRouterTest {
         name: String,
         radiusM: Double,
     ): PlayaStreet {
-        val pts = (100..140 step 4).map { polar(radiusM, it.toDouble()) } // 2:00 → ~3:00 sweep
+        // Full city arc: BRC 2:00 (105°) around to 10:00 (345°), the real span.
+        val pts = (105..345 step 5).map { polar(radiusM, it.toDouble()) }
         return PlayaStreet(name, StreetKind.Arc, pts)
     }
 
@@ -100,6 +101,26 @@ class PlayaRouterTest {
             val onRing = abs(distanceFromOrigin(p) - 1555.0) < 20.0
             assertTrue("waypoint $p is off both the radial and the ring", onRadial || onRing)
         }
+    }
+
+    @Test
+    fun from_outside_the_city_route_comes_in_on_our_bearing_not_a_chord_across_town() {
+        // The reported "bird" bug: ego out on the open playa at 8:00, beyond the
+        // rings, navigating back to a destination (H & 2:30) on the FAR side of
+        // the city. The route must come onto the ring at OUR bearing (a radial
+        // move) and follow the ring around — never a straight chord across town.
+        val ego = polar(2200.0, clockToBearing(ClockTime(8, 0)))
+        val dest = polar(1555.0, clockToBearing(ClockTime(2, 30)))
+        val route = routeTo(ego, dest, city)
+
+        val first = route.waypointsM.first()
+        // First waypoint is on the ring at ~our bearing, not the far-side entrance.
+        assertEquals(clockToBearing(ClockTime(8, 0)), bearingFromOriginTo(first), 8.0)
+        assertEquals(1555.0, distanceFromOrigin(first), 20.0)
+        // Still reaches the destination.
+        assertTrue(near(dest, route.waypointsM.last(), 15.0))
+        // No leg dives through the middle of town (a chord would pass the centre).
+        assertTrue("route must stay out on the ring, not chord past the Man", route.waypointsM.all { distanceFromOrigin(it) > 700.0 })
     }
 
     @Test

@@ -95,31 +95,38 @@ private fun cityWaypoints(
     radialPts: List<PlayaPoint>,
     arcPts: List<PlayaPoint>,
 ): List<PlayaPoint> {
-    // The corner where the entrance radial crosses the ring, and where on the
-    // ring the address sits — both snapped to real street vertices.
-    val corner = radialPts.minByOrNull { abs(distanceFromOrigin(it) - ringR) } ?: radialPts.first()
+    // Where on the destination ring the address sits (snapped to a real vertex).
     val destOnArc = arcPts.minByOrNull { hypot(it.eastM - destM.eastM, it.northM - destM.northM) } ?: arcPts.first()
+    val destBearing = bearingFromOriginTo(destOnArc)
 
     val waypoints = mutableListOf<PlayaPoint>()
-    // Approach: from the open inner playa, run out the radial's real vertices
-    // from its inner (Esplanade) end to the ring corner. Once already out in
-    // the grid, skip straight to the corner.
+    val entryBearing: Double
     if (distanceFromOrigin(egoM) < esplanadeR) {
+        // Inside the open centre: cross to the destination's entrance radial
+        // and run its real vertices out from the Esplanade to the ring.
+        val corner = radialPts.minByOrNull { abs(distanceFromOrigin(it) - ringR) } ?: radialPts.first()
+        entryBearing = bearingFromOriginTo(corner)
         waypoints +=
             radialPts
                 .sortedBy(::distanceFromOrigin)
                 .filter { distanceFromOrigin(it) <= distanceFromOrigin(corner) + RADIAL_SLACK_M }
     } else {
-        waypoints += corner
+        // Already out in the grid (or beyond it): come onto the destination ring
+        // at OUR OWN bearing — a radial move — then follow the ring around. Never
+        // cut a straight chord across the built city to a far-side entrance (the
+        // old "bird flies straight there" bug when navigating back into town).
+        val ringEntry =
+            arcPts.minByOrNull { angularDistanceDeg(bearingFromOriginTo(it), bearingFromOriginTo(egoM)) }
+                ?: arcPts.first()
+        entryBearing = bearingFromOriginTo(ringEntry)
+        waypoints += ringEntry
     }
-    // Along the ring: the arc's real vertices between the corner and the
-    // address, ordered so the polyline runs corner → address.
-    val cornerBearing = bearingFromOriginTo(corner)
-    val destBearingOnArc = bearingFromOriginTo(destOnArc)
-    val lo = minOf(cornerBearing, destBearingOnArc)
-    val hi = maxOf(cornerBearing, destBearingOnArc)
+    // Follow the ring's real vertices from the entry bearing around to the
+    // address, ordered so the polyline runs entry → address.
+    val lo = minOf(entryBearing, destBearing)
+    val hi = maxOf(entryBearing, destBearing)
     val arcLeg = arcPts.filter { bearingFromOriginTo(it) in lo..hi }.sortedBy(::bearingFromOriginTo)
-    waypoints += if (cornerBearing <= destBearingOnArc) arcLeg else arcLeg.reversed()
+    waypoints += if (entryBearing <= destBearing) arcLeg else arcLeg.reversed()
 
     return waypoints
 }

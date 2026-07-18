@@ -6,6 +6,16 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-17 — Fix: route "bird" chord across the city when navigating back in
+
+Reported: the blue route line back to the city drew "like we are a bird" — a straight diagonal across the built blocks instead of following streets. Root cause in `PlayaRoute.cityWaypoints`: when the ego was **outside the Esplanade** it did `waypoints += corner` — a straight jump to the destination's entrance corner, which for a far-side ego chords clear across town. (The earlier real-streets fix only covered ego-at-the-Man; the "navigate back from the open playa" case was untested.)
+
+- **Fix:** when the ego is already out in the grid / beyond it, come onto the destination **ring at OUR OWN bearing** (a radial move inward), then follow the ring around to the address — never a chord across the built city. Inside-the-Esplanade case unchanged (cross the open centre to the destination radial, out to the ring). Generalised the arc leg to run from the entry bearing (ours when outside, the destination radial's when inside) to the address.
+- **Test:** `PlayaRouterTest` — widened the synthetic city's arcs to the full 2:00→10:00 span (105°–345°) so a far-side ego can be exercised, and added `from_outside_the_city_route_comes_in_on_our_bearing_not_a_chord_across_town` (ego at 8:00 beyond the rings, dest H&2:30 on the far side): asserts the first waypoint is on the ring at ~our bearing (not the far entrance), it still reaches the dest, and no waypoint dives past the Man. Fails on the old code, passes on the fix.
+- **Verified live on the S9+** (before/after, identical setup — HOME target, ego nudged ~2 km SW): before = straight diagonal chord across the blocks; after = blue line curves along the ring.
+
+---
+
 ## 2026-07-16 — DRIVER HUD: contact figure shape decided (distance LOD)
 
 Resolved the open figure-shape question (user picked from a 10-shape menu): the contact figure is now **distance level-of-detail** — distant/small contacts draw a compact **head+shoulders "bust"** (stays legible at a few pixels), and once close they switch to a full striding **"walking" figure** that reads unmistakably as a person. Threshold `NEAR_SHAPE_THRESHOLD = 0.5` on the contact's size. `figureBust` / `figureWalking` replace the old head+trapezoid `figure`. Verified live on the S9+.
