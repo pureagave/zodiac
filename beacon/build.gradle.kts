@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.openclaw.zodiacbeacon"
+    namespace = "org.pureagave.zodiac.beacon"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ai.openclaw.zodiacbeacon"
+        applicationId = "org.pureagave.zodiac.beacon"
         // The beacon runs on the rugged sensor phone (XCover Pro = Android 10),
         // so its floor is lower than the tablet app's (minSdk 30).
         minSdk = 29

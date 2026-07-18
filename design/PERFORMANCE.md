@@ -123,7 +123,7 @@ The adversarial-verify pass refuted these — recorded so they aren't re-investi
 
 Before/after any of the above, on a real Fire HD 10:
 
-- **Jank percentiles:** `adb shell dumpsys gfxinfo ai.openclaw.zodiaccontrol framestats`
+- **Jank percentiles:** `adb shell dumpsys gfxinfo org.pureagave.zodiac.control framestats`
   (and the histogram / "Number Janky frames"). Reset with `dumpsys gfxinfo <pkg> reset`,
   exercise Concept C for ~30s, dump.
 - **Recomposition counts:** Android Studio **Layout Inspector → Recomposition counts** while

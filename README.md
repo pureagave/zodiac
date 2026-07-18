@@ -9,7 +9,7 @@ For the full system design (hardware devices, the fleet network bus, sensors, ro
 - **Concepts:** two cockpit aesthetics shipped together, runtime-switchable via the `NAME >` pill in the top-right of every screen. The choice persists across launches. (The original A CRT VECTOR and B PERSPECTIVE GRID were dropped 2026-07-04; the remaining two lost their letter tags.)
   - **RADAR** — *Aliens* '86 M41A motion-tracker sweep scope
   - **MAP** — *Alien* '79 Nostromo instrument-bay gauge wall (green phosphor)
-- **Package:** `ai.openclaw.zodiaccontrol`
+- **Package:** `org.pureagave.zodiac.control`
 - **minSdk:** 30 (Android 11)
 - **targetSdk / compileSdk:** 35
 - **UI stack:** Jetpack Compose + Material3

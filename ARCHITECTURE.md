@@ -114,7 +114,7 @@ display; the compass fills the gap GPS course leaves at low speed.
 
 ## 5. Software — the Android cockpit app
 
-Package `ai.openclaw.zodiaccontrol`. Kotlin + Jetpack Compose. Reactive core:
+Package `org.pureagave.zodiac.control`. Kotlin + Jetpack Compose. Reactive core:
 `CockpitViewModel` subscribes to repository/source flows and exposes a single
 `StateFlow<CockpitUiState>` to Compose. Manual DI in `ZodiacApplication`.
 

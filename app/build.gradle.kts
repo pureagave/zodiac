@@ -15,11 +15,11 @@ plugins {
 }
 
 android {
-    namespace = "ai.openclaw.zodiaccontrol"
+    namespace = "org.pureagave.zodiac.control"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ai.openclaw.zodiaccontrol"
+        applicationId = "org.pureagave.zodiac.control"
         minSdk = 30
         targetSdk = 35
         versionCode = 1

@@ -8,7 +8,7 @@
 
 ## What Zodiac is
 
-Android tablet cockpit UI (Kotlin + Jetpack Compose) for **Galactic Relay camp's** mutant vehicle at Burning Man. Package `ai.openclaw.zodiaccontrol`. Landscape, minSdk 30 / targetSdk 35, Kotlin 2.0.21 / JDK 17. Manual DI in `ZodiacApplication` (no Hilt). Reactive: ViewModel → single `StateFlow<CockpitUiState>` → Compose. All transports/telemetry are **fake**; GPS location sources are real (Fake/System/BLE/USB).
+Android tablet cockpit UI (Kotlin + Jetpack Compose) for **Galactic Relay camp's** mutant vehicle at Burning Man. Package `org.pureagave.zodiac.control`. Landscape, minSdk 30 / targetSdk 35, Kotlin 2.0.21 / JDK 17. Manual DI in `ZodiacApplication` (no Hilt). Reactive: ViewModel → single `StateFlow<CockpitUiState>` → Compose. All transports/telemetry are **fake**; GPS location sources are real (Fake/System/BLE/USB).
 
 ## Hardware / fleet (see memory `project_fleet_hardware_targets`)
 
@@ -46,7 +46,7 @@ Semantic, amber banned:
 
 - Toolchain not on PATH — set inline per command: `JAVA_HOME=/usr/local/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home`, `ANDROID_HOME=/usr/local/share/android-commandlinetools`.
 - **CI gate before every commit:** `./gradlew ktlintCheck detekt lintDebug testDebugUnitTest assembleDebug`. (Quirk: running `ktlintFormat` and `ktlintCheck` in the *same* gradle invocation races — run format, then a separate check.)
-- **S9+ deploy over wifi:** `adb -s 192.168.0.253:5555 …`; `installDebug` then `am start -n ai.openclaw.zodiaccontrol/.MainActivity`. Grant perms with `pm grant … ACCESS_FINE_LOCATION/ACCESS_COARSE_LOCATION/BLUETOOTH_CONNECT/BLUETOOTH_SCAN`. `input` uses **landscape** coords on the S9+ (unlike the Fire's portrait frame).
+- **S9+ deploy over wifi:** `adb -s 192.168.0.253:5555 …`; `installDebug` then `am start -n org.pureagave.zodiac.control/.MainActivity`. Grant perms with `pm grant … ACCESS_FINE_LOCATION/ACCESS_COARSE_LOCATION/BLUETOOTH_CONNECT/BLUETOOTH_SCAN`. `input` uses **landscape** coords on the S9+ (unlike the Fire's portrait frame).
 - **Desktop-mode gotcha:** the S9+ was in Samsung DeX/desktop windowing — apps open freeform with a forced taskbar that overlaps the app bottom, and a reinstall reverts a maximized app to windowed. `screencap` captures the app framebuffer *without* the taskbar overlay. For clean fullscreen: screen-pin (kiosk) or exit desktop mode.
 - **Testing display discipline (memory `feedback_s9_testing_display`):** sleep the display after every screenshot (`input keyevent KEYCODE_SLEEP`); keep brightness manual + low (`screen_brightness_mode 0`, `screen_brightness 20`). *"No burn-in until the Burn."*
 - **Verifying burn-in phases:** temporarily shrink `BurnInConfig` timeouts + `DEFAULT_TICK_MILLIS`, deploy, screencap at intervals, revert.

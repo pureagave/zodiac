@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting **Amazon Fire and Samsung Galaxy Tab** tablets in landscape (the Galaxy Tab S9+ OLED is the main dashboard; the Fire HD 10 LCD is the performance floor). Currently a v0.1.0 prototype. Two runtime-switchable cockpit "concepts" — `RADAR` and `MAP` (`core/model/CockpitConcept`; the original A `CRT VECTOR` and B `PERSPECTIVE` were dropped and C/D lost their letter tags, 2026-07-04) — share the same underlying state and an 80s green-phosphor aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
 
-Package: `ai.openclaw.zodiaccontrol`
+Package: `org.pureagave.zodiac.control`
 
 ## Build & Test Commands
 

@@ -1,0 +1,406 @@
+package org.pureagave.zodiac.control.ui.concepts
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.pureagave.zodiac.control.core.model.MapMode
+import org.pureagave.zodiac.control.ui.ops.driveSelectionOf
+import org.pureagave.zodiac.control.ui.ops.driveToBar
+import org.pureagave.zodiac.control.ui.ops.headingGuidanceBar
+import org.pureagave.zodiac.control.ui.ops.opsReadout
+import org.pureagave.zodiac.control.ui.playamap.MapPalette
+import org.pureagave.zodiac.control.ui.playamap.MapPointStyle
+import org.pureagave.zodiac.control.ui.state.CockpitUiState
+import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
+import kotlin.math.cos
+import kotlin.math.sin
+
+/**
+ * Concept D map palette: BLOCK point style so toilets, CPNs, and art render
+ * as small framed rects that read like miniature instrument tiles scattered
+ * across the map. Recoloured to the green phosphor family 2026-07-04 (was
+ * orange); the BLOCK styling is what keeps D distinct from Concept A.
+ */
+private val InstrumentBayPalette =
+    MapPalette(
+        fence = Color(0xFF00FF66),
+        street = Color(0xFF1F8F46),
+        streetOutline = Color(0xFF0F5C2D),
+        plaza = Color(0xFFC77DFF),
+        toilet = Color(0xFF00BFFF),
+        cpn = Color(0xFF00FF66),
+        artMajor = Color(0xFFFF66CC),
+        artMinor = Color(0xFF80366A),
+        grid = Color(0xFF1F6E37),
+        pointStyle = MapPointStyle.BLOCK,
+        labelsEnabled = true,
+        labelPrimary = Color(0xFFB0FFB0),
+        crtBeam = true,
+    )
+
+@Composable
+fun instrumentBayScreen(
+    viewModel: CockpitViewModel,
+    onCycleConcept: () -> Unit,
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val mapInputs by remember { derivedStateOf { MapUiInputs.from(state) } }
+    val theme = ThemeInstrumentBay
+    val config = LocalConfiguration.current
+    val portrait = config.screenHeightDp > config.screenWidthDp
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(theme.background)
+                .padding(12.dp)
+                .border(2.dp, theme.primary),
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            navCueBar(cue = state.navCue, theme = theme)
+            // Top strip: live heading-guidance chevron to the active drive-to
+            // target (replaced the decorative NOSTROMO/STATION flavour header) —
+            // slide + point shows which way to steer to HOME/MAN/TEMPLE/BATH.
+            Row(modifier = Modifier.fillMaxWidth().height(76.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                tile(theme = theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    headingGuidanceBar(
+                        theme = theme,
+                        egoFix = state.egoFix,
+                        headingDeg = state.headingDeg,
+                        target = state.activeDriveTarget,
+                        aim = state.nextWaypoint,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+
+            if (portrait) {
+                // Portrait: map on top, gauges + cells in a row, controls below.
+                Column(modifier = Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    bayMapTile(mapInputs, viewModel, state, theme, Modifier.fillMaxWidth().weight(1f))
+                    Row(modifier = Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        headingTile(theme, state.headingDeg, Modifier.weight(1f).fillMaxHeight())
+                        speedTile(theme, state.speedKph, Modifier.weight(1f).fillMaxHeight())
+                        cellsTile(theme, Modifier.weight(1f).fillMaxHeight())
+                    }
+                    conceptControlStrip(
+                        state = state,
+                        viewModel = viewModel,
+                        theme = theme,
+                        modifier = Modifier.fillMaxWidth().height(170.dp),
+                        showTiltToggle = false,
+                    )
+                }
+            } else {
+                // Landscape: left gauges | centre map | right throttle/cells/controls.
+                Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier.fillMaxHeight().width(160.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        headingTile(theme, state.headingDeg, Modifier.fillMaxWidth().weight(1f))
+                        speedTile(theme, state.speedKph, Modifier.fillMaxWidth().weight(1f))
+                    }
+                    bayMapTile(mapInputs, viewModel, state, theme, Modifier.weight(1f).fillMaxHeight())
+                    Column(
+                        modifier = Modifier.fillMaxHeight().width(280.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        tile(theme = theme, modifier = Modifier.fillMaxWidth().height(120.dp)) {
+                            Text("THROTTLE TRACE", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                            Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) { throttleTrace(theme = theme) }
+                        }
+                        cellsTile(theme, Modifier.fillMaxWidth().height(80.dp))
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            conceptControlStrip(
+                                state = state,
+                                viewModel = viewModel,
+                                theme = theme,
+                                modifier = Modifier.fillMaxSize(),
+                                showTiltToggle = false,
+                            )
+                        }
+                    }
+                }
+            }
+
+            driveToBar(
+                theme = theme,
+                active = driveSelectionOf(state.customTarget != null, state.driveToBath, state.navTarget),
+                onSelect = viewModel::setNavTarget,
+                onSelectBath = viewModel::driveToNearestToilet,
+                onOpenAddress = { viewModel.setAddressEntryOpen(true) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // Operational readout footer: BRC clock / sunrise-sunset / return-to-camp,
+            // in the bay's tile aesthetic (replaced the decorative hazard chevron).
+            opsReadout(
+                theme = theme,
+                egoFix = state.egoFix,
+                headingDeg = state.headingDeg,
+                target = state.activeDriveTarget,
+                aim = state.nextWaypoint,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                        .border(2.dp, theme.primary)
+                        .padding(horizontal = 12.dp),
+            )
+        }
+
+        conceptSwitcher(
+            current = state.concept,
+            onCycle = onCycleConcept,
+            accent = theme.primary,
+            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+        )
+
+        recenterButton(
+            followMode = state.followMode,
+            theme = theme,
+            onClick = viewModel::recenterPan,
+            // Raised above the ops footer so it doesn't cover the CAMP readout.
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 58.dp),
+        )
+    }
+}
+
+@Composable
+private fun tile(
+    theme: ConceptTheme,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = modifier.border(2.dp, theme.primary).padding(8.dp)) { content() }
+}
+
+/** The centre map tile (title + TOP/TILT toggle + BRC ground-track), sized by [modifier]. */
+@Composable
+private fun bayMapTile(
+    mapInputs: MapUiInputs,
+    viewModel: CockpitViewModel,
+    state: CockpitUiState,
+    theme: ConceptTheme,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        val zoomLabel = remember(state.pixelsPerMeter) { "%.2f".format(state.pixelsPerMeter) }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "GROUND TRACK // ZOOM $zoomLabel px/m",
+                color = theme.primary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                themedChip("TOP", state.mapMode == MapMode.TOP, theme) { viewModel.setMapMode(MapMode.TOP) }
+                themedChip("TILT", state.mapMode == MapMode.TILT, theme) { viewModel.setMapMode(MapMode.TILT) }
+            }
+        }
+        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+            playaMapPanel(
+                inputs = mapInputs,
+                viewModel = viewModel,
+                style =
+                    PlayaMapPanelStyle(
+                        palette = InstrumentBayPalette,
+                        egoStyle = EgoStyle.TRIANGLE,
+                        egoColor = theme.accent,
+                        allowTilt = true,
+                        showRetroGrid = false,
+                        routeColor = theme.secondary,
+                    ),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun headingTile(
+    theme: ConceptTheme,
+    headingDeg: Int,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        Text("HEADING", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+            headingDial(theme = theme, headingDeg = headingDeg)
+        }
+    }
+}
+
+@Composable
+private fun speedTile(
+    theme: ConceptTheme,
+    speedKph: Int,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        Text("SPEED KPH", color = theme.primary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        Box(modifier = Modifier.fillMaxSize().padding(top = 4.dp)) {
+            speedGauge(theme = theme, speedKph = speedKph)
+        }
+    }
+}
+
+@Composable
+private fun cellsTile(
+    theme: ConceptTheme,
+    modifier: Modifier = Modifier,
+) {
+    tile(theme = theme, modifier = modifier) {
+        cellBar(theme = theme, label = "CELL A", percent = 70)
+        Spacer(Modifier.height(4.dp))
+        cellBar(theme = theme, label = "CELL B", percent = 45)
+    }
+}
+
+@Composable
+private fun headingDial(
+    theme: ConceptTheme,
+    headingDeg: Int,
+) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = size.width.coerceAtMost(size.height) / 2f - 4f
+        drawCircle(theme.primary, r, Offset(cx, cy), style = Stroke(width = 1.6f))
+        drawCircle(theme.primary, r * 0.78f, Offset(cx, cy), style = Stroke(width = 1f))
+        // Cardinal ticks
+        for (i in 0 until 4) {
+            val a = Math.toRadians(i * 90.0 - 90.0)
+            val outer = Offset((cx + r * cos(a)).toFloat(), (cy + r * sin(a)).toFloat())
+            val inner = Offset((cx + (r - 8f) * cos(a)).toFloat(), (cy + (r - 8f) * sin(a)).toFloat())
+            drawLine(theme.primary, outer, inner, strokeWidth = 1.4f)
+        }
+        // Needle
+        val needle = Math.toRadians(headingDeg.toDouble() - 90.0)
+        drawLine(
+            color = theme.accent,
+            start = Offset(cx, cy),
+            end =
+                Offset(
+                    (cx + r * 0.86f * cos(needle)).toFloat(),
+                    (cy + r * 0.86f * sin(needle)).toFloat(),
+                ),
+            strokeWidth = 3f,
+        )
+        drawCircle(theme.accent, 4f, Offset(cx, cy))
+    }
+}
+
+@Composable
+private fun speedGauge(
+    theme: ConceptTheme,
+    speedKph: Int,
+) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val cx = size.width / 2f
+        val cy = size.height * 0.85f
+        val r = size.width.coerceAtMost(size.height) * 0.48f
+        // Half arc (180° → 0°)
+        val ticks = 6
+        for (i in 0..ticks) {
+            val a = Math.toRadians(180.0 - i * (180.0 / ticks))
+            val outer = Offset((cx + r * cos(a)).toFloat(), (cy + r * sin(a)).toFloat())
+            val inner = Offset((cx + (r - 8f) * cos(a)).toFloat(), (cy + (r - 8f) * sin(a)).toFloat())
+            drawLine(theme.primary, outer, inner, strokeWidth = 1.4f)
+        }
+        val frac = (speedKph / 160f).coerceIn(0f, 1f)
+        val needleA = Math.toRadians(180.0 - frac.toDouble() * 180.0)
+        drawLine(
+            color = theme.accent,
+            start = Offset(cx, cy),
+            end =
+                Offset(
+                    (cx + r * 0.92f * cos(needleA)).toFloat(),
+                    (cy + r * 0.92f * sin(needleA)).toFloat(),
+                ),
+            strokeWidth = 3f,
+        )
+        drawCircle(theme.accent, 5f, Offset(cx, cy))
+    }
+}
+
+@Composable
+private fun throttleTrace(theme: ConceptTheme) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val pts =
+            floatArrayOf(
+                0.8f, 0.7f, 0.76f, 0.4f, 0.5f, 0.18f, 0.32f, 0.24f, 0.6f,
+                0.44f, 0.3f, 0.12f, 0.28f, 0.36f, 0.18f, 0.42f, 0.3f, 0.54f, 0.4f, 0.62f, 0.3f,
+            )
+        val w = size.width
+        val h = size.height
+        val dx = w / (pts.size - 1)
+        for (i in 0 until pts.size - 1) {
+            drawLine(
+                color = theme.accent,
+                start = Offset(i * dx, pts[i] * h),
+                end = Offset((i + 1) * dx, pts[i + 1] * h),
+                strokeWidth = 2f,
+            )
+        }
+    }
+}
+
+@Composable
+private fun cellBar(
+    theme: ConceptTheme,
+    label: String,
+    percent: Int,
+) {
+    Box(modifier = Modifier.fillMaxWidth().height(28.dp).border(1.dp, theme.primary)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val frac = (percent / 100f).coerceIn(0f, 1f)
+            drawLine(
+                color = theme.accent,
+                start = Offset(0f, size.height / 2f),
+                end = Offset(size.width * frac, size.height / 2f),
+                strokeWidth = size.height,
+            )
+        }
+        Text(
+            text = "$label  $percent%",
+            color = theme.background,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
+        )
+    }
+}

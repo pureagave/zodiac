@@ -1,6 +1,6 @@
 # Code Audit — 2026-04-26
 
-A read-through of every production source file in `app/src/main/java/ai/openclaw/zodiaccontrol/`, plus tests and resources. Findings below; nothing was changed. No security issues found (no SQL, no crypto, no remote code paths in production yet).
+A read-through of every production source file in `app/src/main/java/org/pureagave/zodiac/control/`, plus tests and resources. Findings below; nothing was changed. No security issues found (no SQL, no crypto, no remote code paths in production yet).
 
 Many items here are already acknowledged in `SYNC.md` "Open follow-ups" sections — those are repeated for completeness so this doc stands on its own.
 

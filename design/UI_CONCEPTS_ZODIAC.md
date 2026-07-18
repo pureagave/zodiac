@@ -5,8 +5,8 @@
 ## App Naming (Android conventions)
 
 - **App name:** `Zodiac Control`
-- **Package:** `ai.openclaw.zodiaccontrol`
-- **Application ID (proposal):** `ai.openclaw.zodiaccontrol`
+- **Package:** `org.pureagave.zodiac.control`
+- **Application ID (proposal):** `org.pureagave.zodiac.control`
 
 (If you want your namespace instead, we can switch to `com.rob.zodiaccontrol`.)
 
