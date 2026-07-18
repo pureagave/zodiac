@@ -15,6 +15,20 @@ object Nmea {
         return "\$$body*${checksum(body)}\r\n"
     }
 
+    /**
+     * Proprietary vehicle-telemetry sentence `$ZTLM,pitch,roll,speedKph*cs` —
+     * the IMU tilt (from the rotation vector) plus ground speed the fleet wants
+     * beyond position/heading. Pitch/roll in degrees, speed in kph.
+     */
+    fun ztlm(
+        pitchDeg: Double,
+        rollDeg: Double,
+        speedKph: Double,
+    ): String {
+        val body = "ZTLM,%.1f,%.1f,%.1f".format(pitchDeg, rollDeg, speedKph)
+        return "\$$body*${checksum(body)}\r\n"
+    }
+
     /** Two-hex-digit XOR of the sentence body (the chars between `$` and `*`). */
     fun checksum(body: String): String {
         var c = 0

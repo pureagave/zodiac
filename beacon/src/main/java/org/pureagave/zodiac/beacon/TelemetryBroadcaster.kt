@@ -58,6 +58,9 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val GPS_MIN_INTERVAL_MS = 1000L
     private const val ROTATION_MATRIX_SIZE = 9
     private const val ORIENTATION_SIZE = 3
+    private const val PITCH_INDEX = 1
+    private const val ROLL_INDEX = 2
+    private const val MPS_TO_KPH = 3.6
     private const val FULL_CIRCLE = 360.0
 
     private val _status = MutableStateFlow("Idle")
@@ -74,6 +77,10 @@ object TelemetryBroadcaster : SensorEventListener {
     private var locationListener: LocationListener? = null
 
     @Volatile private var headingDeg: Double = 0.0
+
+    @Volatile private var pitchDeg: Double = 0.0
+
+    @Volatile private var rollDeg: Double = 0.0
 
     @Volatile private var lastLocation: Location? = null
 
@@ -112,6 +119,7 @@ object TelemetryBroadcaster : SensorEventListener {
         running.launch {
             while (isActive) {
                 send(Nmea.hdt(headingDeg))
+                send(Nmea.ztlm(pitchDeg, rollDeg, speedKph()))
                 delay(HDT_INTERVAL_MS)
             }
         }
@@ -173,7 +181,11 @@ object TelemetryBroadcaster : SensorEventListener {
             az += field.declination // magnetic → true north
         }
         headingDeg = ((az % FULL_CIRCLE) + FULL_CIRCLE) % FULL_CIRCLE
+        pitchDeg = Math.toDegrees(orientation[PITCH_INDEX].toDouble())
+        rollDeg = Math.toDegrees(orientation[ROLL_INDEX].toDouble())
     }
+
+    private fun speedKph(): Double = (lastLocation?.speed?.toDouble() ?: 0.0) * MPS_TO_KPH
 
     override fun onAccuracyChanged(
         sensor: Sensor?,

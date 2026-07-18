@@ -50,6 +50,32 @@ class NmeaParserTest {
     }
 
     @Test
+    fun parses_ztlm_vehicle_telemetry() {
+        val telem = NmeaParser.parseVehicleTelemetry(nmea("ZTLM,3.5,-2.0,18.4"))
+        assertNotNull(telem)
+        assertEquals(3.5, telem!!.pitchDeg, COORD_TOLERANCE)
+        assertEquals(-2.0, telem.rollDeg, COORD_TOLERANCE)
+        assertEquals(18.4, telem.speedKph, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun ztlm_rejects_other_sentences_and_bad_checksums() {
+        assertNull(NmeaParser.parseVehicleTelemetry(nmea("GPHDT,90.0,T"))) // valid, not TLM
+        assertNull(NmeaParser.parseVehicleTelemetry("\$ZTLM,1,2,3*00")) // bad checksum
+    }
+
+    @Test
+    fun parses_hdt_heading() {
+        assertEquals(123.4, NmeaParser.parseHeadingDeg(nmea("GPHDT,123.4,T")) ?: -1.0, COORD_TOLERANCE)
+    }
+
+    /** Frame a body with a valid NMEA checksum. */
+    private fun nmea(body: String): String {
+        val cs = body.fold(0) { acc, c -> acc xor c.code }
+        return "\$$body*%02X".format(cs)
+    }
+
+    @Test
     fun rejects_no_fix_status() {
         // GGA with fixQuality=0
         val line = "\$GPGGA,123519,0000.000,N,00000.000,E,0,00,99.9,0.0,M,0.0,M,,*5C"

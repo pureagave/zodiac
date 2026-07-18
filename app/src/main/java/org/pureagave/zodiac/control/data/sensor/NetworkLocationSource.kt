@@ -15,6 +15,7 @@ import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.telemetry.VehicleTelemetry
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -57,6 +58,11 @@ class NetworkLocationSource(
     @Volatile private var lastFix: GpsFix? = null
 
     @Volatile private var lastHeadingDeg: Double? = null
+
+    // Vehicle IMU/motion telemetry from the Sensor Hub's ZTLM sentence, exposed
+    // separately from the GPS fix for any consumer that wants tilt/speed.
+    private val _telemetry = MutableStateFlow<VehicleTelemetry?>(null)
+    val telemetry: StateFlow<VehicleTelemetry?> = _telemetry.asStateFlow()
 
     override suspend fun start() {
         job?.cancel()
@@ -154,6 +160,7 @@ class NetworkLocationSource(
             val line = raw.trim()
             if (line.isEmpty()) return@forEach
             NmeaParser.parseHeadingDeg(line)?.let { lastHeadingDeg = it }
+            NmeaParser.parseVehicleTelemetry(line)?.let { _telemetry.value = it }
             NmeaParser.parse(line)?.let { lastFix = it }
             val fix = lastFix ?: return@forEach
             _state.value = LocationSourceState.Active(fix.copy(headingDeg = lastHeadingDeg ?: fix.headingDeg))

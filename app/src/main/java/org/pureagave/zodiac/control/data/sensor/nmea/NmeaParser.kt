@@ -2,6 +2,7 @@ package org.pureagave.zodiac.control.data.sensor.nmea
 
 import org.pureagave.zodiac.control.core.geo.LatLon
 import org.pureagave.zodiac.control.core.sensor.GpsFix
+import org.pureagave.zodiac.control.core.telemetry.VehicleTelemetry
 
 /**
  * Minimal NMEA 0183 reader for cockpit use. Handles the GGA (fix + altitude
@@ -45,6 +46,26 @@ object NmeaParser {
         return when (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN)) {
             "HDT", "HDG", "HDM", "VTG" -> parseCourseDeg(fields.getOrElse(HEADING_FIELD) { "" })
             else -> null
+        }
+    }
+
+    /**
+     * Parse the proprietary vehicle-telemetry sentence
+     * `$ZTLM,pitch,roll,speedKph*cs` from the Sensor Hub into a
+     * [VehicleTelemetry], or null for any other/invalid sentence.
+     */
+    fun parseVehicleTelemetry(line: String): VehicleTelemetry? {
+        val sentence = line.trim().trimEnd('\r', '\n')
+        if (!sentence.startsWith("$") || !checksumValid(sentence)) return null
+        val fields = sentence.substringBefore('*').drop(1).split(',')
+        if (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN) != "TLM") return null
+        val pitch = fields.getOrNull(TLM_PITCH)?.toDoubleOrNull()
+        val roll = fields.getOrNull(TLM_ROLL)?.toDoubleOrNull()
+        val speed = fields.getOrNull(TLM_SPEED)?.toDoubleOrNull()
+        return if (pitch != null && roll != null && speed != null) {
+            VehicleTelemetry(pitchDeg = pitch, rollDeg = roll, speedKph = speed)
+        } else {
+            null
         }
     }
 
@@ -161,6 +182,11 @@ object NmeaParser {
 
     // HDT/HDG/HDM/VTG all carry the heading/track in the first field.
     private const val HEADING_FIELD = 1
+
+    // ZTLM proprietary telemetry: pitch, roll, speedKph.
+    private const val TLM_PITCH = 1
+    private const val TLM_ROLL = 2
+    private const val TLM_SPEED = 3
 
     private const val NMEA_LAT_DEG_DIVISOR = 100.0
     private const val MINUTES_PER_DEGREE = 60.0

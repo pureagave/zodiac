@@ -95,6 +95,26 @@ class NetworkLocationSourceTest {
             }
         }
 
+    @Test
+    fun vehicle_telemetry_from_ztlm_over_udp() =
+        runBlocking {
+            val port = 10179
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                val ok =
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZTLM,4.0,-1.5,25.0"), port)
+                        source.telemetry.value?.let { it.speedKph in 24.0..26.0 && it.pitchDeg in 3.5..4.5 } ?: false
+                    }
+                assertTrue("a ZTLM frame should populate the telemetry flow", ok)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
     /** Wrap a sentence body in `$...*<checksum>` NMEA framing. */
     private fun nmea(body: String): String {
         var c = 0

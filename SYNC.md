@@ -6,6 +6,12 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-18 — Sensor Hub v2: broadcast IMU tilt + speed telemetry (ZTLM)
+
+The Beacon now broadcasts more than position + heading: a proprietary **`$ZTLM,pitch,roll,speedKph*cs`** sentence carrying the IMU **tilt** (pitch/roll from the rotation vector) + **ground speed**, sent alongside HDT at 4 Hz on the telemetry channel. Tablet side: `core/telemetry/VehicleTelemetry` model + `NmeaParser.parseVehicleTelemetry` (reuses the checksum validation), and `NetworkLocationSource` now exposes a `telemetry: StateFlow<VehicleTelemetry?>` (parses ZTLM in the same ingest loop, separately from the GPS fix). So the full sensor-hub telemetry is on the bus and consumable.
+
+- **Tests:** `NmeaParserTest` (parse ZTLM; reject non-TLM / bad checksum; HDT heading) + `NetworkLocationSourceTest` (ZTLM over real loopback UDP → the telemetry flow). Gate green.
+- **Remaining (C):** wire `telemetry` into `CockpitUiState` + a readout — deferred since nothing renders tilt/speed yet (the beacon broadcasts it and the tablet parses it; the last hop to a UI is a small follow-up when there's a place to show it).
 ## 2026-07-18 — Fleet bus → fixed multicast group (broadcast-independent discovery)
 
 Migrated the one-to-many streams from UDP broadcast to a **fixed multicast group** so there are no hardcoded IPs and it survives dynamic DHCP (the group address is baked in). New `core/net/FleetBus` constants: telemetry `239.7.7.10:10110`, threats `239.7.7.20:10120`, TTL 1 (link-local). `NetworkLocationSource` + `NetworkThreatSource` now use a `MulticastSocket` that `joinGroup`s (still bound to the port, so they also receive unicast/broadcast — the loopback unit tests keep passing). The Beacon sends to the multicast **group + a /24 subnet-directed broadcast fallback** (belt-and-suspenders — the fleet gets telemetry whether or not the AP forwards multicast); each target sent independently so one failing can't block the other.
