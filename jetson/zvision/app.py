@@ -32,6 +32,7 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
     p.add_argument("--group", default=fleet_bus.THREAT_GROUP)
     p.add_argument("--port", type=int, default=fleet_bus.THREAT_PORT)
     p.add_argument("--iface-ip", default=None, help="local IP of the vehicle-network NIC")
+    p.add_argument("--bind-ip", default=None, help="bind sender to this source IP (multi-homed/VPN hosts)")
     p.add_argument("--broadcast", default=None, help="override subnet broadcast address")
     p.add_argument("--device", default="/dev/video0", help="camera device for thermal/rgb")
     p.add_argument("--width", type=int, default=160)
@@ -48,6 +49,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         group=args.group,
         port=args.port,
         iface_ip=args.iface_ip,
+        bind_ip=args.bind_ip,
         broadcast=args.broadcast,
     )
     detector = build_detector(

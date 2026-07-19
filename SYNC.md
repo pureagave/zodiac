@@ -6,6 +6,14 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-19 — `zvision` → real S9+ HUD, proven end-to-end (+ `--bind-ip`)
+
+Closed the loop on real hardware: ran the actual `zvision` broadcaster on the Mac emitting a **distinctive** 2-contact frame (far-left drifter + a collision on the *right*, not center) and the S9+ DRIVER HUD **overrode the fake demo with exactly that pattern** — left green figure, empty center, red collision-locked figure bracketed on the right. That's `zvision` code → subnet broadcast → tablet `NetworkThreatSource` → `RoutedThreatSource` override → `DriverNightScreen`, on the real dashboard, camera being the only missing hop.
+
+- **Added `--bind-ip` / `ThreatBroadcaster(bind_ip=…)`** (+ `SO_REUSEADDR`): binds the sender's source address so broadcast egresses the intended NIC on a multi-homed host. Needed here because tailscale hijacks the `192.168.0.0/24` route on the Mac (sends went out the VPN → `EHOSTUNREACH`); binding to the WiFi IP `192.168.0.145` fixes it. The Jetson will want the same (wired + debug link). Test `test_bind_ip_pins_the_source_address` (loopback source-addr assertion). 30 tests green.
+- **Confirmed the multicast-vs-broadcast split in practice:** the multicast leg still fails from the Mac (tailscale) → `send()` reports "1 target"; the subnet-broadcast leg carries it. This is exactly why the belt-and-suspenders dual send exists. On the vehicle net (no VPN) both legs will fire.
+- Tablet was PIN-locked/dozing at start — `svc power stayon true` + `KEYCODE_WAKEUP` + `wm dismiss-keyguard` to hold it awake for the test; concept was on MAP, cycled the top-right pill to DRIVER; slept it after (`stayon false` + `KEYCODE_SLEEP`).
+
 ## 2026-07-19 — Jetson edge-box software (`jetson/zvision`) — the ZTHREAT *producer*
 
 Ordered a Jetson Orin Nano Super (from Arrow at $249 MSRP — Amazon was scalping it at $435). Ahead of the hardware landing, built the full edge-box software so it's plug-and-play on arrival: a new **Python module `jetson/zvision`** that is the producer side of the threat channel the tablets already consume. Turns camera frames → vehicle-relative `DriverThreat`s → **ZTHREAT** frames on the fleet bus (`239.7.7.20:10120` + subnet-broadcast fallback, TTL 1). The wire format (`zvision/threat_protocol.py`) is a **byte-exact mirror** of the Kotlin `core/vision/ThreatProtocol.kt` — two sides share no code, only the frozen protocol; the Python round-trip tests also guard the tablet's contract.

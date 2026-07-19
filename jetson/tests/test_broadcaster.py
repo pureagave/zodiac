@@ -46,6 +46,23 @@ class LoopbackSendTest(unittest.TestCase):
         self.assertEqual(1, parsed[0].id)
         self.assertTrue(parsed[1].collision)
 
+    def test_bind_ip_pins_the_source_address(self):
+        rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        rx.bind(("127.0.0.1", 0))
+        rx.settimeout(2.0)
+        port = rx.getsockname()[1]
+        # Bind the sender to loopback and confirm the datagram arrives from it.
+        tx = ThreatBroadcaster(
+            group="127.0.0.1", port=port, broadcast="127.0.0.1", bind_ip="127.0.0.1"
+        )
+        try:
+            tx.send(format_frame([DriverThreat(rel_az_deg=0.0, size=0.5, id=9)]))
+            _, addr = rx.recvfrom(4096)
+        finally:
+            tx.close()
+            rx.close()
+        self.assertEqual("127.0.0.1", addr[0])
+
     def test_all_clear_frame_round_trips(self):
         rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         rx.bind(("127.0.0.1", 0))

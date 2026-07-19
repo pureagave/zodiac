@@ -47,10 +47,12 @@ class ThreatBroadcaster:
         ttl: int = fleet_bus.TTL,
         iface_ip: Optional[str] = None,
         broadcast: Optional[str] = None,
+        bind_ip: Optional[str] = None,
         extra_targets: Optional[List[str]] = None,
     ) -> None:
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         self.sock.setsockopt(
             socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, struct.pack("b", ttl)
@@ -61,7 +63,12 @@ class ThreatBroadcaster:
             self.sock.setsockopt(
                 socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(iface_ip)
             )
-        ip = iface_ip or local_ip()
+        # Bind the source address so broadcast/unicast egress goes out the chosen
+        # NIC on a multi-homed host — otherwise the OS may pick the wrong route
+        # (e.g. a VPN interface) and sends fail with EHOSTUNREACH.
+        if bind_ip:
+            self.sock.bind((bind_ip, 0))
+        ip = bind_ip or iface_ip or local_ip()
         bcast = broadcast or subnet_broadcast(ip)
         self.targets: List[tuple] = [(group, port), (bcast, port)]
         if extra_targets:
