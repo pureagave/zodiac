@@ -40,4 +40,29 @@ class ThreatProtocolTest {
         assertEquals(1, parsed.size)
         assertEquals(2, parsed[0].id)
     }
+
+    @Test
+    fun rejects_non_finite_az_and_size() {
+        // NaN/Infinity parse as floats but would poison the HUD's Canvas math.
+        assertEquals(emptyList<DriverThreat>(), ThreatProtocol.parse("ZTHREAT;1:NaN:0.5:0"))
+        assertEquals(emptyList<DriverThreat>(), ThreatProtocol.parse("ZTHREAT;2:5.0:Infinity:1"))
+    }
+
+    @Test
+    fun clamps_size_to_the_unit_range() {
+        assertEquals(1f, ThreatProtocol.parse("ZTHREAT;1:0.0:9.0:0")!!.single().size, 0.001f)
+        assertEquals(0f, ThreatProtocol.parse("ZTHREAT;1:0.0:-4.0:0")!!.single().size, 0.001f)
+    }
+
+    @Test
+    fun drops_contacts_outside_the_forward_arc() {
+        assertEquals(emptyList<DriverThreat>(), ThreatProtocol.parse("ZTHREAT;1:120.0:0.5:0"))
+        assertEquals(1, ThreatProtocol.parse("ZTHREAT;1:89.0:0.5:0")!!.size)
+    }
+
+    @Test
+    fun caps_the_contact_count() {
+        val frame = "ZTHREAT" + (0 until 100).joinToString("") { ";$it:0.0:0.5:0" }
+        assertEquals(32, ThreatProtocol.parse(frame)!!.size)
+    }
 }

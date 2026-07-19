@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-19 — Hardening pass from the review backlog (input validation, locale, cancellation)
+
+Knocked out the cheap/clear-win items the Fable review surfaced, both languages, all gated green:
+- **ThreatProtocol input validation (Kotlin `ThreatProtocol.kt` + Python `threat_protocol.py`):** reject NaN/Infinity az/size (they parse as floats but poison HUD Canvas math), drop contacts outside the ±90° forward arc, clamp size to 0..1, cap at 32 contacts (sender caps too, collisions+nearest first, so a crowded scene can't build an IP-fragmenting frame). This is the untrusted network boundary.
+- **`NmeaParser`:** `parseVehicleTelemetry` + GGA HDOP now have the `isFinite()` guard the other parsers already had; GGA rejects negative fix-quality (`> 0`, was `!= 0`).
+- **`beacon/Nmea.kt`:** `String.format(Locale.US, …)` for HDT/ZTLM (a comma-decimal fleet phone would have emitted `$GPHDT,12,3,T` and split the field, corrupting heading — checksum still valid, so it'd fail silently). `Locale.ROOT` on the hex checksum.
+- **`DiscoveryRepository.refresh`:** re-throws `CancellationException` instead of swallowing it in the generic catch.
+- **zvision `CollisionEstimator`:** out-of-order/duplicate frame no longer poisons the baseline before the `dt<=0` guard; az delta wraps at ±180; `MotionDetector` prunes vanished tracks (was unbounded over an all-night run).
+- **Tests:** +8 Python (38 total), + new Kotlin cases (ThreatProtocol validation, NmeaParser HDG/HDM/VTG + non-finite/negative rejects), and **the beacon module's first unit test** (`beacon/src/test/.../NmeaTest.kt` — locale regression). Full gate green (ktlint/detekt/lint/test/assemble).
+
+**Still open from the review (bigger, need design/product calls):** GPS staleness watchdog + `GpsFix.receivedAtMs` + UI age indicator; `demoEnabled=false` production wiring + DEMO watermark; source-id/seq + sender latch for multi-producer; ops-SSID/HMAC security; `CockpitViewModel` delegate split; DataStore/discovery IO off the Main scope; `DiscoveryRepository`/`parseHeadingDeg`-adjacent test coverage. Agents resumable (see prior entry).
+
 ## 2026-07-19 — Fable architecture review + P0 safety fix (demo never overrides a live all-clear)
 
 Spawned three parallel Fable (high-reasoning) sub-agents to review the whole system read-only: (1) architecture/design, (2) networking resilience + security, (3) test-coverage gaps. All three **independently** converged on the same #1 issue, so it's real:

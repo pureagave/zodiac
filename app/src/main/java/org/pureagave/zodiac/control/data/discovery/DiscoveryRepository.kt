@@ -1,5 +1,6 @@
 package org.pureagave.zodiac.control.data.discovery
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,8 +46,11 @@ class DiscoveryRepository(
         }
     }
 
-    /** Fetch + re-cache. Swallows failures so the cached list is preserved. */
-    @Suppress("TooGenericExceptionCaught", "SwallowedException") // any network/IO/parse failure intentionally keeps the cache
+    /**
+     * Fetch + re-cache. Swallows network/IO/parse failures so the cached list is
+     * preserved; coroutine cancellation is re-thrown so the scope can unwind.
+     */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException", "RethrowCaughtException")
     suspend fun refresh() {
         try {
             val fresh = source.fetch(year)
@@ -54,6 +58,8 @@ class DiscoveryRepository(
                 _pois.value = fresh
                 saveCache(fresh)
             }
+        } catch (e: CancellationException) {
+            throw e // never swallow coroutine cancellation — let the scope unwind
         } catch (e: Exception) {
             // Offline or API error: keep whatever we already have.
         }

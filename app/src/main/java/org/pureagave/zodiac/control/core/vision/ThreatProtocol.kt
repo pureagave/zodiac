@@ -1,5 +1,7 @@
 package org.pureagave.zodiac.control.core.vision
 
+import kotlin.math.abs
+
 /**
  * Compact wire format for the thermal-threat channel. One UDP datagram = one
  * frame: the literal `ZTHREAT` header, then a `;`-separated contact per entry
@@ -16,6 +18,12 @@ object ThreatProtocol {
     private const val FRAME_SEP = ';'
     private const val FIELD_SEP = ':'
     private const val FIELDS_PER_CONTACT = 4
+
+    // Reject contacts past the forward arc; clamp size to its 0..1 range; cap the
+    // count so one hostile/buggy frame can't flood the HUD. Mirrors zvision's
+    // threat_protocol.py — this is the untrusted network boundary.
+    private const val MAX_ABS_AZ_DEG = 90f
+    private const val MAX_CONTACTS = 32
 
     fun format(threats: List<DriverThreat>): String =
         buildString {
@@ -37,9 +45,11 @@ object ThreatProtocol {
             val f = entry.split(FIELD_SEP)
             if (f.size < FIELDS_PER_CONTACT) return@mapNotNull null
             val id = f[0].toIntOrNull() ?: return@mapNotNull null
-            val az = f[1].toFloatOrNull() ?: return@mapNotNull null
-            val size = f[2].toFloatOrNull() ?: return@mapNotNull null
-            DriverThreat(relAzDeg = az, size = size, collision = f[3].trim() == "1", id = id)
-        }
+            // NaN/Infinity parse fine as floats but poison the HUD's Canvas
+            // math — reject non-finite and out-of-arc az, clamp size to 0..1.
+            val az = f[1].toFloatOrNull()?.takeIf { it.isFinite() && abs(it) <= MAX_ABS_AZ_DEG } ?: return@mapNotNull null
+            val size = f[2].toFloatOrNull()?.takeIf { it.isFinite() } ?: return@mapNotNull null
+            DriverThreat(relAzDeg = az, size = size.coerceIn(0f, 1f), collision = f[3].trim() == "1", id = id)
+        }.take(MAX_CONTACTS)
     }
 }

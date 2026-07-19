@@ -69,6 +69,46 @@ class NmeaParserTest {
         assertEquals(123.4, NmeaParser.parseHeadingDeg(nmea("GPHDT,123.4,T")) ?: -1.0, COORD_TOLERANCE)
     }
 
+    @Test
+    fun parses_hdg_hdm_and_vtg_headings() {
+        assertEquals(98.3, NmeaParser.parseHeadingDeg(nmea("HCHDG,98.3,0.0,E,12.6,W")) ?: -1.0, COORD_TOLERANCE)
+        assertEquals(271.5, NmeaParser.parseHeadingDeg(nmea("HCHDM,271.5,M")) ?: -1.0, COORD_TOLERANCE)
+        assertEquals(84.4, NmeaParser.parseHeadingDeg(nmea("GPVTG,084.4,T,086.1,M,022.4,N,041.5,K,A")) ?: -1.0, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun normalizes_and_rejects_bad_headings() {
+        assertEquals(0.0, NmeaParser.parseHeadingDeg(nmea("GPHDT,360.0,T")) ?: -1.0, COORD_TOLERANCE)
+        assertEquals(270.0, NmeaParser.parseHeadingDeg(nmea("GPHDT,-90.0,T")) ?: -1.0, COORD_TOLERANCE)
+        assertNull(NmeaParser.parseHeadingDeg("\$GPHDT,90.0,T*00")) // bad checksum
+        assertNull(NmeaParser.parseHeadingDeg(nmea("GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,")))
+        assertNull(NmeaParser.parseHeadingDeg(nmea("GPHDT,,T"))) // empty field
+    }
+
+    @Test
+    fun ztlm_rejects_non_finite_values() {
+        assertNull(NmeaParser.parseVehicleTelemetry(nmea("ZTLM,NaN,0.0,5.0")))
+        assertNull(NmeaParser.parseVehicleTelemetry(nmea("ZTLM,1.0,Infinity,5.0")))
+    }
+
+    @Test
+    fun ztlm_rejects_missing_or_garbage_fields() {
+        assertNull(NmeaParser.parseVehicleTelemetry(nmea("ZTLM,3.5,-2.0"))) // only two values
+        assertNull(NmeaParser.parseVehicleTelemetry(nmea("ZTLM,abc,1.0,2.0")))
+    }
+
+    @Test
+    fun gga_drops_non_finite_hdop_but_keeps_the_position() {
+        val fix = NmeaParser.parse(nmea("GPGGA,123519,4807.038,N,01131.000,E,1,08,NaN,545.4,M,46.9,M,,"))
+        assertNotNull(fix)
+        assertNull(fix!!.fixQualityM)
+    }
+
+    @Test
+    fun gga_rejects_negative_fix_quality() {
+        assertNull(NmeaParser.parse(nmea("GPGGA,123519,4807.038,N,01131.000,E,-1,08,0.9,545.4,M,46.9,M,,")))
+    }
+
     /** Frame a body with a valid NMEA checksum. */
     private fun nmea(body: String): String {
         val cs = body.fold(0) { acc, c -> acc xor c.code }

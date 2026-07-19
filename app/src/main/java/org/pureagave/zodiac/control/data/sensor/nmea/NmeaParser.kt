@@ -59,9 +59,9 @@ object NmeaParser {
         if (!sentence.startsWith("$") || !checksumValid(sentence)) return null
         val fields = sentence.substringBefore('*').drop(1).split(',')
         if (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN) != "TLM") return null
-        val pitch = fields.getOrNull(TLM_PITCH)?.toDoubleOrNull()
-        val roll = fields.getOrNull(TLM_ROLL)?.toDoubleOrNull()
-        val speed = fields.getOrNull(TLM_SPEED)?.toDoubleOrNull()
+        val pitch = fields.getOrNull(TLM_PITCH)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+        val roll = fields.getOrNull(TLM_ROLL)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+        val speed = fields.getOrNull(TLM_SPEED)?.toDoubleOrNull()?.takeIf { it.isFinite() }
         return if (pitch != null && roll != null && speed != null) {
             VehicleTelemetry(pitchDeg = pitch, rollDeg = roll, speedKph = speed)
         } else {
@@ -71,10 +71,10 @@ object NmeaParser {
 
     private fun parseGga(fields: List<String>): GpsFix? {
         if (fields.size < GGA_MIN_FIELDS) return null
-        val fixQuality = fields[GGA_FIX_QUALITY].toIntOrNull()?.takeIf { it != 0 }
+        val fixQuality = fields[GGA_FIX_QUALITY].toIntOrNull()?.takeIf { it > 0 }
         val lat = parseLatitude(fields[GGA_LAT], fields[GGA_LAT_HEMI])
         val lon = parseLongitude(fields[GGA_LON], fields[GGA_LON_HEMI])
-        val hdop = fields[GGA_HDOP].toDoubleOrNull()
+        val hdop = fields[GGA_HDOP].toDoubleOrNull()?.takeIf { it.isFinite() }
         return if (fixQuality == null || lat == null || lon == null) {
             null
         } else {
