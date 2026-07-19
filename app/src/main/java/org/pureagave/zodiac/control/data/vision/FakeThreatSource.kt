@@ -27,6 +27,10 @@ class FakeThreatSource(
     private val _threats = MutableStateFlow<List<DriverThreat>>(emptyList())
     override val threats: StateFlow<List<DriverThreat>> = _threats.asStateFlow()
 
+    // The demo is only ever consulted as a fallback, so its own liveness is
+    // moot — report a constant "alive" to satisfy the interface.
+    override val feedAlive: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
+
     private var job: Job? = null
 
     override suspend fun start() {

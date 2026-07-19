@@ -6,6 +6,26 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-19 — Fable architecture review + P0 safety fix (demo never overrides a live all-clear)
+
+Spawned three parallel Fable (high-reasoning) sub-agents to review the whole system read-only: (1) architecture/design, (2) networking resilience + security, (3) test-coverage gaps. All three **independently** converged on the same #1 issue, so it's real:
+
+**P0 (FIXED): the demo threat feed painted fabricated collision alarms over a real "all clear."** `RoutedThreatSource` did `combine(network.threats, fake.threats){ net, demo -> net.ifEmpty { demo } }` — but an empty list means BOTH "no feed" and "the edge box genuinely sees nothing." A bare `ZTHREAT` frame (the legitimate all-clear the Jetson sends every quiet moment, incl. on exit) parses to empty → the HUD swapped to `FakeThreatSource.demo()`, whose approacher loops into `collision=true` ~45% of the time. Net: a night driver would see phantom red "! BRAKE !" locks whenever the road was actually clear — the safety display lying, cry-wolf. **Fix:** added `feedAlive: StateFlow<Boolean>` to `ThreatSource`; `NetworkThreatSource` sets it true on any frame (incl. empty all-clear), false when the watchdog goes stale (also fixed the publish/timestamp write-order race). `RoutedThreatSource` now falls back to demo only when `!feedAlive`, gated by a new `demoEnabled` flag (default true = bench demo preserved; set false for a deployed vehicle → absent feed reads as all-clear, never fabricated). New pinning test `live_all_clear_does_not_resurrect_the_demo` + `production_mode_shows_all_clear_when_the_feed_dies`. Full gate green.
+- **TODO (product decision):** wire `demoEnabled=false` for the production/vehicle build, and add a DEMO watermark on `DriverNightScreen` when contacts are synthetic.
+
+**Backlog surfaced by the review (prioritized, not yet done):**
+- **GPS staleness (HIGH):** `NetworkLocationSource` never demotes `Active` — a dead beacon leaves a frozen fix guiding forever, worse because HDT/ZTLM keep the display "alive" on a stale position. Add a watchdog + `receivedAtMs` on `GpsFix` + UI age indicator.
+- **Locale bug (HIGH, cheap):** `beacon/Nmea.kt` uses default-locale `String.format` — a comma-decimal fleet phone emits `$GPHDT,12,3,T` (checksum still valid) → tablet misparses. Use `Locale.US`/`ROOT`.
+- **Input validation (MED-HIGH):** `ThreatProtocol.parse` (both Kotlin + Python) accepts `NaN`/`Infinity` → NaN into HUD Canvas; no az/size clamp, no contact cap, no checksum. `NmeaParser.parseVehicleTelemetry` + GGA HDOP miss the `isFinite()` guard the other parsers have. GGA accepts negative fix-quality.
+- **zvision estimator (MED, before real camera):** `CollisionEstimator` is flicker-prone (per-frame, strict-increase), `forget()` never called (unbounded `_tracks` on the all-night box), overwrites baseline before the `dt<=0` guard, no az wrap. Needs EMA + M-of-N latch + track coasting + pruning.
+- **Security (proportionate):** anyone on the WiFi can inject spoofed threats/telemetry. Right answer for an art car = router hygiene (ops SSID w/ non-shared PSK + guest isolation) + a vehicle-id/seq field on frames + optional truncated HMAC on ZTHREAT only. NOT DTLS/certs.
+- **Multi-producer (MED):** no source-id/seq — two beacons or two zvisions interleave/flip; MTU truncation silently drops contacts above ~70; add a sender-side top-N cap.
+- **Structure:** `CockpitViewModel` god-object (split into MapCamera/Navigation/DriveTarget delegates before more features land); `DiscoveryRepository` swallows `CancellationException`; DataStore + discovery cache IO runs on the `Main.immediate` app scope; no `CoroutineExceptionHandler` on the app scope.
+- **Test gaps:** `DiscoveryRepository` (zero tests), `NmeaParser.parseHeadingDeg` (HDG/HDM/VTG untested), `CockpitViewModel` drive-to/route pipeline, `activeDriveTarget`/BATH, several `routeTo` guard branches, zvision estimator/broadcaster edges.
+- Full agent reports captured this session; agents resumable (arch a3474ebad1de3d325, net a719047f2272730ce, tests a04223912c9b7c703).
+
+Also: confirmed the phone Beacon's `TelemetryService` runs (foreground). My Mac couldn't sniff its broadcast (unicast ping to the phone works; broadcast frames don't arrive — AP filters the phone's broadcast and/or macOS inbound filtering), but Mac→tablet broadcast is proven on this AP, so the real consumer path is fine. Phone location services are on (mode 3).
+
 ## 2026-07-19 — `zvision` → real S9+ HUD, proven end-to-end (+ `--bind-ip`)
 
 Closed the loop on real hardware: ran the actual `zvision` broadcaster on the Mac emitting a **distinctive** 2-contact frame (far-left drifter + a collision on the *right*, not center) and the S9+ DRIVER HUD **overrode the fake demo with exactly that pattern** — left green figure, empty center, red collision-locked figure bracketed on the right. That's `zvision` code → subnet broadcast → tablet `NetworkThreatSource` → `RoutedThreatSource` override → `DriverNightScreen`, on the real dashboard, camera being the only missing hop.

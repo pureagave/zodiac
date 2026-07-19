@@ -44,6 +44,9 @@ class NetworkThreatSource(
     private val _threats = MutableStateFlow<List<DriverThreat>>(emptyList())
     override val threats: StateFlow<List<DriverThreat>> = _threats.asStateFlow()
 
+    private val _feedAlive = MutableStateFlow(false)
+    override val feedAlive: StateFlow<Boolean> = _feedAlive.asStateFlow()
+
     private var job: Job? = null
     private var watchdog: Job? = null
     private var socket: DatagramSocket? = null
@@ -59,7 +62,12 @@ class NetworkThreatSource(
         watchdog =
             scope.launch {
                 while (isActive) {
-                    if (_threats.value.isNotEmpty() && nowMs() - lastRxMs > staleMs) _threats.value = emptyList()
+                    if (nowMs() - lastRxMs > staleMs) {
+                        // Feed has gone silent: mark it dead (so a routed source can
+                        // fall back) and clear any lingering contacts to all-clear.
+                        if (_feedAlive.value) _feedAlive.value = false
+                        if (_threats.value.isNotEmpty()) _threats.value = emptyList()
+                    }
                     delay(staleMs / 2)
                 }
             }
@@ -76,6 +84,7 @@ class NetworkThreatSource(
         }
         releaseMulticastLock()
         _threats.value = emptyList()
+        _feedAlive.value = false
     }
 
     // Broad + timeout catches are deliberate (IO boundary): a timeout is the
@@ -106,8 +115,12 @@ class NetworkThreatSource(
                     continue
                 }
                 ThreatProtocol.parse(String(packet.data, 0, packet.length, Charsets.US_ASCII))?.let {
-                    _threats.value = it
+                    // Order matters: stamp liveness before publishing so a watchdog
+                    // tick can't see fresh contacts with a stale timestamp and clear
+                    // them. An empty frame is a valid "all clear" — still a live feed.
                     lastRxMs = nowMs()
+                    _feedAlive.value = true
+                    _threats.value = it
                 }
             }
         } catch (ex: Exception) {
