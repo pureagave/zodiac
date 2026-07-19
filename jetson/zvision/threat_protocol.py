@@ -14,6 +14,7 @@ so the round-trip test in this repo also guards the tablet's contract.
 
 from __future__ import annotations
 
+import math
 from typing import List, Optional
 
 from .threat import DriverThreat
@@ -22,6 +23,12 @@ HEADER = "ZTHREAT"
 _FRAME_SEP = ";"
 _FIELD_SEP = ":"
 _FIELDS_PER_CONTACT = 4
+
+# A contact past ±90° isn't in front of the vehicle; drop it. Size is a 0..1
+# range and gets clamped. Cap the contact count so a crowded scene can't build a
+# frame that IP-fragments (fragmented multicast over lossy WiFi ~never arrives).
+MAX_ABS_AZ_DEG = 90.0
+MAX_CONTACTS = 32
 
 
 def _fmt(value: float, decimals: int) -> str:
@@ -32,8 +39,13 @@ def format_frame(threats: List[DriverThreat]) -> str:
     """Serialise contacts to one wire frame. An empty list yields the bare
     header -> "all clear". Floats are fixed-precision ASCII the tablet's
     ``toFloatOrNull`` parses without loss of meaning (0.1 deg / 0.001 size)."""
+    capped = threats
+    if len(capped) > MAX_CONTACTS:
+        # Keep the most important contacts so the frame stays under one MTU:
+        # collisions first, then nearest.
+        capped = sorted(capped, key=lambda t: (t.collision, t.size), reverse=True)[:MAX_CONTACTS]
     parts = [HEADER]
-    for t in threats:
+    for t in capped:
         col = 1 if t.collision else 0
         parts.append(
             f"{t.id}{_FIELD_SEP}{_fmt(t.rel_az_deg, 1)}"
@@ -60,7 +72,21 @@ def parse_frame(line: str) -> Optional[List[DriverThreat]]:
             size = float(f[2])
         except ValueError:
             continue
+        # Reject hostile/garbage numerics before they reach the HUD's Canvas
+        # math: NaN/Infinity parse fine as floats but poison every downstream
+        # coordinate. Drop out-of-front contacts; clamp size to its 0..1 range.
+        if not (math.isfinite(az) and math.isfinite(size)):
+            continue
+        if abs(az) > MAX_ABS_AZ_DEG:
+            continue
         out.append(
-            DriverThreat(rel_az_deg=az, size=size, collision=f[3].strip() == "1", id=tid)
+            DriverThreat(
+                rel_az_deg=az,
+                size=min(1.0, max(0.0, size)),
+                collision=f[3].strip() == "1",
+                id=tid,
+            )
         )
+        if len(out) >= MAX_CONTACTS:
+            break
     return out

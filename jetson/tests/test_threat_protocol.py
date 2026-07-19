@@ -53,6 +53,38 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(2, contacts[0].id)
 
 
+class ValidationTest(unittest.TestCase):
+    def test_rejects_non_finite_az_and_size(self):
+        self.assertEqual([], parse_frame("ZTHREAT;1:NaN:0.5:0"))
+        self.assertEqual([], parse_frame("ZTHREAT;2:5.0:Infinity:1"))
+        self.assertEqual([], parse_frame("ZTHREAT;3:-Infinity:0.5:0"))
+
+    def test_clamps_size_to_unit_range(self):
+        self.assertEqual(1.0, parse_frame("ZTHREAT;1:0.0:9.0:0")[0].size)
+        self.assertEqual(0.0, parse_frame("ZTHREAT;1:0.0:-4.0:0")[0].size)
+
+    def test_drops_contacts_outside_the_forward_arc(self):
+        # az beyond ±90 isn't in front of the vehicle.
+        self.assertEqual([], parse_frame("ZTHREAT;1:120.0:0.5:0"))
+        self.assertEqual(1, len(parse_frame("ZTHREAT;1:89.0:0.5:0")))
+
+    def test_caps_contact_count(self):
+        frame = "ZTHREAT" + "".join(f";{i}:0.0:0.5:0" for i in range(100))
+        from zvision.threat_protocol import MAX_CONTACTS
+
+        self.assertEqual(MAX_CONTACTS, len(parse_frame(frame)))
+
+    def test_format_caps_and_keeps_collisions(self):
+        from zvision.threat_protocol import MAX_CONTACTS
+
+        many = [DriverThreat(rel_az_deg=0.0, size=0.1, collision=False, id=i) for i in range(100)]
+        many.append(DriverThreat(rel_az_deg=1.0, size=0.9, collision=True, id=999))
+        parsed = parse_frame(format_frame(many))
+        self.assertLessEqual(len(parsed), MAX_CONTACTS)
+        self.assertTrue(any(c.collision for c in parsed))  # the collision survived the cap
+        self.assertLess(len(format_frame(many).encode()), 1200)  # stays under one MTU
+
+
 class RoundTripTest(unittest.TestCase):
     def test_format_then_parse_recovers_values(self):
         original = [

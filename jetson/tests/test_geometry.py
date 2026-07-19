@@ -54,6 +54,28 @@ class CollisionTest(unittest.TestCase):
         est.update(1, az=2.0, size=0.10, t=0.0)
         self.assertFalse(est.update(1, az=2.0, size=0.20, t=1.0))
 
+    def test_out_of_order_frame_does_not_poison_the_baseline(self):
+        est = CollisionEstimator()
+        est.update(1, az=2.0, size=0.40, t=1.0)
+        est.update(1, az=2.0, size=0.30, t=0.5)  # replayed/out-of-order: ignored
+        # The next legitimate delta must be measured from the t=1.0 sample, so a
+        # constant-bearing close from 0.40→0.55 still flags.
+        self.assertTrue(est.update(1, az=2.1, size=0.55, t=2.0))
+
+    def test_az_delta_wraps_across_the_antimeridian(self):
+        est = CollisionEstimator()
+        est.update(1, az=179.0, size=0.40, t=0.0)
+        # 179 → -179 is a 2°/s crossing, not 358°/s — so it stays a valid
+        # constant-bearing close, not rejected as fast crossing.
+        self.assertTrue(est.update(1, az=-179.0, size=0.55, t=1.0))
+
+    def test_forget_resets_track_history(self):
+        est = CollisionEstimator()
+        est.update(1, az=2.0, size=0.40, t=0.0)
+        est.forget(1)
+        # After forget, the next update is a first-sighting again → never flags.
+        self.assertFalse(est.update(1, az=2.0, size=0.55, t=1.0))
+
 
 if __name__ == "__main__":
     unittest.main()

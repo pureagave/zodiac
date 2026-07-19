@@ -105,6 +105,11 @@ class MotionDetector:
             size = bbox_height_to_size(bh / h)
             collision = self._collision.update(tid, az, size, t)
             out.append(DriverThreat(rel_az_deg=az, size=size, collision=collision, id=tid))
+        # Prune collision history for tracks that vanished this frame, so the
+        # estimator's dict can't grow without bound over an all-night run.
+        for gone in self._tracks:
+            if gone not in seen:
+                self._collision.forget(gone)
         self._tracks = seen
         return out
 

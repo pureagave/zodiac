@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from typing import Dict
 
 
+def _wrap180(delta: float) -> float:
+    """Shortest signed angular difference, in (-180, 180]. Keeps az-rate honest
+    if the estimator is ever fed a full-360° sensor (today az is bounded to the
+    camera FOV, so this is a cheap guard against a future footgun)."""
+    return ((delta + 180.0) % 360.0) - 180.0
+
+
 def bbox_to_rel_az(cx_norm: float, hfov_deg: float) -> float:
     """Map a detection's horizontal centre (0..1 across the frame) to bearing off
     the nose. Centre -> 0, left edge -> -hfov/2, right edge -> +hfov/2."""
@@ -44,13 +51,16 @@ class CollisionEstimator:
 
     def update(self, tid: int, az: float, size: float, t: float) -> bool:
         prev = self._tracks.get(tid)
-        self._tracks[tid] = _Track(az, size, t)
         if prev is None:
+            self._tracks[tid] = _Track(az, size, t)
             return False
         dt = t - prev.t
         if dt <= 0:
+            # Out-of-order or duplicate frame: ignore it and KEEP the baseline,
+            # so a replayed sample can't poison the next legitimate delta.
             return False
-        az_rate = abs(az - prev.az) / dt
+        self._tracks[tid] = _Track(az, size, t)
+        az_rate = abs(_wrap180(az - prev.az)) / dt
         closing = (size - prev.size) > self.closing_eps
         return size >= self.min_size and az_rate <= self.az_rate_thresh_dps and closing
 
