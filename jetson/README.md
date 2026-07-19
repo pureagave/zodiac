@@ -54,4 +54,8 @@ later.
 | `systemd/zvision.service` | auto-start unit |
 | `scripts/install.sh` | provision to `/opt/zodiac/jetson` + enable service |
 
-Full hardware bring-up: **[DEPLOY.md](DEPLOY.md)**.
+## Docs
+
+- **[DEPLOY.md](DEPLOY.md)** — full hardware bring-up (flash → network → prove-with-fake → camera → permanent)
+- **[HARDWARE.md](HARDWARE.md)** — edge-box bill of materials, wiring, power & thermal budget
+- **[DETECTOR.md](DETECTOR.md)** — roadmap from today's motion blobs to the trained thermal model (H100)
