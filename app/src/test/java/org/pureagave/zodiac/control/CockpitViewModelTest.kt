@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -24,6 +25,9 @@ import org.pureagave.zodiac.control.burnin.BurnInConfig
 import org.pureagave.zodiac.control.core.connection.ConnectionPhase
 import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
+import org.pureagave.zodiac.control.core.geo.LatLon
+import org.pureagave.zodiac.control.core.geo.PlayaPoint
+import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.model.AUTO_RECENTER_MS
 import org.pureagave.zodiac.control.core.model.CockpitConcept
 import org.pureagave.zodiac.control.core.model.CockpitMode
@@ -31,14 +35,20 @@ import org.pureagave.zodiac.control.core.model.FollowMode
 import org.pureagave.zodiac.control.core.model.MapLoadResult
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.core.model.PlayaMap
+import org.pureagave.zodiac.control.core.model.StreetKind
+import org.pureagave.zodiac.control.core.model.StreetLine
 import org.pureagave.zodiac.control.core.model.Telemetry
 import org.pureagave.zodiac.control.core.model.VehicleCommand
+import org.pureagave.zodiac.control.core.navigation.ClockTime
+import org.pureagave.zodiac.control.core.navigation.clockToBearing
+import org.pureagave.zodiac.control.core.ops.NavTarget
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.data.FakeVehicleGateway
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
 import org.pureagave.zodiac.control.data.prefs.CockpitPreferences
 import org.pureagave.zodiac.control.data.prefs.CockpitPrefsSnapshot
+import org.pureagave.zodiac.control.data.sensor.FakeLocationSource
 import org.pureagave.zodiac.control.data.sensor.LocationSourceRegistry
 import org.pureagave.zodiac.control.data.sensor.RoutedLocationSource
 import org.pureagave.zodiac.control.data.sensor.StubLocationSource
@@ -46,6 +56,9 @@ import org.pureagave.zodiac.control.ui.state.CockpitUiState
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModelFactory
 
+// Canonical ViewModel test: many small scenarios; size mirrors the VM's own
+// broad surface (the VM itself carries relaxed detekt thresholds for the same reason).
+@Suppress("LargeClass")
 @OptIn(ExperimentalCoroutinesApi::class)
 class CockpitViewModelTest {
     @get:Rule
@@ -728,6 +741,104 @@ class CockpitViewModelTest {
                 store.clear()
             }
         }
+
+    @Test
+    fun driveToAddress_setsCustomTarget_clearsBath_andIgnoresUnknownRing() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val vm = driveToVm(this.backgroundScope, store)
+                advanceUntilIdle()
+
+                vm.driveToNearestToilet()
+                advanceUntilIdle()
+                assertTrue(vm.uiState.value.driveToBath)
+
+                // A valid ring sets the custom target and clears the BATH lock.
+                vm.driveToAddress(ClockTime(2, 15), "H")
+                advanceUntilIdle()
+                assertEquals("2:15 & H", vm.uiState.value.customTarget?.label)
+                assertFalse(vm.uiState.value.driveToBath)
+
+                // An unknown ring is a no-op — the prior target stands.
+                vm.driveToAddress(ClockTime(4, 0), "Z")
+                advanceUntilIdle()
+                assertEquals("2:15 & H", vm.uiState.value.customTarget?.label)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun setNavTarget_clearsCustomTargetAndBath() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val vm = driveToVm(this.backgroundScope, store)
+                advanceUntilIdle()
+
+                vm.driveToAddress(ClockTime(2, 15), "H")
+                advanceUntilIdle()
+                assertNotNull(vm.uiState.value.customTarget)
+
+                vm.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+                assertNull(vm.uiState.value.customTarget)
+                assertFalse(vm.uiState.value.driveToBath)
+                assertEquals(NavTarget.MAN, vm.uiState.value.navTarget)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun route_populates_after_the_map_loads_and_an_address_is_set() =
+        runTest {
+            // Back the routed source with the same FakeLocationSource the VM steers,
+            // so a live fix (the Man, by default) flows into egoFix.
+            val fake = FakeLocationSource(scope = this.backgroundScope)
+            val routed =
+                RoutedLocationSource(
+                    registry = LocationSourceRegistry(sources = listOf(fake)),
+                    scope = this.backgroundScope,
+                    initialType = LocationSourceType.FAKE,
+                )
+            val mapRepo = ControllablePlayaMapRepository()
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = mapRepo,
+                        locationSource = routed,
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource = fake,
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                // FakeLocationSource has an infinite ticker — use runCurrent, never advanceUntilIdle.
+                runCurrent()
+                assertNotNull("ego should have a fix at the Man", vm.uiState.value.egoFix)
+
+                // Enter H & 2:30 — with no city model loaded yet the route can't resolve.
+                vm.driveToAddress(ClockTime(2, 30), "H")
+                runCurrent()
+                assertEquals("2:30 & H", vm.uiState.value.customTarget?.label)
+                assertTrue("no city yet → empty route", vm.uiState.value.routeWaypointsM.isEmpty())
+
+                // The map loads → cityModel is built → the route recomputes.
+                mapRepo.emitLoaded(routableMap())
+                runCurrent()
+                assertTrue(
+                    "route should populate once the city model exists",
+                    vm.uiState.value.routeWaypointsM.isNotEmpty(),
+                )
+                assertEquals("2:30", vm.uiState.value.entranceRadial)
+                assertNotNull(vm.uiState.value.nextWaypoint)
+            } finally {
+                store.clear()
+            }
+        }
 }
 
 private object NoOpPlayaMapRepository : PlayaMapRepository {
@@ -743,6 +854,86 @@ private fun newFakeRoutedLocationSource(scope: CoroutineScope): RoutedLocationSo
         registry = registry,
         scope = scope,
         initialType = LocationSourceType.FAKE,
+    )
+}
+
+/** A VM wired with all no-op deps (no map, stub GPS) for the drive-to selection tests. */
+private fun driveToVm(
+    scope: CoroutineScope,
+    store: ViewModelStore,
+): CockpitViewModel {
+    val factory =
+        CockpitViewModelFactory(
+            telemetryRepository = StaticTelemetryRepo(),
+            vehicleGateway = FakeVehicleGateway(),
+            playaMapRepository = NoOpPlayaMapRepository,
+            locationSource = newFakeRoutedLocationSource(scope),
+            preferences = NoOpCockpitPreferences(),
+            fakeLocationSource = FakeLocationSource(scope = scope),
+        )
+    return ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+}
+
+/** PlayaMapRepository whose load result the test drives on demand. */
+private class ControllablePlayaMapRepository : PlayaMapRepository {
+    private val flow = MutableStateFlow<MapLoadResult>(MapLoadResult.Loading)
+    override val loadResult: StateFlow<MapLoadResult> = flow.asStateFlow()
+    override val map: Flow<PlayaMap> = emptyFlow()
+
+    override suspend fun load() = Unit
+
+    fun emitLoaded(map: PlayaMap) {
+        flow.value = MapLoadResult.Loaded(map)
+    }
+}
+
+/**
+ * A minimal but routable BRC map: three entrance radials (2:00/2:30/3:00) and
+ * three ring arcs (Esplanade/H/K), built in LatLon by unprojecting the polar
+ * grid. toCityModel re-projects them, yielding the same city the PlayaRouter
+ * tests use — enough for routeTo to produce a real in-city route.
+ */
+private fun routableMap(): PlayaMap {
+    val projection = PlayaProjection(GoldenSpike.Y2025)
+
+    fun polarLatLon(
+        radiusM: Double,
+        bearingDeg: Double,
+    ): LatLon {
+        val rad = Math.toRadians(bearingDeg)
+        return projection.unproject(PlayaPoint(eastM = radiusM * kotlin.math.sin(rad), northM = radiusM * kotlin.math.cos(rad)))
+    }
+
+    fun radial(
+        name: String,
+        clock: ClockTime,
+    ): StreetLine {
+        val b = clockToBearing(clock)
+        return StreetLine(name, StreetKind.Radial, null, (0..10).map { polarLatLon(752.0 + it * 100.0, b) })
+    }
+
+    fun arc(
+        name: String,
+        radiusM: Double,
+    ): StreetLine = StreetLine(name, StreetKind.Arc, null, (105..345 step 5).map { polarLatLon(radiusM, it.toDouble()) })
+    return PlayaMap(
+        year = "2025",
+        trashFence = emptyList(),
+        streetLines =
+            listOf(
+                radial("2:00", ClockTime(2, 0)),
+                radial("2:30", ClockTime(2, 30)),
+                radial("3:00", ClockTime(3, 0)),
+                arc("Esplanade", 752.0),
+                arc("H", 1555.0),
+                arc("K", 1753.0),
+            ),
+        streetOutlines = emptyList(),
+        cityBlocks = emptyList(),
+        plazas = emptyList(),
+        toilets = emptyList(),
+        cpns = emptyList(),
+        art = emptyList(),
     )
 }
 
