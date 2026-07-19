@@ -6,6 +6,18 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-19 — Safe test-coverage expansion round (+ a latent BM-API bug surfaced)
+
+Continued adding pure-logic regression tests (no production behaviour changes except widening two BmApiClient parsers to `internal` for testability):
+- **zvision:** broadcaster per-target error isolation (the headline claim, via a wrapped socket), success count, `extra_targets`; `app --once` end-to-end over loopback (frame + exit all-clear); `CollisionEstimator` min-size boundary + track independence.
+- **routeTo:** the straight-line guard branches (dest at the Man, beyond the outer road, un-modelled city, in-city with no radials) + `nextWaypoint` edges (empty→null, single, zero-length segment).
+- **`campPoint`:** hour-only frontage, `0:00`→12, out-of-range/negative clock, whitespace/case, custom axis rotation.
+- **`ClockEntry`/`RadarContact`:** non-digit + over-long keypad entries; `max=0`, at-range inclusivity, `contactPulse(fadeSpan=0)`→floor-not-NaN.
+- **`DiscoveryRepository`** (was zero-coverage) and **`CockpitUiState.activeDriveTarget`/BATH** (landed earlier this round).
+- **`BmApiClient`** parsers via direct JSON fixtures (no HttpServer — `com.sun.net.httpserver` isn't on the Android unit-test classpath; made `parseArt`/`parseCamp` internal).
+
+**LATENT BUG surfaced by the BmApiClient test (needs real-API verification, NOT fixed):** `parseCamp` reads `location_string` from the **top level** of the record, but `parseArt` reads it **nested under `location`**. If the real BM API nests it for camps too (as it does for art), **camp subtitles are empty in production**. Pinned current (top-level) behaviour in `camp_with_a_clock_address_is_placed` with a flag comment so any change is deliberate. Verify against a real `/api/camp` response and align the two parsers.
+
 ## 2026-07-19 — GPS staleness watchdog (dead feed stops guiding off a frozen fix)
 
 The #2 review finding (both arch + net agents, HIGH): `NetworkLocationSource` never demoted `Active` — a dead beacon left a frozen position guiding forever, made worse because the beacon keeps sending HDT/ZTLM even with GPS lost, so `ingest()` re-asserted `Active` on every heading/telemetry line over a stale position. **Fix:** track `positionRxMs` separately (only GGA/RMC refresh it); `Active` is emitted only while the position is fresh (`nowMs()-positionRxMs <= staleMs`); a watchdog demotes `Active → Searching` after `staleMs` of position silence (default 5 s, ctor-injectable). So a live compass alone can no longer read as a healthy GPS — the nav goes honestly to "NO FIX" instead of confidently wrong. Tests: `active_fix_goes_stale_when_position_stops_arriving`, `compass_only_traffic_does_not_keep_a_dead_gps_alive` (real loopback UDP, short stale window). Gate green.

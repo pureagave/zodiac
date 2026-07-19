@@ -38,7 +38,7 @@ class BmApiClient(
             art + camps
         }
 
-    private fun parseArt(o: JSONObject): PlayaPoi? {
+    internal fun parseArt(o: JSONObject): PlayaPoi? {
         val name = o.optString("name").ifBlank { return null }
         val loc = o.optJSONObject("location")
         val lat = loc?.optDouble("gps_latitude", Double.NaN) ?: Double.NaN
@@ -53,7 +53,7 @@ class BmApiClient(
         )
     }
 
-    private fun parseCamp(o: JSONObject): PlayaPoi? {
+    internal fun parseCamp(o: JSONObject): PlayaPoi? {
         val name = o.optString("name").ifBlank { return null }
         val loc = o.optJSONObject("location")
         val point = campPoint(loc?.optStringOrNull("frontage"), loc?.optStringOrNull("intersection"))
