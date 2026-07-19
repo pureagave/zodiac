@@ -1,0 +1,22 @@
+[Unit]
+Description=Zodiac Vision - edge-box threat broadcaster
+Documentation=https://github.com/pureagave/zodiac/blob/main/jetson/DEPLOY.md
+# Wait for the vehicle network so multicast/broadcast egress has a route.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Config lives in /etc/default/zvision (see install.sh) so you can switch
+# fake<->thermal or tune --hz without editing this unit.
+EnvironmentFile=-/etc/default/zvision
+WorkingDirectory=/opt/zodiac/jetson
+ExecStart=/usr/bin/python3 -m zvision $ZVISION_ARGS
+Restart=always
+RestartSec=2
+# The camera may not be enumerated instantly at boot; let it retry rather than
+# give up. Startup is cheap.
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=multi-user.target

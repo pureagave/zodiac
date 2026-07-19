@@ -1,0 +1,9 @@
+# zvision core (broadcaster + FakeDetector): STANDARD LIBRARY ONLY.
+#   python3 -m zvision --source fake     # runs with nothing installed
+#
+# The real camera detector (--source thermal|rgb) additionally needs OpenCV +
+# numpy. On the Jetson these ship with JetPack — DO NOT `pip install opencv` on
+# the device, it'll shadow the CUDA-enabled system build. Install these only on
+# a plain dev laptop that lacks JetPack:
+numpy>=1.24
+opencv-python>=4.8

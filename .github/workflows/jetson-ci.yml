@@ -1,0 +1,24 @@
+name: jetson-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["jetson/**", ".github/workflows/jetson-ci.yml"]
+  pull_request:
+    paths: ["jetson/**", ".github/workflows/jetson-ci.yml"]
+
+jobs:
+  zvision-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Core + tests are standard-library only, so no install step is needed.
+      - name: Run zvision unit tests
+        working-directory: jetson
+        run: python -m unittest discover -s tests -t . -v
+      - name: Byte-check the runner emits a frame
+        working-directory: jetson
+        run: python -m zvision --once -v
