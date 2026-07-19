@@ -159,6 +159,63 @@ class PlayaRouterTest {
         assertEquals(last, nextWaypoint(route.waypointsM, onLastLeg))
     }
 
+    @Test
+    fun destination_at_the_man_is_a_straight_line() {
+        val route = routeTo(man, man, city)
+        assertNull(route.entranceRadial)
+        assertEquals(listOf(man), route.waypointsM)
+    }
+
+    @Test
+    fun beyond_the_outer_road_is_free_drive() {
+        // Past the outer ring + margin → open playa, straight even on a city clock.
+        val far = polar(2100.0, clockToBearing(ClockTime(4, 0)))
+        val route = routeTo(man, far, city)
+        assertNull(route.entranceRadial)
+        assertEquals(listOf(far), route.waypointsM)
+    }
+
+    @Test
+    fun a_city_with_no_arcs_falls_back_to_a_straight_line() {
+        // esplanadeR can't resolve → straight line (the un-modelled-city guard).
+        val noArcs = city.copy(arcsInnerToOuter = emptyList(), arcRadiiM = emptyMap())
+        val dest = polar(1555.0, clockToBearing(ClockTime(2, 30)))
+        val route = routeTo(man, dest, noArcs)
+        assertNull(route.entranceRadial)
+        assertEquals(listOf(dest), route.waypointsM)
+    }
+
+    @Test
+    fun a_city_with_no_radials_falls_back_to_a_straight_line() {
+        // In-city target but no radial streets to enter on → straight line.
+        val noRadials = city.copy(streetsM = arcRadii.map { (n, r) -> arc(n, r) })
+        val dest = polar(1555.0, clockToBearing(ClockTime(2, 30)))
+        val route = routeTo(man, dest, noRadials)
+        assertNull(route.entranceRadial)
+        assertEquals(listOf(dest), route.waypointsM)
+    }
+
+    @Test
+    fun next_waypoint_of_an_empty_route_is_null() {
+        assertNull(nextWaypoint(emptyList(), man))
+    }
+
+    @Test
+    fun next_waypoint_of_a_single_waypoint_returns_it() {
+        val only = polar(1000.0, 90.0)
+        assertEquals(only, nextWaypoint(listOf(only), man))
+    }
+
+    @Test
+    fun next_waypoint_tolerates_a_zero_length_segment() {
+        // A degenerate polyline with duplicate consecutive corners must not
+        // divide-by-zero; the SEGMENT_EPSILON guard keeps it valid.
+        val a = polar(800.0, 100.0)
+        val b = polar(1555.0, clockToBearing(ClockTime(2, 30)))
+        val next = nextWaypoint(listOf(a, a, b), polar(1600.0, clockToBearing(ClockTime(2, 30))))
+        assertTrue("must return a real waypoint, not crash", next == a || next == b)
+    }
+
     private companion object {
         const val ESPLANADE_R = 752.0
     }
