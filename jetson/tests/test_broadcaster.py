@@ -18,6 +18,51 @@ class SubnetBroadcastTest(unittest.TestCase):
         self.assertEqual("255.255.255.255", subnet_broadcast("not-an-ip"))
 
 
+class TargetsTest(unittest.TestCase):
+    def test_extra_targets_are_appended_with_the_shared_port(self):
+        tx = ThreatBroadcaster(
+            group="127.0.0.1", port=10120, broadcast="127.0.0.1", extra_targets=["10.0.0.5", "10.0.0.6"]
+        )
+        try:
+            self.assertIn(("10.0.0.5", 10120), tx.targets)
+            self.assertIn(("10.0.0.6", 10120), tx.targets)
+        finally:
+            tx.close()
+
+    def test_send_returns_the_success_count(self):
+        tx = ThreatBroadcaster(group="127.0.0.1", port=9, broadcast="127.0.0.1")
+        try:
+            # Two loopback targets; UDP sends succeed with no receiver.
+            self.assertEqual(2, tx.send(format_frame([])))
+        finally:
+            tx.close()
+
+    def test_one_dead_target_does_not_block_the_others(self):
+        # The module's headline claim: one failing path never blocks the other.
+        # A builtin socket's sendto is read-only, so wrap it.
+        class FlakySock:
+            def __init__(self, real):
+                self._real = real
+                self.calls = 0
+
+            def sendto(self, data, target):
+                self.calls += 1
+                if self.calls == 1:
+                    raise OSError("simulated dead path")
+                return self._real.sendto(data, target)
+
+            def close(self):
+                self._real.close()
+
+        tx = ThreatBroadcaster(group="127.0.0.1", port=9, broadcast="127.0.0.1")
+        tx.sock = FlakySock(tx.sock)
+        try:
+            sent = tx.send(format_frame([DriverThreat(rel_az_deg=0.0, size=0.5, id=1)]))
+        finally:
+            tx.close()
+        self.assertEqual(1, sent)  # first path died, second still delivered
+
+
 class LoopbackSendTest(unittest.TestCase):
     def test_broadcast_frame_is_received_and_parses(self):
         rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

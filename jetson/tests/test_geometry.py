@@ -76,6 +76,21 @@ class CollisionTest(unittest.TestCase):
         # After forget, the next update is a first-sighting again → never flags.
         self.assertFalse(est.update(1, az=2.0, size=0.55, t=1.0))
 
+    def test_min_size_boundary_is_inclusive(self):
+        est = CollisionEstimator()  # min_size 0.35
+        est.update(1, az=2.0, size=0.30, t=0.0)
+        self.assertTrue(est.update(1, az=2.0, size=0.35, t=1.0)) # exactly at the floor
+        est.update(2, az=2.0, size=0.30, t=0.0)
+        self.assertFalse(est.update(2, az=2.0, size=0.349, t=1.0)) # just under
+
+    def test_tracks_are_independent(self):
+        est = CollisionEstimator()
+        est.update(1, az=2.0, size=0.40, t=0.0)
+        est.update(2, az=0.0, size=0.40, t=0.0)
+        # id 1 closes on a constant bearing (flags); id 2 crosses fast (does not).
+        self.assertTrue(est.update(1, az=2.0, size=0.55, t=1.0))
+        self.assertFalse(est.update(2, az=30.0, size=0.55, t=1.0))
+
 
 if __name__ == "__main__":
     unittest.main()
