@@ -82,4 +82,22 @@ class RadarContactTest {
         val expected = contactPulse(sweepDeg = 20f, blipAngleDeg = 0f, fadeSpanDeg = 200f)
         assertEquals(expected, nearPass, 0.001f)
     }
+
+    @Test
+    fun max_zero_yields_no_contacts() {
+        assertTrue(contactsWithinRange(listOf(poi("a", 0.0, 10.0)), center, 1000.0, 0).isEmpty())
+    }
+
+    @Test
+    fun contact_exactly_at_range_is_included() {
+        // distanceM <= rangeM is inclusive.
+        val result = contactsWithinRange(listOf(poi("edge", 0.0, 100.0)), center, 100.0, 10)
+        assertEquals(1, result.size)
+    }
+
+    @Test
+    fun pulse_with_zero_fade_span_returns_the_floor_not_nan() {
+        // fadeSpanDeg 0 must hit the delta>=span guard before the divide.
+        assertEquals(DEFAULT_CONTACT_FLOOR, contactPulse(sweepDeg = 90f, blipAngleDeg = 90f, fadeSpanDeg = 0f), 1e-6f)
+    }
 }

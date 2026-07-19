@@ -40,4 +40,17 @@ class ClockEntryTest {
         assertEquals(3, requiredClockDigits("2"))
         assertEquals(4, requiredClockDigits("1"))
     }
+
+    @Test
+    fun non_digit_entries_are_null() {
+        assertNull(parseClockEntry("a15"))
+        assertNull(parseClockEntry("2:15")) // the keypad has no colon
+        assertNull(parseClockEntry("2x5"))
+    }
+
+    @Test
+    fun too_long_entries_are_null() {
+        assertNull(parseClockEntry("2155")) // 4 digits, leading 2-9 is 3-digit H:MM
+        assertNull(parseClockEntry("10300")) // 5 digits, leading 1 is 4-digit 10:MM
+    }
 }
