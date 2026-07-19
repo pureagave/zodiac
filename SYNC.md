@@ -6,6 +6,11 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-19 — GPS staleness watchdog (dead feed stops guiding off a frozen fix)
+
+The #2 review finding (both arch + net agents, HIGH): `NetworkLocationSource` never demoted `Active` — a dead beacon left a frozen position guiding forever, made worse because the beacon keeps sending HDT/ZTLM even with GPS lost, so `ingest()` re-asserted `Active` on every heading/telemetry line over a stale position. **Fix:** track `positionRxMs` separately (only GGA/RMC refresh it); `Active` is emitted only while the position is fresh (`nowMs()-positionRxMs <= staleMs`); a watchdog demotes `Active → Searching` after `staleMs` of position silence (default 5 s, ctor-injectable). So a live compass alone can no longer read as a healthy GPS — the nav goes honestly to "NO FIX" instead of confidently wrong. Tests: `active_fix_goes_stale_when_position_stops_arriving`, `compass_only_traffic_does_not_keep_a_dead_gps_alive` (real loopback UDP, short stale window). Gate green.
+- **Still open (needs product/UI call):** a `LocationSourceState.Stale(lastFix, ageMs)` variant to grey the ego marker rather than drop it, + a fix-age readout in the ops footer. Demote-to-Searching is the safe minimal fix using existing UI handling.
+
 ## 2026-07-19 — Hardening pass from the review backlog (input validation, locale, cancellation)
 
 Knocked out the cheap/clear-win items the Fable review surfaced, both languages, all gated green:

@@ -5,6 +5,7 @@ import android.net.wifi.WifiManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +44,7 @@ class NetworkLocationSource(
     private val applicationContext: Context? = null,
     private val port: Int = FleetBus.TELEMETRY_PORT,
     private val group: String = FleetBus.TELEMETRY_GROUP,
+    private val staleMs: Long = STALE_MS,
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.NET
 
@@ -50,6 +52,7 @@ class NetworkLocationSource(
     override val state: StateFlow<LocationSourceState> = _state.asStateFlow()
 
     private var job: Job? = null
+    private var watchdog: Job? = null
     private var socket: DatagramSocket? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
@@ -59,6 +62,10 @@ class NetworkLocationSource(
 
     @Volatile private var lastHeadingDeg: Double? = null
 
+    // When a POSITION sentence (GGA/RMC) last arrived — tracked separately from
+    // heading so a live compass can't keep a dead GPS looking alive.
+    @Volatile private var positionRxMs: Long = 0L
+
     // Vehicle IMU/motion telemetry from the Sensor Hub's ZTLM sentence, exposed
     // separately from the GPS fix for any consumer that wants tilt/speed.
     private val _telemetry = MutableStateFlow<VehicleTelemetry?>(null)
@@ -66,14 +73,29 @@ class NetworkLocationSource(
 
     override suspend fun start() {
         job?.cancel()
+        watchdog?.cancel()
         acquireMulticastLock()
         _state.value = LocationSourceState.Searching
         job = scope.launch(Dispatchers.IO) { runListener(this) }
+        watchdog =
+            scope.launch {
+                while (isActive) {
+                    if (_state.value is LocationSourceState.Active && nowMs() - positionRxMs > staleMs) {
+                        // Position feed died — demote off the frozen fix instead of
+                        // guiding forever off a stale position (a live compass alone
+                        // must not read as a healthy GPS).
+                        _state.value = LocationSourceState.Searching
+                    }
+                    delay(staleMs / 2)
+                }
+            }
     }
 
     override suspend fun stop() {
         job?.cancel()
+        watchdog?.cancel()
         job = null
+        watchdog = null
         withContext(Dispatchers.IO) {
             runCatching { socket?.close() }
             socket = null
@@ -161,14 +183,25 @@ class NetworkLocationSource(
             if (line.isEmpty()) return@forEach
             NmeaParser.parseHeadingDeg(line)?.let { lastHeadingDeg = it }
             NmeaParser.parseVehicleTelemetry(line)?.let { _telemetry.value = it }
-            NmeaParser.parse(line)?.let { lastFix = it }
+            NmeaParser.parse(line)?.let {
+                lastFix = it
+                positionRxMs = nowMs()
+            }
             val fix = lastFix ?: return@forEach
-            _state.value = LocationSourceState.Active(fix.copy(headingDeg = lastHeadingDeg ?: fix.headingDeg))
+            // Only report Active while the POSITION itself is fresh; a heading- or
+            // telemetry-only line must not re-assert Active on a stale position.
+            if (nowMs() - positionRxMs <= staleMs) {
+                _state.value = LocationSourceState.Active(fix.copy(headingDeg = lastHeadingDeg ?: fix.headingDeg))
+            }
         }
     }
+
+    private fun nowMs(): Long = System.nanoTime() / NANOS_PER_MS
 
     private companion object {
         const val BUFFER_BYTES: Int = 2048
         const val READ_TIMEOUT_MS: Int = 1_000
+        const val STALE_MS: Long = 5_000L
+        const val NANOS_PER_MS: Long = 1_000_000L
     }
 }

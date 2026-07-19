@@ -115,6 +115,62 @@ class NetworkLocationSourceTest {
             }
         }
 
+    @Test
+    fun active_fix_goes_stale_when_position_stops_arriving() =
+        runBlocking {
+            val port = 10180
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            // Short stale window so the test doesn't wait the production 5 s.
+            val source = NetworkLocationSource(scope = scope, port = port, staleMs = 250)
+            try {
+                source.start()
+                assertTrue(
+                    "position should produce an Active fix",
+                    waitUntil(4_000) {
+                        sendUdp(validGga, port)
+                        source.state.value is LocationSourceState.Active
+                    },
+                )
+                // Stop sending position; the watchdog must demote off the frozen fix.
+                assertTrue(
+                    "a dead GPS feed must not stay Active on a frozen fix",
+                    waitUntil(4_000) { source.state.value is LocationSourceState.Searching },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun compass_only_traffic_does_not_keep_a_dead_gps_alive() =
+        runBlocking {
+            val port = 10181
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port, staleMs = 250)
+            try {
+                source.start()
+                assertTrue(
+                    waitUntil(4_000) {
+                        sendUdp(validGga, port)
+                        source.state.value is LocationSourceState.Active
+                    },
+                )
+                // GPS dies but the compass keeps broadcasting HDT — must still go
+                // stale rather than hold Active on the frozen position.
+                assertTrue(
+                    "HDT-only traffic must not hold Active on a stale position",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("GPHDT,90.0,T"), port)
+                        source.state.value is LocationSourceState.Searching
+                    },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
     /** Wrap a sentence body in `$...*<checksum>` NMEA framing. */
     private fun nmea(body: String): String {
         var c = 0
