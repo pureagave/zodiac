@@ -16,7 +16,8 @@ grouped for one pass:
 - [ ] Networking: Ethernet cable **or** Intel AX210 M.2 card + antennas
 - [ ] Camera-head housing (aluminum CCTV box + sun shield, IP66)
 - [ ] Jetson enclosure (vented / fan-cooled box)
-- [ ] Thermal window (HDPE sheet or germanium) — the thermal can't see through glass
+- [ ] Thermal window — **AR-coated germanium** (the thermal can't see through glass/plastic)
+- [ ] Gore/ePTFE breather vent ×2 (one per box)
 - [ ] Shared bracket + rubber vibration isolators
 - [ ] Shielded USB cables (short)
 
@@ -37,7 +38,8 @@ grouped for one pass:
 | 7c | USB WiFi dongle (Panda/Alfa) | ~$15 | fastest, ugliest |
 | 8 | **Camera-head housing** — aluminum CCTV box + sun shield (IP66) | ~$40–80 | the "sensor pod" at top-centre. Flat front modifies easily: RGB behind the glass, thermal behind a cut port (item 8b). See "Enclosure & mounting". |
 | 8a | **Jetson enclosure** — separate vented / fan-cooled box | ~$25–50 | keep the Jetson OUT of the sealed, sun-baked camera pod (it throttles) — USB-tether the cameras to it. |
-| 8b | **Thermal window** — HDPE sheet (cheap) *or* germanium (proper) | ~$5 / ~$40 | glass and polycarbonate **block LWIR**, so the thermal needs its own port. HDPE passes LWIR (some loss); an open recess under the shroud also works. |
+| 8b | **Thermal window** — **AR-coated germanium** (~25–33 mm) | ~$25–60 | the thermal port. **AVOID glass / acrylic / polycarbonate — they block LWIR entirely.** Germanium is the standard (looks like a metal mirror; transparent only to the thermal). HDPE sheet is a cheap test-only substitute; open recess works but risks dust on the lens. |
+| 8c | **Gore/ePTFE breather vent** (adhesive or screw-in, IP66/68) | ~$5–15 | one per box — equalizes pressure + vents humidity while blocking water AND dust, so a sealed box doesn't become a sun-baked pressure cooker. |
 | 9 | **Shared mount + bracket** (rubber vibration isolators) | ~$10–20 | one rigid bracket, top-centre, facing travel — also kills SSD / rolling-shutter jitter. |
 | 10 | short **shielded USB cables** (thermal + RGB + camera↔Jetson tether) | ~$10–15 | keep runs short; use active USB if the tether exceeds ~3 m. |
 
@@ -96,6 +98,37 @@ glass front.
   compute in a sun-heated sealed housing on the playa = thermal throttling. Put
   the two low-heat camera boards in the sensor pod and tether them by USB to a
   separate vented/fan-cooled Jetson enclosure mounted lower or shaded.
+
+## Cooling, venting & paint
+
+**Vent — yes, but a membrane, not a hole.** A fully sealed box becomes a sun-baked
+pressure cooker (and pumps moisture as it heats/cools); an open vent lets playa
+dust straight in. The fix is a **Gore/ePTFE breather vent** (item 8c): the
+membrane equalizes pressure and lets humidity out while blocking water *and* dust
+(pores ~20,000× smaller than a water droplet). One per box.
+
+- **Camera pod** — the cameras are low-power (~1–2 W each); the heat is almost all
+  *solar*. Light/reflective paint + the housing's sun shroud (air gap over the
+  top) + bolting the camera boards to the aluminum body (it heatsinks) + a Gore
+  vent is enough — **no fan needed**. Keeping it cool also protects *thermal image
+  quality*: the Lepton's sensor drifts when its body runs hot, not just at the
+  survival limit.
+- **Jetson box** — this is the real heat (~25 W) and must be actively managed:
+  1. **Shade it** — the single biggest win. Mount the Jetson box inside/under the
+     vehicle, not roof-top in the sun; it doesn't need to be at the cameras (USB
+     tether).
+  2. **Filtered airflow** — the kit's heatsink fan + a filtered intake/exhaust (or
+     an IP-rated filtered fan). A big finned conduction enclosure can go fanless,
+     but at 25 W in playa heat give it generous fins + shade.
+  3. Sanity-check with `tegrastats` in the sun — the SoC throttles ~85–90 °C.
+
+**Paint (fluorescent green is a good call — a light colour reflects sun, so it
+*helps* cooling):**
+- **Mask BOTH windows first.** Paint is 100% opaque to LWIR — even a thin coat
+  kills the thermal — and obviously blocks the RGB. Mask the germanium window and
+  the RGB glass before spraying.
+- Don't paint over the Gore vent or a fan intake (clogs them).
+- Fluorescent pigments fade under playa UV — cosmetic only; re-coat as wanted.
 
 ## Wiring
 
