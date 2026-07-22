@@ -4,6 +4,22 @@ Everything the Jetson node needs to be a sealed, vehicle-powered, dual-camera
 threat sensor. The Jetson and FLIR bundle are ordered; this list is the rest, so
 nothing blocks bring-up when they arrive.
 
+## Still to order (shopping list)
+
+Ordered: Jetson Orin Nano Super, FLIR Lepton 3.5 + PureThermal 3. Everything else,
+grouped for one pass:
+
+- [ ] NVMe M.2 2280 SSD 256 GB (+ optional spare microSD)
+- [ ] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
+- [ ] *(optional)* 850/940 nm IR illuminator
+- [ ] 12 V → 19 V DC-DC converter (≥5 A, matching barrel)
+- [ ] Networking: Ethernet cable **or** Intel AX210 M.2 card + antennas
+- [ ] Camera-head housing (aluminum CCTV box + sun shield, IP66)
+- [ ] Jetson enclosure (vented / fan-cooled box)
+- [ ] Thermal window (HDPE sheet or germanium) — the thermal can't see through glass
+- [ ] Shared bracket + rubber vibration isolators
+- [ ] Shielded USB cables (short)
+
 ## Bill of materials
 
 | # | item | est. | status / notes |
@@ -19,9 +35,11 @@ nothing blocks bring-up when they arrive.
 | 7a | hardwire **Ethernet** to travel router | $0 | **recommended** for a fixed roof install — most reliable, zero driver fiddling |
 | 7b | **Intel AX210** M.2 Key-E card + 2× IPEX antennas | ~$20 | onboard WiFi; native kernel support |
 | 7c | USB WiFi dongle (Panda/Alfa) | ~$15 | fastest, ugliest |
-| 8 | **Sealed enclosure** + cable glands | ~$25–40 | playa dust is abrasive and gets everywhere. Seal it; the kit heatsink needs some airflow — use a filtered vent or a large passive heatsink, not an open fan. |
-| 9 | **Vibration-damped mount** (rubber isolators) | ~$10 | protects the SSD and keeps the cameras from shaking |
-| 10 | short **shielded USB cables** (thermal + RGB) | ~$10 | keep runs short; USB over long thin cables browns out cameras |
+| 8 | **Camera-head housing** — aluminum CCTV box + sun shield (IP66) | ~$40–80 | the "sensor pod" at top-centre. Flat front modifies easily: RGB behind the glass, thermal behind a cut port (item 8b). See "Enclosure & mounting". |
+| 8a | **Jetson enclosure** — separate vented / fan-cooled box | ~$25–50 | keep the Jetson OUT of the sealed, sun-baked camera pod (it throttles) — USB-tether the cameras to it. |
+| 8b | **Thermal window** — HDPE sheet (cheap) *or* germanium (proper) | ~$5 / ~$40 | glass and polycarbonate **block LWIR**, so the thermal needs its own port. HDPE passes LWIR (some loss); an open recess under the shroud also works. |
+| 9 | **Shared mount + bracket** (rubber vibration isolators) | ~$10–20 | one rigid bracket, top-centre, facing travel — also kills SSD / rolling-shutter jitter. |
+| 10 | short **shielded USB cables** (thermal + RGB + camera↔Jetson tether) | ~$10–15 | keep runs short; use active USB if the tether exceeds ~3 m. |
 
 > GPS/telemetry is the **Sensor Hub** node (XCover phone now, Pi later), *not*
 > the Jetson — the roof GPS antenna belongs to that box. The Jetson is
@@ -52,6 +70,32 @@ nothing blocks bring-up when they arrive.
 - **Where to buy:** Amazon — day/night `B0CQ4QDCXN` (recommended), plain
   low-light `B0CXXBD7KX`, 4K IMX678 `B0CXXFGTYB`. Industrial-grade: e-con
   Systems / Leopard Imaging (buy direct).
+
+## Enclosure & mounting
+
+**The wrinkle: the thermal camera can't see through glass or a polycarbonate
+dome — LWIR is blocked.** So a standard security dome/housing works for the RGB
+but not the thermal; the thermal always needs its own port with an
+LWIR-transmissive window (HDPE/germanium) or an open recess. That single
+constraint drives the enclosure choice — you can't just drop both behind one
+glass front.
+
+- **Recommended — one aluminum CCTV "box" housing as the sensor pod** (flat glass
+  front + sun shield, IP66, ~$40–80; e.g. GledeYeTec 14.5" `B0D49FF6GB`, or a
+  compact 6" box `B09FQF27GD`). Cheap, buyable, looks the part on a sci-fi art
+  car, and the flat front modifies cleanly: keep the glass for the RGB, cut a
+  second port for the thermal behind an HDPE/germanium window (or open under the
+  shroud). Both camera boards live here, top-centre, facing travel, on the shared
+  bracket.
+- **Premium / bombproof — Dotworkz BASH or S-Type** (IP68, IK10, purpose-built
+  for AI/vision cameras on *mobile/fleet* deployments — literally the art-car use
+  case; ~$150–400 at dotworkz.com). Seriously rugged and futuristic; still needs
+  a thermal port. Worth it if you want it intentional and indestructible, overkill
+  for a single burn.
+- **Keep the Jetson in its OWN vented box, not the sealed camera pod.** Baking the
+  compute in a sun-heated sealed housing on the playa = thermal throttling. Put
+  the two low-heat camera boards in the sensor pod and tether them by USB to a
+  separate vented/fan-cooled Jetson enclosure mounted lower or shaded.
 
 ## Wiring
 
