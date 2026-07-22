@@ -78,9 +78,16 @@ grouped for one pass:
 **The wrinkle: the thermal camera can't see through glass or a polycarbonate
 dome — LWIR is blocked.** So a standard security dome/housing works for the RGB
 but not the thermal; the thermal always needs its own port with an
-LWIR-transmissive window (HDPE/germanium) or an open recess. That single
-constraint drives the enclosure choice — you can't just drop both behind one
-glass front.
+LWIR-transmissive window (germanium) or an open recess. That single constraint
+drives the enclosure choice — you can't drop both behind one glass front.
+
+**Build it as TWO separate windows side by side, one per camera — not a single
+split pane:** germanium for the thermal, ordinary glass for the RGB. Germanium is
+*opaque to visible light*, so the RGB can't share the germanium port; glass
+blocks LWIR, so the thermal can't share the glass. Neither material does both
+(the one that does, ZnSe, is expensive/tinted — skip it). In the aluminum box:
+keep the housing glass for the RGB and cut a second port next to it for the
+germanium, each aligned in front of its own lens.
 
 - **Recommended — one aluminum CCTV "box" housing as the sensor pod** (flat glass
   front + sun shield, IP66, ~$40–80; e.g. GledeYeTec 14.5" `B0D49FF6GB`, or a
@@ -89,6 +96,14 @@ glass front.
   second port for the thermal behind an HDPE/germanium window (or open under the
   shroud). Both camera boards live here, top-centre, facing travel, on the shared
   bracket.
+- **Germanium sourcing:** for a round port, buy a **stock Ø1" (25.4 mm) AR-coated**
+  window and size the port to it — Thorlabs (`WG91050-E3`/`-F`, 8–12 µm) or
+  Edmund / ISP Optics, ~$100–150. Truly custom size/shape → **Knight Optical** or
+  **Crystran** (bespoke, single-unit, add a **DLC** hard coat for the exposed
+  face). Cheap eBay/AliExpress germanium is fine for prototyping. Don't cut it
+  yourself — it's a brittle semiconductor, ground/polished by optics shops.
+  **Buy early: germanium supply is tight/pricey (export controls) and stock isn't
+  always replenished.**
 - **Premium / bombproof — Dotworkz BASH or S-Type** (IP68, IK10, purpose-built
   for AI/vision cameras on *mobile/fleet* deployments — literally the art-car use
   case; ~$150–400 at dotworkz.com). Seriously rugged and futuristic; still needs
