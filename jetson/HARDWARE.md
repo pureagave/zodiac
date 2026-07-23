@@ -23,6 +23,9 @@ grouped for one pass:
 - [ ] Gore/ePTFE breather vent ×2 (one per box)
 - [ ] Shared bracket + rubber vibration isolators
 - [ ] Shielded USB cables (short)
+- [ ] **DMX interface** — Enttec DMX USB Pro (robust) *or* a cheap FTDI FT232 USB-DMX dongle
+- [ ] **DMX cable (3-pin XLR) + 120 Ω terminator** — for the tracker light
+      *(moving-head fixture + its power are vehicle-level — spec with the lighting)*
 
 ## Bill of materials
 
@@ -213,3 +216,26 @@ before the next:
    both cameras enumerate (`v4l2-ctl --list-devices`); set each `--hfov`.
 9. **Verify end-to-end** — `--source thermal` (+ rgb), walk in front, confirm
    contacts on the DRIVER HUD.
+
+## DMX tracker light (control)
+
+The moving-head "tracker" light is a downstream consumer of the *same* detection
+stream that drives the HUD — the Jetson already computes each contact's azimuth,
+so pointing a light at a person is just mapping that az (+ vertical position) to
+the fixture's pan/tilt DMX channels.
+
+- **DMX interface (the buy):** a USB→DMX512 dongle on the Jetson.
+  - **Recommended: Enttec DMX USB Pro** (~$70–90) — robust timing + RDM, native
+    OLA support (`usbserial` plugin). Worth the reliability for a live light on a
+    moving vehicle.
+  - **Budget:** a cheap FTDI FT232 USB-DMX dongle (~$15–30) — works with OLA
+    (Open DMX), but bit-banged timing is flakier. Fine for prototyping.
+  - **Alternative:** an **Art-Net node** (DMX over Ethernet) to drive the light
+    over the vehicle network and keep it off the Jetson's USB — fits the fleet
+    bus, adds a hop.
+- **Software:** **OLA (Open Lighting Architecture)** on the Jetson (Linux/ARM
+  native) sends the DMX universe; its Python API is where the detection→pan/tilt
+  mapping lives. Calibrate the az→pan span once against the camera FOV. Local
+  USB-DMX keeps it low-latency, which matters for a light that must *follow*.
+- **Also need:** a 3-pin XLR **DMX cable** + a **120 Ω terminator** on the last
+  fixture; and the moving-head fixture + its power (50–200 W, vehicle-level).
