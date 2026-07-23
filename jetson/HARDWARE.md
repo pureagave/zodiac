@@ -23,7 +23,7 @@ grouped for one pass:
 - [ ] Gore/ePTFE breather vent ×2 (one per box)
 - [ ] Shared bracket + rubber vibration isolators
 - [ ] Shielded USB cables (short)
-- [ ] **DMX interface** — Enttec DMX USB Pro (robust) *or* a cheap FTDI FT232 USB-DMX dongle
+- [ ] **DMX interface** — DMXKing ultraDMX Micro (~$65, reliable) *or* a cheap FTDI FT232 OLA dongle (~$20)
 - [ ] **DMX cable (3-pin XLR) + 120 Ω terminator** — for the tracker light
       *(moving-head fixture + its power are vehicle-level — spec with the lighting)*
 
@@ -225,11 +225,14 @@ so pointing a light at a person is just mapping that az (+ vertical position) to
 the fixture's pan/tilt DMX channels.
 
 - **DMX interface (the buy):** a USB→DMX512 dongle on the Jetson.
-  - **Recommended: Enttec DMX USB Pro** (~$70–90) — robust timing + RDM, native
-    OLA support (`usbserial` plugin). Worth the reliability for a live light on a
-    moving vehicle.
-  - **Budget:** a cheap FTDI FT232 USB-DMX dongle (~$15–30) — works with OLA
-    (Open DMX), but bit-banged timing is flakier. Fine for prototyping.
+  - **Recommended: DMXKing ultraDMX Micro** (~$65, Amazon `B00T8OKM98`) —
+    microcontroller-timed (no flicker, unlike the cheap "Open" clones),
+    Enttec-Pro-protocol compatible so OLA treats it like a Pro, and it has a
+    "decelerator" that smooths cheap fixtures. Reliable at ~1/3 the price of the
+    Enttec DMX USB Pro (~$170, which is overkill for one tracker head).
+  - **Cheapest: a cheap FTDI FT232 OLA dongle** (~$15–25, e.g. `B0CDRJL425`) —
+    works with OLA's `ftdidmx` plugin; "dumb"/host-timed so a bit more CPU and
+    possible jitter, but fine for a single slow-slewing tracker head.
   - **Alternative:** an **Art-Net node** (DMX over Ethernet) to drive the light
     over the vehicle network and keep it off the Jetson's USB — fits the fleet
     bus, adds a hop.
