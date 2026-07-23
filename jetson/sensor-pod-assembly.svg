@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1120" viewBox="0 0 1120 1120" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#e8eef0"/></marker>
+    <marker id="arwA" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#ffb300"/></marker>
+    <marker id="dimS" markerWidth="9" markerHeight="9" refX="4" refY="3" orient="auto"><path d="M8,0 L0,3 L8,6 Z" fill="#9fb0b8"/></marker>
+    <marker id="dimE" markerWidth="9" markerHeight="9" refX="5" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#9fb0b8"/></marker>
+  </defs>
+
+  <rect width="1120" height="1120" fill="#0d0f10"/>
+  <text x="40" y="36" fill="#39ff14" font-size="21" font-weight="bold">ZODIAC — edge-box sensor pod · assembly reference</text>
+  <text x="40" y="57" fill="#9fb0b8" font-size="13">Two-camera pod (thermal + RGB) up top, facing travel · Jetson tucked away in shade · two separate windows, never one split pane</text>
+
+  <!-- ============ PANEL 1: FRONT VIEW ============ -->
+  <rect x="30" y="76" width="520" height="368" rx="8" fill="#12171a" stroke="#26313a"/>
+  <text x="48" y="102" fill="#e8eef0" font-size="15" font-weight="bold">1 · FRONT VIEW — what you see looking at the pod</text>
+
+  <path d="M112 156 L470 156 L450 138 L132 138 Z" fill="#1c2a1c" stroke="#39ff14" stroke-opacity="0.55"/>
+  <text x="291" y="152" fill="#9fb0b8" font-size="11" text-anchor="middle">sun shroud (air gap over the top)</text>
+
+  <rect x="112" y="164" width="358" height="214" rx="10" fill="#0f1f0f" stroke="#39ff14" stroke-width="2"/>
+  <text x="291" y="184" fill="#39ff14" font-size="11" text-anchor="middle">aluminum CCTV box — painted fluor-green</text>
+
+  <line x1="206" y1="216" x2="376" y2="216" stroke="#9fb0b8" stroke-dasharray="3 3" marker-start="url(#dimS)" marker-end="url(#dimE)"/>
+  <text x="291" y="210" fill="#9fb0b8" font-size="10" text-anchor="middle">small baseline ~2–4 cm</text>
+
+  <circle cx="206" cy="272" r="42" fill="#9aa0a6" stroke="#c9ced3" stroke-width="2"/>
+  <line x1="182" y1="294" x2="228" y2="250" stroke="#ffffff" stroke-opacity="0.45" stroke-width="3"/>
+  <text x="206" y="336" fill="#e8eef0" font-size="13" text-anchor="middle" font-weight="bold">GERMANIUM</text>
+  <text x="206" y="352" fill="#9fb0b8" font-size="11" text-anchor="middle">thermal · FLIR Lepton</text>
+
+  <circle cx="376" cy="272" r="42" fill="#7fd4ff" fill-opacity="0.30" stroke="#7fd4ff" stroke-width="2"/>
+  <text x="376" y="336" fill="#e8eef0" font-size="13" text-anchor="middle" font-weight="bold">GLASS</text>
+  <text x="376" y="352" fill="#9fb0b8" font-size="11" text-anchor="middle">RGB webcam</text>
+
+  <circle cx="440" cy="350" r="9" fill="#12171a" stroke="#e8eef0"/>
+  <text x="440" y="373" fill="#9fb0b8" font-size="10" text-anchor="middle">Gore vent</text>
+
+  <text x="48" y="428" fill="#ffb300" font-size="11.5">⚠ mask BOTH windows before painting — paint kills LWIR &amp; blocks RGB</text>
+
+  <!-- ============ PANEL 2: SIDE SECTION ============ -->
+  <rect x="570" y="76" width="520" height="368" rx="8" fill="#12171a" stroke="#26313a"/>
+  <text x="588" y="102" fill="#e8eef0" font-size="15" font-weight="bold">2 · WINDOW MOUNT — side section</text>
+  <text x="588" y="120" fill="#9fb0b8" font-size="11">(thermal shown; the RGB side is identical but with glass)</text>
+
+  <text x="600" y="180" fill="#9fb0b8" font-size="10">outside /</text>
+  <text x="600" y="192" fill="#9fb0b8" font-size="10">weather</text>
+
+  <!-- germanium window -->
+  <rect x="690" y="210" width="12" height="120" fill="#9aa0a6" stroke="#c9ced3"/>
+  <text x="696" y="200" fill="#e8eef0" font-size="11" text-anchor="middle">germanium</text>
+  <!-- o-rings -->
+  <circle cx="708" cy="216" r="5" fill="none" stroke="#ff7fbf" stroke-width="2"/>
+  <circle cx="708" cy="324" r="5" fill="none" stroke="#ff7fbf" stroke-width="2"/>
+  <text x="726" y="352" fill="#ff7fbf" font-size="10">O-ring (compliant seat — don't crush it)</text>
+  <!-- front plate -->
+  <rect x="712" y="196" width="16" height="148" fill="#2a3238" stroke="#5a6b76"/>
+  <text x="720" y="382" fill="#9fb0b8" font-size="10" text-anchor="middle">front plate</text>
+  <text x="720" y="394" fill="#9fb0b8" font-size="10" text-anchor="middle">ASA/ABS or Al</text>
+  <!-- lens -->
+  <path d="M772 258 L790 250 L790 290 L772 282 Z" fill="#00e676" stroke="#00e676"/>
+  <text x="781" y="312" fill="#9fb0b8" font-size="10" text-anchor="middle">lens</text>
+  <!-- board -->
+  <rect x="800" y="250" width="250" height="40" rx="4" fill="#0f1f14" stroke="#00e676"/>
+  <text x="925" y="274" fill="#00e676" font-size="12" text-anchor="middle">PureThermal 3 → USB</text>
+  <!-- FOV cone -->
+  <line x1="774" y1="270" x2="690" y2="204" stroke="#ffb300" stroke-dasharray="4 3"/>
+  <line x1="774" y1="270" x2="690" y2="336" stroke="#ffb300" stroke-dasharray="4 3"/>
+  <text x="628" y="270" fill="#ffb300" font-size="11">~57° FOV</text>
+  <!-- close callout -->
+  <line x1="760" y1="150" x2="740" y2="196" stroke="#e8eef0" marker-end="url(#arw)"/>
+  <text x="742" y="145" fill="#e8eef0" font-size="11">keep window CLOSE to the lens</text>
+  <text x="742" y="418" fill="#9fb0b8" font-size="10.5">→ a small (~25 mm) window then covers the whole cone without clipping the corners</text>
+
+  <!-- ============ PANEL 3: SYSTEM LAYOUT ============ -->
+  <rect x="30" y="456" width="1060" height="410" rx="8" fill="#12171a" stroke="#26313a"/>
+  <text x="48" y="482" fill="#e8eef0" font-size="15" font-weight="bold">3 · SYSTEM LAYOUT — on the vehicle</text>
+
+  <!-- roofline -->
+  <line x1="80" y1="545" x2="1040" y2="545" stroke="#5a6b76" stroke-width="2"/>
+  <text x="980" y="538" fill="#9fb0b8" font-size="10">vehicle roof</text>
+
+  <!-- sensor pod on roof -->
+  <rect x="210" y="512" width="110" height="34" rx="6" fill="#0f1f0f" stroke="#39ff14" stroke-width="2"/>
+  <text x="265" y="533" fill="#39ff14" font-size="11" text-anchor="middle">sensor pod</text>
+  <line x1="325" y1="512" x2="380" y2="512" stroke="#c77dff" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="352" y="504" fill="#c77dff" font-size="10" text-anchor="middle">travel</text>
+  <text x="265" y="500" fill="#9fb0b8" font-size="10" text-anchor="middle">top-centre, faces travel</text>
+
+  <!-- USB tether down -->
+  <line x1="265" y1="546" x2="265" y2="690" stroke="#e8eef0" stroke-dasharray="5 3" marker-end="url(#arw)"/>
+  <text x="278" y="620" fill="#e8eef0" font-size="11">USB ≤ 3 m</text>
+  <text x="278" y="634" fill="#9fb0b8" font-size="10">(active USB if longer)</text>
+
+  <!-- shade over jetson -->
+  <path d="M360 660 L660 660 L640 642 L380 642 Z" fill="#1a2230" stroke="#7fd4ff" stroke-opacity="0.5"/>
+  <text x="510" y="656" fill="#7fd4ff" font-size="10" text-anchor="middle">shade / inside vehicle</text>
+
+  <!-- jetson box -->
+  <rect x="190" y="690" width="250" height="120" rx="8" fill="#0f1416" stroke="#39ff14"/>
+  <text x="315" y="712" fill="#39ff14" font-size="12" text-anchor="middle" font-weight="bold">Jetson box (~25 W)</text>
+  <text x="315" y="730" fill="#9fb0b8" font-size="10" text-anchor="middle">shaded + vented · fan + filtered airflow</text>
+  <!-- fan -->
+  <circle cx="240" cy="762" r="18" fill="none" stroke="#e8eef0"/>
+  <path d="M240 762 L240 746 M240 762 L254 770 M240 762 L226 770" stroke="#e8eef0"/>
+  <text x="240" y="794" fill="#9fb0b8" font-size="9" text-anchor="middle">fan</text>
+  <!-- vent slots -->
+  <line x1="285" y1="752" x2="315" y2="752" stroke="#5a6b76"/><line x1="285" y1="760" x2="315" y2="760" stroke="#5a6b76"/><line x1="285" y1="768" x2="315" y2="768" stroke="#5a6b76"/>
+  <circle cx="405" cy="762" r="8" fill="#0f1416" stroke="#e8eef0"/>
+  <text x="405" y="784" fill="#9fb0b8" font-size="9" text-anchor="middle">Gore vent</text>
+
+  <!-- power -->
+  <rect x="500" y="700" width="150" height="46" rx="6" fill="#0f1416" stroke="#ffb300"/>
+  <text x="575" y="720" fill="#ffb300" font-size="11" text-anchor="middle">12 V → DC-DC</text>
+  <text x="575" y="736" fill="#ffb300" font-size="11" text-anchor="middle">→ 19 V</text>
+  <line x1="500" y1="723" x2="440" y2="730" stroke="#ffb300" marker-end="url(#arw)"/>
+
+  <!-- network -->
+  <rect x="500" y="762" width="150" height="46" rx="6" fill="#0f1416" stroke="#00bfff"/>
+  <text x="575" y="782" fill="#00bfff" font-size="11" text-anchor="middle">Ethernet /</text>
+  <text x="575" y="797" fill="#00bfff" font-size="11" text-anchor="middle">AX210 WiFi</text>
+  <line x1="440" y1="778" x2="500" y2="782" stroke="#00bfff" marker-start="url(#arw)"/>
+
+  <!-- fleet bus -->
+  <rect x="720" y="720" width="300" height="70" rx="10" fill="#0f1416" stroke="#c77dff"/>
+  <text x="870" y="748" fill="#c77dff" font-size="13" text-anchor="middle" font-weight="bold">fleet bus → tablets</text>
+  <text x="870" y="768" fill="#9fb0b8" font-size="11" text-anchor="middle">ZTHREAT contacts → DRIVER HUD</text>
+  <line x1="650" y1="785" x2="720" y2="770" stroke="#00bfff" marker-end="url(#arw)"/>
+
+  <text x="720" y="826" fill="#9fb0b8" font-size="10.5">GPS/telemetry is a separate Sensor Hub node — the Jetson is vision-only.</text>
+
+  <!-- ============ BUILD ORDER + KEY ============ -->
+  <line x1="30" y1="888" x2="1090" y2="888" stroke="#26313a"/>
+  <text x="40" y="918" fill="#39ff14" font-size="16" font-weight="bold">BUILD ORDER</text>
+  <g font-size="12.5" fill="#e8eef0">
+    <text x="48" y="946">1 · Bench-flash the Jetson (JetPack, MAXN-Super); prove  zvision --source fake  lights a tablet HUD.</text>
+    <text x="48" y="970">2 · Mount both cameras rigidly on the front plate, small baseline, aligned to their ports.</text>
+    <text x="48" y="994">3 · Seat + edge-seal the windows: germanium (close to the Lepton lens) + RGB glass, on O-rings / RTV.</text>
+    <text x="48" y="1018">4 · Fit a Gore vent to each box (pod + Jetson).</text>
+    <text x="48" y="1042">5 · Mask BOTH windows, paint the pod fluor-green, cure, unmask.</text>
+    <text x="580" y="946">6 · Mount: pod top-centre facing travel (isolated bracket); Jetson box shaded + vented; USB-tether.</text>
+    <text x="580" y="970">7 · Wire power (12 V → DC-DC → 19 V) + network (Ethernet / AX210).</text>
+    <text x="580" y="994">8 · Heat check:  tegrastats  in the sun — SoC &lt; ~85 °C; confirm both cams; set --hfov per camera.</text>
+    <text x="580" y="1018">9 · Verify: --source thermal (+ rgb), walk in front, confirm contacts on the DRIVER HUD.</text>
+  </g>
+  <g font-size="11" fill="#9fb0b8">
+    <rect x="48" y="1066" width="14" height="14" fill="#9aa0a6"/><text x="68" y="1078">germanium — passes thermal, blocks visible</text>
+    <rect x="360" y="1066" width="14" height="14" fill="#7fd4ff" fill-opacity="0.4" stroke="#7fd4ff"/><text x="380" y="1078">glass — passes RGB, blocks thermal</text>
+    <rect x="650" y="1066" width="14" height="14" fill="#0f1f0f" stroke="#39ff14"/><text x="670" y="1078">fluor-green enclosure</text>
+    <rect x="880" y="1066" width="14" height="14" fill="none" stroke="#ffb300"/><text x="900" y="1078">power</text>
+    <rect x="972" y="1066" width="14" height="14" fill="none" stroke="#00bfff"/><text x="992" y="1078">network</text>
+  </g>
+</svg>

@@ -4,6 +4,9 @@ Everything the Jetson node needs to be a sealed, vehicle-powered, dual-camera
 threat sensor. The Jetson and FLIR bundle are ordered; this list is the rest, so
 nothing blocks bring-up when they arrive.
 
+**Assembly diagram:** `sensor-pod-assembly.svg` — front view · window-mount
+cross-section · system layout · build order, in one sheet.
+
 ## Still to order (shopping list)
 
 Ordered: Jetson Orin Nano Super, FLIR Lepton 3.5 + PureThermal 3. Everything else,
@@ -187,3 +190,26 @@ membrane equalizes pressure and lets humidity out while blocking water *and* dus
 - [ ] Cameras behind a cleanable window if enclosed; thermal needs an IR-transmissive window (germanium/HDPE) — **not glass**, glass blocks LWIR
 - [ ] RGB + thermal co-mounted rigidly on one bracket (small baseline), FOVs roughly matched (~57°) for clean frame registration
 - [ ] Cameras at top-centre facing the direction of travel
+
+## Assembly order
+
+See `sensor-pod-assembly.svg` for the labeled diagram. Each step is verifiable
+before the next:
+
+1. **Bench-flash the Jetson** — JetPack, MAXN-Super power mode; confirm
+   `zvision --source fake` lights a tablet's DRIVER HUD (proves compute + bus +
+   HUD before any optics are involved).
+2. **Mount both cameras** rigidly on the front plate, small baseline, each
+   aligned to its own port.
+3. **Seat + edge-seal the windows** — germanium close to the Lepton lens, RGB
+   glass in its port, on O-rings / high-temp RTV; keep sealant off the clear
+   apertures.
+4. **Fit a Gore vent** to each box (pod + Jetson).
+5. **Mask BOTH windows**, paint the pod fluor-green, cure, unmask.
+6. **Mount** — pod top-centre facing travel on the vibration-isolated bracket;
+   Jetson box shaded + vented; USB-tether the cameras.
+7. **Wire** — power 12 V → DC-DC → 19 V; network Ethernet or AX210.
+8. **Heat check** — `tegrastats` in the sun (SoC < ~85 °C under load); confirm
+   both cameras enumerate (`v4l2-ctl --list-devices`); set each `--hfov`.
+9. **Verify end-to-end** — `--source thermal` (+ rgb), walk in front, confirm
+   contacts on the DRIVER HUD.
