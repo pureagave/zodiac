@@ -104,6 +104,18 @@ germanium, each aligned in front of its own lens.
   yourself — it's a brittle semiconductor, ground/polished by optics shops.
   **Buy early: germanium supply is tight/pricey (export controls) and stock isn't
   always replenished.**
+- **Mounting the windows:** get a *small* germanium (~25 mm) — and **mount it
+  close to the Lepton lens** so it doesn't clip the ~57° FOV (a small window far
+  forward vignettes the corners). The surround is *out of the optical path*, so
+  it can be any opaque, heat/UV-stable material. Best: a **custom two-port front
+  plate** (3D-printed **ASA/ABS**, not PLA — PLA sags in playa heat; or laser-cut
+  aluminum) with a counterbored seat + O-ring / high-temp RTV seal + light
+  retainer per window. Simpler: seat the germanium in a drilled hole on a
+  shoulder and seal the surround with RTV or a plastic bezel. **Germanium is
+  brittle** — seat it on a compliant O-ring (never metal-on-metal), don't
+  over-torque the retainer, and keep RTV off the clear aperture (mask the face,
+  seal the edge only). Recess both windows behind the shroud so dust/rain don't
+  hit them head-on and you can wipe them.
 - **Premium / bombproof — Dotworkz BASH or S-Type** (IP68, IK10, purpose-built
   for AI/vision cameras on *mobile/fleet* deployments — literally the art-car use
   case; ~$150–400 at dotworkz.com). Seriously rugged and futuristic; still needs
