@@ -23,7 +23,7 @@ grouped for one pass:
 - [ ] Gore/ePTFE breather vent ×2 (one per box)
 - [ ] Shared bracket + rubber vibration isolators
 - [ ] Shielded USB cables (short)
-- [ ] **DMX interface** — DMXKing ultraDMX Micro (~$65, reliable) *or* a cheap FTDI FT232 OLA dongle (~$20)
+- [ ] **DMX interface** — FTDI FT232 OLA dongle (~$20, pin OLA to a core) *or* buffered DMXKing ultraDMX MAX (~$150) / Eurolite USB-DMX512 PRO (~$50)
 - [ ] **DMX cable (3-pin XLR) + 120 Ω terminator** — for the tracker light
       *(moving-head fixture + its power are vehicle-level — spec with the lighting)*
 
@@ -225,14 +225,17 @@ so pointing a light at a person is just mapping that az (+ vertical position) to
 the fixture's pan/tilt DMX channels.
 
 - **DMX interface (the buy):** a USB→DMX512 dongle on the Jetson.
-  - **Recommended: DMXKing ultraDMX Micro** (~$65, Amazon `B00T8OKM98`) —
-    microcontroller-timed (no flicker, unlike the cheap "Open" clones),
-    Enttec-Pro-protocol compatible so OLA treats it like a Pro, and it has a
-    "decelerator" that smooths cheap fixtures. Reliable at ~1/3 the price of the
-    Enttec DMX USB Pro (~$170, which is overkill for one tracker head).
-  - **Cheapest: a cheap FTDI FT232 OLA dongle** (~$15–25, e.g. `B0CDRJL425`) —
-    works with OLA's `ftdidmx` plugin; "dumb"/host-timed so a bit more CPU and
-    possible jitter, but fine for a single slow-slewing tracker head.
+  - **Note:** the once-ideal DMXKing ultraDMX Micro (~$65) is **discontinued**
+    (successor = the ultraDMX MAX, ~$150 / 2-universe / overkill for one head).
+  - **Recommended (budget, in stock): a cheap FTDI FT232 OLA dongle** (~$15–25,
+    e.g. `B0CDRJL425`) — works with OLA's `ftdidmx` plugin. It's host-timed, so
+    **pin OLA to a dedicated Orin CPU core** (`taskset`/`isolcpus`; the Nano has
+    6) so the ML workload can't jitter the DMX timing — that removes its only real
+    downside. Plenty for a single slow-slewing tracker head.
+  - **Buffered / no-fuss:** DMXKing ultraDMX MAX (~$150, `B0C7HHYK18`) — the
+    Micro's hardware-timed successor, bombproof but 2-universe overkill; or a
+    **Eurolite USB-DMX512 PRO** (~$50) if you can find US stock. The Enttec DMX
+    USB Pro (~$170) is reliable but overkill.
   - **Alternative:** an **Art-Net node** (DMX over Ethernet) to drive the light
     over the vehicle network and keep it off the Jetson's USB — fits the fleet
     bus, adds a hop.
