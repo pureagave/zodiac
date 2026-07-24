@@ -15,7 +15,7 @@ grouped for one pass:
 - [ ] NVMe M.2 2280 SSD 256 GB (+ optional spare microSD)
 - [ ] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
 - [ ] *(optional)* 850/940 nm IR illuminator
-- [ ] **Power** — bench 19 V/≥3 A brick (if not included) + car 12 V→19 V DC-DC (≥4 A, wide input, fused); 5.5×2.5 mm centre-positive
+- [ ] **Power** — bench 19 V/≥3 A brick (if not included) + car DC-DC to 19 V (≥4 A, sealed/potted, fused + load-dump TVS); 5.5×2.5 mm centre-positive
 - [ ] Networking: Ethernet cable **or** Intel AX210 M.2 card + antennas
 - [ ] Camera-head housing (aluminum CCTV box + sun shield, IP66)
 - [ ] Jetson enclosure (vented / fan-cooled box)
@@ -180,9 +180,13 @@ membrane equalizes pressure and lets humidity out while blocking water *and* dus
   - *Bench:* the kit's 19 V/2.37 A adapter, or a 19 V/≥3 A (65 W) brick for
     headroom.
   - *Car:* **never wire raw 12 V to the barrel** — it dips below 9 V on cranking
-    and spikes on load-dump. Use a DC-DC / 12 V→19 V laptop car-charger to a
-    **clean, stable 19 V, ≥4 A, wide input (~8–40 V), on a fused feed** — same
-    barrel tip as bench.
+    and spikes on load-dump. Use a rugged DC-DC to a **clean, stable 19 V, ≥4 A**,
+    on a **fused** feed. Pick: a **sealed/potted boost** (Oumefar 12→19 V 8 A
+    152 W IP67, `B08FC4WM16`) — set/lock the pot to 19.0 V — **plus a fuse (~10 A)
+    + an automotive load-dump TVS** on its input (a boost passes a 40 V spike
+    through; the TVS clamps it). *Or* a true **buck-boost** (LTC3780 adjustable, set
+    to 19 V, mounted inside the dust-proof box) for inherent up/down regulation.
+    Same 5.5×2.5 mm barrel tip as bench.
 - **Draw:** Orin Nano Super in MAXN ≈ up to 25 W; add ~2–5 W for two USB cameras.
   Budget the supply for ~40 W continuous (≈2 A @ 19 V) to be safe.
 - **Heat:** the playa is hot and the box is sealed — the SoC will throttle if the
