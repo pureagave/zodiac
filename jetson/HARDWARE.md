@@ -227,11 +227,14 @@ the fixture's pan/tilt DMX channels.
 - **DMX interface (the buy):** a USB→DMX512 dongle on the Jetson.
   - **Note:** the once-ideal DMXKing ultraDMX Micro (~$65) is **discontinued**
     (successor = the ultraDMX MAX, ~$150 / 2-universe / overkill for one head).
-  - **Recommended (budget, in stock): a cheap FTDI FT232 OLA dongle** (~$15–25,
-    e.g. `B0CDRJL425`) — works with OLA's `ftdidmx` plugin. It's host-timed, so
-    **pin OLA to a dedicated Orin CPU core** (`taskset`/`isolcpus`; the Nano has
-    6) so the ML workload can't jitter the DMX timing — that removes its only real
-    downside. Plenty for a single slow-slewing tracker head.
+  - **Recommended (budget, in stock): a cheap FTDI FT232 OLA dongle** (~$15–25) —
+    works with OLA's `ftdidmx` plugin. The many near-identical clones are all the
+    same thing; when picking one, look for a **genuine FT232R/RL** chip (NOT
+    CH340), a **3-pin XLR DMX** output (avoid the bare "USB→RS485" terminal-block
+    versions), and an **OLA / QLC+ / FreeStyler** compatibility note. It's
+    host-timed, so **pin OLA to a dedicated Orin CPU core** (`taskset`/`isolcpus`;
+    the Nano has 6) so the ML workload can't jitter the DMX timing — that removes
+    its only real downside. Plenty for a single slow-slewing tracker head.
   - **Buffered / no-fuss:** DMXKing ultraDMX MAX (~$150, `B0C7HHYK18`) — the
     Micro's hardware-timed successor, bombproof but 2-universe overkill; or a
     **Eurolite USB-DMX512 PRO** (~$50) if you can find US stock. The Enttec DMX
