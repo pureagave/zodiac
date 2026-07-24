@@ -43,7 +43,7 @@ grouped for one pass:
 | 7b | **Intel AX210** M.2 Key-E card + 2× IPEX antennas | ~$20 | onboard WiFi; native kernel support |
 | 7c | USB WiFi dongle (Panda/Alfa) | ~$15 | fastest, ugliest |
 | 8 | **Camera-head housing** — aluminum CCTV box + sun shield (IP66) | ~$40–80 | the "sensor pod" at top-centre. Flat front modifies easily: RGB behind the glass, thermal behind a cut port (item 8b). See "Enclosure & mounting". |
-| 8a | **Jetson enclosure** — separate vented / fan-cooled box | ~$25–50 | keep the Jetson OUT of the sealed, sun-baked camera pod (it throttles) — USB-tether the cameras to it. |
+| 8a | **Jetson enclosure** — vented aluminum case (KKSB Orin Nano Super `B0FRJ1WBQF`, VESA mount; or Waveshare `B0CG38BS5S`) | ~$25–55 | get the **Orin** Nano version, NOT the old Jetson Nano (different board). Aluminum body = heatsink; keep it OUT of the sealed camera pod, mounted shaded, with the vent/fan filtered for dust. |
 | 8b | **Thermal window** — **AR-coated germanium** (~25–33 mm) | ~$25–60 | the thermal port. **AVOID glass / acrylic / polycarbonate — they block LWIR entirely.** Germanium is the standard (looks like a metal mirror; transparent only to the thermal). HDPE sheet is a cheap test-only substitute; open recess works but risks dust on the lens. |
 | 8c | **Gore/ePTFE breather vent** (adhesive or screw-in, IP66/68) | ~$5–15 | one per box — equalizes pressure + vents humidity while blocking water AND dust, so a sealed box doesn't become a sun-baked pressure cooker. |
 | 9 | **Shared mount + bracket** (rubber vibration isolators) | ~$10–20 | one rigid bracket, top-centre, facing travel — also kills SSD / rolling-shutter jitter. |
