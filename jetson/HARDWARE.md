@@ -15,7 +15,7 @@ grouped for one pass:
 - [ ] NVMe M.2 2280 SSD 256 GB (+ optional spare microSD)
 - [ ] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
 - [ ] *(optional)* 850/940 nm IR illuminator
-- [ ] 12 V → 19 V DC-DC converter (≥5 A, matching barrel)
+- [ ] **Power** — bench 19 V/≥3 A brick (if not included) + car 12 V→19 V DC-DC (≥4 A, wide input, fused); 5.5×2.5 mm centre-positive
 - [ ] Networking: Ethernet cable **or** Intel AX210 M.2 card + antennas
 - [ ] Camera-head housing (aluminum CCTV box + sun shield, IP66)
 - [ ] Jetson enclosure (vented / fan-cooled box)
@@ -37,7 +37,7 @@ grouped for one pass:
 | 4 | *(fallback)* microSD 64 GB UHS-I A2 | ~$12 | only if not using NVMe; carry a spare |
 | 5 | **Daytime/low-light RGB — Arducam IMX462 USB (Sony STARVIS)** | ~$60–80 | day **and** night primary. Prefer the **day/night auto IR-cut** variant (Amazon `B0CQ4QDCXN`). Rolling-shutter is fine at a mutant vehicle's walking pace; if jello ever shows, fall back to a global-shutter mono (Arducam OV9281). See "RGB camera" below. |
 | 5a | *(optional)* **850/940 nm IR illuminator** | ~$15–25 | extends night range past the camera's short onboard LEDs (people at 10–30 m). 940 nm = invisible; 850 nm = brighter, faint red glow. |
-| 6 | **Vehicle power: 12 V → 19 V DC-DC**, ≥5 A (barrel to match the kit) | ~$15–25 | the kit's 19 V/3.4 A brick is wall-only. Orin Nano draws ~7–25 W; size the converter with margin. |
+| 6 | **Power — 19 V, 5.5×2.5 mm barrel (centre-positive)** | ~$15–35 | bench brick + a car DC-DC to a clean 19 V — see "Power & thermal budget". |
 | 7 | **Networking** — pick one | | see below |
 | 7a | hardwire **Ethernet** to travel router | $0 | **recommended** for a fixed roof install — most reliable, zero driver fiddling |
 | 7b | **Intel AX210** M.2 Key-E card + 2× IPEX antennas | ~$20 | onboard WiFi; native kernel support |
@@ -175,8 +175,16 @@ membrane equalizes pressure and lets humidity out while blocking water *and* dus
 
 ## Power & thermal budget
 
+- **Supply:** the kit powers from a **5.5×2.5 mm barrel, centre-positive**; the
+  carrier accepts **9–20 V** but use **19 V** for full MAXN.
+  - *Bench:* the kit's 19 V/2.37 A adapter, or a 19 V/≥3 A (65 W) brick for
+    headroom.
+  - *Car:* **never wire raw 12 V to the barrel** — it dips below 9 V on cranking
+    and spikes on load-dump. Use a DC-DC / 12 V→19 V laptop car-charger to a
+    **clean, stable 19 V, ≥4 A, wide input (~8–40 V), on a fused feed** — same
+    barrel tip as bench.
 - **Draw:** Orin Nano Super in MAXN ≈ up to 25 W; add ~2–5 W for two USB cameras.
-  Budget the DC-DC for ~40 W continuous to be safe.
+  Budget the supply for ~40 W continuous (≈2 A @ 19 V) to be safe.
 - **Heat:** the playa is hot and the box is sealed — the SoC will throttle if the
   heatsink can't breathe. Favor a large passive heatsink + a small filtered
   intake over an open fan (dust kills fans). Watch `tegrastats` during a hot run.
