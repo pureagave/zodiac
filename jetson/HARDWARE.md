@@ -254,9 +254,15 @@ the fixture's pan/tilt DMX channels.
   - **Alternative:** an **Art-Net node** (DMX over Ethernet) to drive the light
     over the vehicle network and keep it off the Jetson's USB — fits the fleet
     bus, adds a hop.
-- **Software:** **OLA (Open Lighting Architecture)** on the Jetson (Linux/ARM
-  native) sends the DMX universe; its Python API is where the detection→pan/tilt
-  mapping lives. Calibrate the az→pan span once against the camera FOV. Local
-  USB-DMX keeps it low-latency, which matters for a light that must *follow*.
+- **Software (built):** the `zvision` runner drives the head in-process from the
+  *same* per-frame contact list the HUD broadcaster gets — enable with
+  `python -m zvision --dmx fake` (log-only, proves select→map→slew with no
+  hardware) or `--dmx ola` (transmits). `zvision/tracker.py` is the pure mapping +
+  target-selection + slew logic; `zvision/dmx.py` is the transport — `FakeDmxSink`
+  (stdlib) and `OlaDmxSink`, which posts the universe to a local **OLA** (`olad`)
+  over its HTTP API (no `ola` pip dep). `olad` owns the USB→DMX512 dongle
+  (`ftdidmx`) and the timing. Calibrate `--dmx-pan-center` / `--dmx-pan-gain`
+  against the camera FOV once on the vehicle. Local USB-DMX keeps it low-latency,
+  which matters for a light that must *follow*.
 - **Also need:** a 3-pin XLR **DMX cable** + a **120 Ω terminator** on the last
   fixture; and the moving-head fixture + its power (50–200 W, vehicle-level).

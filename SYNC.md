@@ -6,6 +6,43 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-29 — DMX tracker light software (`zvision` drives a moving head)
+
+Built the edge-box's second output: a moving-head "tracker" light that physically
+points at a detected contact, driven **in-process** from the *same* per-frame
+`DriverThreat` list the HUD broadcaster already gets (the Jetson has computed each
+contact's bearing, so aiming a light is just az→pan). Same design ethos as the
+detector: a pure, stdlib-only, unit-tested core + a lazy hardware transport behind
+a Protocol, so the whole pipeline is provable before the dongle/fixture arrive.
+
+- **`zvision/tracker.py`** (pure math): `select_best` (collision-priority, else
+  nearest by size) + a stateful `Tracker` adding **hysteresis** (`switch_margin`
+  stops ping-ponging between two similar-range contacts; collisions bypass it) +
+  **slew limiting** (`_approach`, deg/s ceilings so the head *follows* smoothly,
+  never jerks) + az→pan (`center + az*gain`, calibratable) and a size→tilt
+  range-proxy lerp. 16-bit pan/tilt (`deg_to_dmx16`), optional fine/dimmer
+  channels. On no-target it **holds aim + blacks out** (an idle sweep would read
+  as a false detection); `park()` recenters + blackout for a clean shutdown.
+- **`zvision/dmx.py`** (transport): `DmxSink` Protocol; `FakeDmxSink` (in-memory
+  512-byte frame, stdlib); `OlaDmxSink` posts the universe to a local **`olad`**
+  over its **HTTP API** via stdlib `urllib` — deliberately *no* `ola` pip dep and
+  no inverting our loop into OLA's event loop. A send failure (olad down/dongle
+  unplugged) is counted + swallowed so a lighting glitch can't take down the
+  threat broadcaster the HUD depends on. Channels persist frame-to-frame (merge,
+  not overwrite).
+- **Runner wiring:** `--dmx {none,fake,ola}` (default none), `--dmx-universe`,
+  `--dmx-url`, `--dmx-pan-center`, `--dmx-pan-gain`. Loop taps `detector.detect()`,
+  feeds the tracker, sends the sink; `--once` snaps (large dt); exit parks+blacks.
+- **Proven with `--dmx fake`** (no hardware): picks the nearest of the three fake
+  contacts (id2 @ −22° → `pan=248 = 270−22`, `tilt=146.2 = lerp(135,160,0.45)`),
+  follows it, parks clean. **+23 tests** (`test_tracker.py`, `test_dmx.py`) →
+  **67 total green**; `jetson-ci` unchanged (still `unittest discover` + `--once`).
+- **Still hardware-gated:** `OlaDmxSink`→real `olad`→FTDI dongle→fixture is
+  untested (same status the camera was in before it landed). On-vehicle: pin `olad`
+  to a dedicated Orin core (`taskset`) so the ML workload can't jitter DMX timing;
+  calibrate pan-center/gain against the mounted head. `size→tilt` is a coarse
+  range→elevation proxy until the detector emits real vertical.
+
 ## 2026-07-19 — Safe test-coverage expansion round (+ a latent BM-API bug surfaced)
 
 Continued adding pure-logic regression tests (no production behaviour changes except widening two BmApiClient parsers to `internal` for testability):
