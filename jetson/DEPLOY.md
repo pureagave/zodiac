@@ -22,6 +22,11 @@ The Jetson only *produces* threats. The tablets already *consume* them
 (`NetworkThreatSource`), so once frames hit the wire the HUD lights up with no
 tablet-side change.
 
+It has a second, optional output: a **DMX moving-head "tracker" light** (§7) that
+points at the same detected contacts and — when there's nothing to follow — pulses
+to the music from the beacon's `$ZAUD`. It's independent of the camera, so you can
+bring it up separately.
+
 ---
 
 ## 1. Flash JetPack
@@ -116,6 +121,38 @@ systemctl status zvision          # confirm active + auto-start
 ```
 It now starts on boot and restarts on crash.
 
+## 7. Bring up the DMX tracker light (optional, independent of the camera)
+
+The moving-head "tracker" light points at whatever the detector sees, and pulses
+to the music (the beacon's `$ZAUD`) when there's nothing to follow. It's a
+downstream consumer of the *same* detection stream, so it needs no camera to test.
+
+```bash
+sudo jetson/scripts/install-ola.sh     # olad + ftdidmx plugin + CPU-pinned + on-boot
+```
+
+Then plug in the USB→DMX dongle and patch it once (needs the port enumerated):
+```bash
+ola_dev_info                                  # find the ftdidmx device + port
+ola_patch -d <device> -p <port> -u 0          # patch to universe 0  (or web UI :9090)
+ola_set_dmx -u 0 -d 128,0,128,0,255           # pan/tilt/dimmer test — the head should move
+```
+
+Prove the pipeline, then go live:
+```bash
+python3 -m zvision --source fake --dmx fake -v   # logs target/pan/tilt/dim, no hardware
+python3 -m zvision --source fake --dmx ola        # sends the universe to olad → dongle → head
+```
+
+Calibrate once on the vehicle: aim the head dead-ahead and set `--dmx-pan-center`
+to that fixture pan angle; `--dmx-pan-gain` (~1.0) maps camera az→pan (negate if the
+head pans mirror-imaged). To make it permanent, add the DMX flags to
+`ZVISION_ARGS` in `/etc/default/zvision` alongside the source, e.g.:
+```
+ZVISION_ARGS=--source thermal --device /dev/video0 --hz 10 --dmx ola
+```
+`--dmx-no-sound` disables the idle sound show if you only want threat-following.
+
 ---
 
 ## Troubleshooting
@@ -128,6 +165,10 @@ It now starts on boot and restarts on crash.
 | `could not open camera` | wrong `/dev/videoN` (`v4l2-ctl --list-devices`), or cv2 missing on a non-JetPack box (`pip install opencv-python numpy`) |
 | bearings compressed/stretched | `--hfov` doesn't match the lens |
 | contacts flicker / bad ids | motion detector is bring-up-grade; the trained model replaces it — for now raise `--hz` and ensure a stable mount |
+| `--dmx ola` runs but the head doesn't move | universe not patched (`ola_dev_info` → `ola_patch`), or the wrong universe (`--dmx-universe`). Confirm with `ola_set_dmx -u 0 -d 128,0,128`. |
+| DMX flickers / stutters | another OLA plugin is fighting for the FT232 (leave only `ftdidmx` on), or olad isn't CPU-pinned — re-run `install-ola.sh`; check `systemctl show olad -p CPUAffinity` |
+| olad won't grab the dongle | kernel `ftdi_sio` may hold it as `/dev/ttyUSB0`; ftdidmx uses libftdi and should detach it — if not, `sudo modprobe -r ftdi_sio` (or blacklist it) |
+| head moves but never pulses to music | no `$ZAUD` arriving (beacon not broadcasting / different subnet), or `--dmx-no-sound` set. The sound show only runs when *idle* (no contact to follow). |
 
 ## Wire protocol (reference)
 
