@@ -7,24 +7,28 @@ nothing blocks bring-up when they arrive.
 **Assembly diagram:** `sensor-pod-assembly.svg` — front view · window-mount
 cross-section · system layout · build order, in one sheet.
 
-## Still to order (shopping list)
+## Shopping list (status 2026-07-30)
 
-Ordered: Jetson Orin Nano Super, FLIR Lepton 3.5 + PureThermal 3. Everything else,
-grouped for one pass:
+**In hand / covered:**
+- [x] Jetson Orin Nano Super Dev Kit **+ its included 19 V PSU** (bench power covered)
+- [x] FLIR Lepton 3.5 + PureThermal 3
+- [x] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
+- [x] Camera-head housing (aluminum CCTV box)
+- [x] Jetson enclosure — KKSB Orin Nano Super case (`B0FRJ1WBQF`)
+- [x] Car power DC-DC buck converter
+- [x] Networking — router + Ethernet cable
+- [x] **DMX interface** (FTDI dongle) + **DMX cables** + **moving-head fixture**
 
-- [ ] NVMe M.2 2280 SSD 256 GB (+ optional spare microSD)
-- [ ] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
-- [ ] *(optional)* 850/940 nm IR illuminator
-- [ ] **Power** — bench 19 V/≥3 A brick (if not included) + car DC-DC to 19 V (≥4 A, sealed/potted, fused + load-dump TVS); 5.5×2.5 mm centre-positive
-- [ ] Networking: Ethernet cable **or** Intel AX210 M.2 card + antennas
-- [ ] Camera-head housing (aluminum CCTV box + sun shield, IP66)
-- [ ] Jetson enclosure (vented / fan-cooled box)
-- [ ] Thermal window — **AR-coated germanium** (the thermal can't see through glass/plastic)
-- [ ] Gore/ePTFE breather vent ×2 (one per box)
-- [ ] Shared bracket + rubber vibration isolators
-- [ ] Shielded USB cables (short)
-- [ ] **DMX interface** — FTDI FT232 OLA dongle (~$20, pin OLA to a core) *or* buffered DMXKing ultraDMX MAX (~$150) / Eurolite USB-DMX512 PRO (~$50)
-- [ ] **DMX cable (3-pin XLR) + 120 Ω terminator** — for the tracker light
+**Still needed:**
+- [ ] **NVMe M.2 2280 SSD 256 GB** — the one blocker to flashing JetPack (+ optional spare microSD)
+- [ ] **Thermal window — AR-coated germanium** (~25 mm) — buy early, supply is tight; the thermal can't see through glass/plastic
+- [ ] **Gore/ePTFE breather vent ×2** (one per box)
+- [ ] **Bracket vibration pads** — rubber isolators for the shared mount
+- [ ] **Short shielded USB cables** (thermal + RGB + tether)
+- [ ] Confirm the DMX chain has a **120 Ω XLR terminator** on the last fixture (commonly forgotten; separate from the cables)
+- [ ] *(optional, likely skip)* IR illuminator — headlights already flood the scene; the **thermal is the night primary and needs no illumination at all**. Only revisit if night *RGB* range proves short. See note below.
+
+**On headlights vs. an IR illuminator:** halogen headlights emit strong near-IR (700–1100 nm) that the no-IR-cut IMX462 sees well — a real bonus. **LED headlights emit almost no IR** (phosphor-white), so they help the RGB cam only with their *visible* light. Either way it barely matters: at night the **Lepton thermal is the primary detector and needs zero illumination**, and the headlights light the scene for the RGB cam regardless. So the illuminator is genuinely optional — its only unique value (invisible 940 nm "stealth" light) is moot on a headlight-on art car.
       *(moving-head fixture + its power are vehicle-level — spec with the lighting)*
 
 ## Bill of materials
