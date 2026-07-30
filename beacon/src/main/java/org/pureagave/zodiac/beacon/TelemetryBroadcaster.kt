@@ -2,6 +2,9 @@ package org.pureagave.zodiac.beacon
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.hardware.GeomagneticField
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -12,8 +15,10 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.location.OnNmeaMessageListener
 import android.net.wifi.WifiManager
+import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +33,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.MulticastSocket
+import kotlin.math.sqrt
 
 /**
  * The Zodiac Beacon engine: reads the phone's GNSS (raw NMEA) and magnetometer
@@ -63,6 +69,24 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val MPS_TO_KPH = 3.6
     private const val FULL_CIRCLE = 360.0
 
+    // Slow channels ride the 250 ms loop on a tick divisor so they don't spam the
+    // bus: light + odometer every ~2 s, the health heartbeat every ~5 s. Shock is
+    // event-driven from the accelerometer, not on the loop.
+    private const val ENV_EVERY_TICKS = 8
+    private const val ODO_EVERY_TICKS = 8
+    private const val HEALTH_EVERY_TICKS = 20
+
+    // GGA field indices for the fix-quality + satellite-count the heartbeat reports.
+    private const val GGA_FIX_QUALITY_FIELD = 6
+    private const val GGA_SATS_FIELD = 7
+    private const val SENTENCE_TYPE_LEN = 3
+
+    private const val BATTERY_SCALE_PCT = 100
+    private const val MS_PER_SEC = 1000L
+    private const val NANOS_PER_MS = 1_000_000L
+    private const val PREFS_NAME = "zodiac_beacon"
+    private const val PREF_TOTAL_METERS = "odometer_total_m"
+
     private val _status = MutableStateFlow("Idle")
     val status: StateFlow<String> = _status.asStateFlow()
     private val _running = MutableStateFlow(false)
@@ -84,12 +108,37 @@ object TelemetryBroadcaster : SensorEventListener {
 
     @Volatile private var lastLocation: Location? = null
 
+    @Volatile private var luxValue: Double = 0.0
+
+    @Volatile private var fixQuality: Int = 0
+
+    @Volatile private var satellites: Int = 0
+
+    @Volatile private var tripMeters: Double = 0.0
+
+    @Volatile private var totalMeters: Double = 0.0
+
     @Volatile private var sentences: Long = 0
+
+    private var startElapsedMs: Long = 0
+    private var appContext: Context? = null
+    private var prefs: SharedPreferences? = null
+    private var shockDetector: ShockDetector? = null
+    private var odometer: TripOdometer? = null
 
     @SuppressLint("MissingPermission")
     fun start(context: Context) {
         if (_running.value) return
         val app = context.applicationContext
+        appContext = app
+        startElapsedMs = SystemClock.elapsedRealtime()
+        val store = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs = store
+        val seededTotal = store.getFloat(PREF_TOTAL_METERS, 0f).toDouble()
+        val odo = TripOdometer(totalSeedM = seededTotal)
+        odometer = odo
+        totalMeters = seededTotal
+        shockDetector = ShockDetector()
         // Primary: the fixed fleet multicast group. Fallback: the /24
         // subnet-directed broadcast (reliably delivered by consumer APs, unlike
         // the limited 255.255.255.255). Belt-and-suspenders → the fleet gets the
@@ -105,7 +154,13 @@ object TelemetryBroadcaster : SensorEventListener {
 
         val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         locationManager = lm
-        val onLoc = LocationListener { loc -> lastLocation = loc }
+        val onLoc =
+            LocationListener { loc ->
+                lastLocation = loc
+                odo.add(loc.latitude, loc.longitude)
+                tripMeters = odo.tripMeters
+                totalMeters = odo.totalMeters
+            }
         locationListener = onLoc
         lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_MIN_INTERVAL_MS, 0f, onLoc, Looper.getMainLooper())
         val onNmea = OnNmeaMessageListener { message, _ -> forward(message) }
@@ -115,11 +170,23 @@ object TelemetryBroadcaster : SensorEventListener {
         val sm = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sensorManager = sm
         sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        // Ambient light (slow) drives the fleet's day/night switch; linear
+        // acceleration (gravity removed, fast) feeds the shock detector.
+        sm.getDefaultSensor(Sensor.TYPE_LIGHT)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+        sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
 
         running.launch {
+            var tick = 0L
             while (isActive) {
                 send(Nmea.hdt(headingDeg))
                 send(Nmea.ztlm(pitchDeg, rollDeg, speedKph()))
+                if (tick % ENV_EVERY_TICKS == 0L) send(Nmea.zenv(luxValue))
+                if (tick % ODO_EVERY_TICKS == 0L) send(Nmea.zodo(tripMeters, totalMeters))
+                if (tick % HEALTH_EVERY_TICKS == 0L) {
+                    send(Nmea.zbcn(batteryPct(), fixQuality, satellites, uptimeSec()))
+                    persistTotal()
+                }
+                tick++
                 delay(HDT_INTERVAL_MS)
             }
         }
@@ -128,6 +195,7 @@ object TelemetryBroadcaster : SensorEventListener {
     }
 
     fun stop() {
+        persistTotal()
         nmeaListener?.let { locationManager?.removeNmeaListener(it) }
         locationListener?.let { locationManager?.removeUpdates(it) }
         sensorManager?.unregisterListener(this)
@@ -142,6 +210,7 @@ object TelemetryBroadcaster : SensorEventListener {
     /** GNSS sentence from the OS → forward verbatim and refresh the status text. */
     private fun forward(nmea: String) {
         send(if (nmea.endsWith("\n")) nmea else "$nmea\r\n")
+        updateFixHealth(nmea)
         val loc = lastLocation
         _status.value =
             buildString {
@@ -170,7 +239,14 @@ object TelemetryBroadcaster : SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR) return
+        when (event.sensor.type) {
+            Sensor.TYPE_ROTATION_VECTOR -> onRotationVector(event)
+            Sensor.TYPE_LIGHT -> luxValue = event.values[0].toDouble()
+            Sensor.TYPE_LINEAR_ACCELERATION -> onLinearAcceleration(event)
+        }
+    }
+
+    private fun onRotationVector(event: SensorEvent) {
         val rotation = FloatArray(ROTATION_MATRIX_SIZE)
         val orientation = FloatArray(ORIENTATION_SIZE)
         SensorManager.getRotationMatrixFromVector(rotation, event.values)
@@ -185,7 +261,39 @@ object TelemetryBroadcaster : SensorEventListener {
         rollDeg = Math.toDegrees(orientation[ROLL_INDEX].toDouble())
     }
 
+    /** Linear-accel magnitude (gravity already removed) → shock detector → `$ZSHK`. */
+    private fun onLinearAcceleration(event: SensorEvent) {
+        val v = event.values
+        val magnitude = sqrt((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).toDouble())
+        val nowMs = event.timestamp / NANOS_PER_MS
+        shockDetector?.sample(magnitude, nowMs)?.let { peakG -> send(Nmea.zshk(peakG)) }
+    }
+
     private fun speedKph(): Double = (lastLocation?.speed?.toDouble() ?: 0.0) * MPS_TO_KPH
+
+    /** Battery percent from the sticky ACTION_BATTERY_CHANGED intent (0 if unknown). */
+    private fun batteryPct(): Int {
+        val intent = appContext?.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return 0
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        return if (level < 0 || scale <= 0) 0 else level * BATTERY_SCALE_PCT / scale
+    }
+
+    private fun uptimeSec(): Long = (SystemClock.elapsedRealtime() - startElapsedMs) / MS_PER_SEC
+
+    private fun persistTotal() {
+        prefs?.edit()?.putFloat(PREF_TOTAL_METERS, totalMeters.toFloat())?.apply()
+    }
+
+    /** Pull fix-quality + satellite count out of a passing GGA for the heartbeat. */
+    private fun updateFixHealth(nmea: String) {
+        val body = nmea.trim().trimEnd('\r', '\n').substringBefore('*')
+        if (!body.startsWith("$")) return
+        val fields = body.drop(1).split(',')
+        if (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN) != "GGA") return
+        fields.getOrNull(GGA_FIX_QUALITY_FIELD)?.toIntOrNull()?.let { fixQuality = it }
+        fields.getOrNull(GGA_SATS_FIELD)?.toIntOrNull()?.let { satellites = it }
+    }
 
     override fun onAccuracyChanged(
         sensor: Sensor?,
