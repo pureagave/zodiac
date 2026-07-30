@@ -2,16 +2,17 @@
 
 What's worth doing next, drawn from `audit.md` (2026-04-26) and a few items surfaced in the M/L sweep. Critical and High audit items are all done — see `done.md`. The remaining items are real but none block shipping.
 
-## 2026 map migration (event-critical) — data staged 2026-07-30
+## 2026 map migration — DONE in code 2026-07-30 (commit `ca74867`), pending on-device verify
 
-The 2026 Innovate GIS is live and **the city moved ~583 m SW from 2025** (axis unchanged at 45.0°). 2025 coords at a 2026 event = every ego/nav ~583 m off. The 9 layers are downloaded to `assets/brc/2026/` (incl. new `dmz` + `gate_road`; no `art` — art/camps are BM-API and 2026-embargoed) and `GoldenSpike.Y2026` is captured. Remaining to flip the app to 2026:
+The 2026 Innovate GIS went live; **the city moved ~583 m SW** (axis unchanged at 45.0°). Migrated the base map to 2026 via a single active-year source of truth (`GoldenSpike.ACTIVE`/`ACTIVE_YEAR`). All green.
 
-- [ ] Point the base map at 2026: `PlayaMapRepository` default `year "2025"→"2026"`; confirm `GeoJsonParser` handles all 2026 layers (and decide whether to render the new `dmz`).
-- [ ] Flip the ~8 `GoldenSpike.Y2025` refs → `Y2026` (projection, nav, ops, address entry, sun times, DriverNight, PlayaMapPanel). Consider a single active-year indirection rather than N edits.
-- [ ] Update `NavTarget.MAN` → `Y2026`; re-resolve **HOME** (camp Heiau & 2:15) and **TEMPLE** (44.9°/762 m from the 2026 Man) on the 2026 grid.
-- [ ] **Verify ring radii** (Esplanade + A–L in `PlayaPoi`/`Camp`) against the 2026 street data — likely unchanged (template stable) but confirm before trusting address entry.
-- [ ] **art/camps — DECIDED (hide until 2026 releases):** point `DiscoveryRepository` at year 2026 (returns empty while embargoed → no markers; auto-populates on release) and `BmApiClient`'s projection at the active (2026) spike so released 2026 art lands correctly. No 2025 art shown on the 2026 map.
-- [ ] On-device verify the rendered city + a known address lands correctly before trusting it for navigation.
+- [x] Base map → 2026 (DI); art layer made optional in `PlayaMapRepository` (2026 GIS ships no `art`).
+- [x] Flipped all `Y2025` refs → `GoldenSpike.ACTIVE` (11 files incl. the fake-GPS center).
+- [x] `NavTarget.MAN`→ACTIVE, `TEMPLE`→2026 CPN; `Camp` HOME re-projected on the 2026 grid.
+- [x] Ring radii **verified unchanged** vs 2026 street data (B=979 m, G=1470 m match exactly).
+- [x] art/camps hidden until release (`DiscoveryRepository` year 2026 + `BmApiClient` projection on ACTIVE).
+- [ ] **On-device verify** the rendered 2026 city + type a known address (e.g. our camp 2:15 & H) and confirm it lands on the right corner — the one gate before trusting nav.
+- [ ] *(optional)* render the new `dmz` layer; final re-pull of the GIS closer to the event (dataset still being edited).
 
 ## Operational gap (do soonest)
 

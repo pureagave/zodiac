@@ -6,6 +6,14 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-30 — 2026 base-map migration DONE in code + Jetson bring-up prep + sound→DMX
+
+Big autonomous push (user away, "do all the things you can"):
+
+- **2026 map migration (commit `ca74867`, all gates green).** Flipped the cockpit from the 2025 city to 2026 via a single active-year source of truth: `GoldenSpike.ACTIVE = Y2026` / `ACTIVE_YEAR = 2026`. All ~11 `Y2025` refs now key off `ACTIVE` (incl. the fake-GPS center so it circles the 2026 city). `NavTarget.MAN`→ACTIVE, `TEMPLE`→the 2026 CPN, `Camp` HOME re-projected on the 2026 grid. Map + discovery year → 2026 (art stays hidden until BM releases 2026). `PlayaMapRepository` art layer made **optional** (2026 GIS has no `art.geojson` → empty, not a load failure). **Ring radii verified unchanged** vs 2026 street data (B=979 m, G=1470 m exact). Tests re-based onto ACTIVE. **Only gate left: on-device — type our camp (2:15 & H) and confirm it lands right.**
+- **Jetson bring-up prep (pre-hardware).** `DEPLOY.md` is now a full runbook: added a day-one **bring-up checklist**, a **DMX tracker §7**, and `scripts/install-ola.sh` (installs OLA, enables only the ftdidmx plugin, CPU-pins olad so the ML load can't jitter DMX, on-boot) — the DMX side had zero bring-up before. Software is 100% ready; the box just needs to boot (NVMe 512 GB en route).
+- **Phase 4 sound→DMX (commit `2d02297`).** `audio_bus.py` (`parse_zaud` + `ZaudListener` background UDP thread on the telemetry group) + the tracker's idle sound show (rms→dimmer, beat→flash; a live target always overrides). `--dmx` starts it, `--dmx-no-sound` opts out. +13 tests → 80 jetson green.
+
 ## 2026-07-30 — 2026 GIS data is live; city moved ~583 m (base-map migration staged)
 
 BM published the **2026 Innovate GIS** (`burningmantech/innovate-GIS-data` → `2026/GeoJSON`). Pulled all 9 layers into `assets/brc/2026/` (city_blocks, cpns, dmz *(new)*, gate_road *(new)*, plazas, street_lines, street_outlines, toilets, trash_fence — **no art**; art/camps are the BM-API side, 2026-embargoed). Derived the georeference from the data:
