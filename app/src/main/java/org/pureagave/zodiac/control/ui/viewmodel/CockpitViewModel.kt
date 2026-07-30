@@ -34,6 +34,7 @@ import org.pureagave.zodiac.control.core.ops.addressTarget
 import org.pureagave.zodiac.control.core.ops.contactsWithinRange
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.VehicleConnectionGateway
@@ -62,6 +63,12 @@ class CockpitViewModel(
      * tests / pre-wiring.
      */
     private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
+    /**
+     * Low-rate Sensor Hub channels (ambient light, health, odometer, shock) from
+     * the [NetworkLocationSource]. One bundled flow keeps the ViewModel to a
+     * single new dependency; empty default for tests / pre-wiring.
+     */
+    private val beaconSensors: StateFlow<BeaconSensors> = MutableStateFlow(BeaconSensors()),
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CockpitUiState())
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
@@ -91,6 +98,10 @@ class CockpitViewModel(
     /** Last art whose passing was announced, and the timer that clears its callout. */
     private var lastPassingUid: String? = null
     private var passingJob: Job? = null
+
+    /** Last shock count folded into the UI, and the timer that clears its alert banner. */
+    private var lastShockCount: Long = 0
+    private var shockAlertJob: Job? = null
 
     init {
         // One outer launch with sequential child launches: persisted prefs are
@@ -201,6 +212,29 @@ class CockpitViewModel(
                 // Thermal contacts for the DRIVER HUD (network feed or fake demo).
                 threatsFlow.collect { threats ->
                     _uiState.update { it.copy(threats = threats) }
+                }
+            }
+            launch {
+                // Low-rate Sensor Hub telemetry: ambient lux (auto-dim), health +
+                // odometer (footer), and shock events (transient alert per new bump).
+                beaconSensors.collect { sensors ->
+                    _uiState.update {
+                        it.copy(
+                            ambientLux = sensors.ambientLight?.lux,
+                            beaconHealth = sensors.beaconHealth,
+                            odometer = sensors.odometer,
+                        )
+                    }
+                    if (sensors.shockCount > lastShockCount) {
+                        lastShockCount = sensors.shockCount
+                        _uiState.update { it.copy(shockAlertG = sensors.lastShockG) }
+                        shockAlertJob?.cancel()
+                        shockAlertJob =
+                            viewModelScope.launch {
+                                delay(SHOCK_ALERT_MS)
+                                _uiState.update { it.copy(shockAlertG = null) }
+                            }
+                    }
                 }
             }
             // select() is a no-op when the saved type matches the registry's
@@ -533,6 +567,9 @@ private const val STREET_POPUP_MS: Long = 2_500L
 private const val PASS_RADIUS_M: Double = 120.0
 private const val PASSING_CALLOUT_MS: Long = 3_000L
 
+/** How long a shock/impact alert banner stays before it clears. */
+private const val SHOCK_ALERT_MS: Long = 2_000L
+
 class CockpitViewModelFactory(
     private val telemetryRepository: TelemetryRepository,
     private val vehicleGateway: VehicleConnectionGateway,
@@ -542,6 +579,7 @@ class CockpitViewModelFactory(
     private val fakeLocationSource: FakeLocationSource,
     private val poisFlow: StateFlow<List<PlayaPoi>> = MutableStateFlow(emptyList()),
     private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
+    private val beaconSensors: StateFlow<BeaconSensors> = MutableStateFlow(BeaconSensors()),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -555,6 +593,7 @@ class CockpitViewModelFactory(
                 fakeLocationSource = fakeLocationSource,
                 poisFlow = poisFlow,
                 threatsFlow = threatsFlow,
+                beaconSensors = beaconSensors,
             ) as T
         }
         error("Unknown ViewModel class: ${modelClass.name}")

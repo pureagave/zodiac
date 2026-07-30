@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -16,6 +17,7 @@ import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.telemetry.VehicleTelemetry
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
 import java.net.DatagramPacket
@@ -70,6 +72,11 @@ class NetworkLocationSource(
     // separately from the GPS fix for any consumer that wants tilt/speed.
     private val _telemetry = MutableStateFlow<VehicleTelemetry?>(null)
     val telemetry: StateFlow<VehicleTelemetry?> = _telemetry.asStateFlow()
+
+    // Low-rate Sensor Hub channels (ambient light, shock, health, odometer),
+    // bundled into one flow for the cockpit. Audio ($ZAUD) is not consumed here.
+    private val _beaconSensors = MutableStateFlow(BeaconSensors())
+    val beaconSensors: StateFlow<BeaconSensors> = _beaconSensors.asStateFlow()
 
     override suspend fun start() {
         job?.cancel()
@@ -183,6 +190,12 @@ class NetworkLocationSource(
             if (line.isEmpty()) return@forEach
             NmeaParser.parseHeadingDeg(line)?.let { lastHeadingDeg = it }
             NmeaParser.parseVehicleTelemetry(line)?.let { _telemetry.value = it }
+            NmeaParser.parseAmbientLight(line)?.let { al -> _beaconSensors.update { it.copy(ambientLight = al) } }
+            NmeaParser.parseBeaconHealth(line)?.let { h -> _beaconSensors.update { it.copy(beaconHealth = h) } }
+            NmeaParser.parseOdometer(line)?.let { o -> _beaconSensors.update { it.copy(odometer = o) } }
+            NmeaParser.parseShockEvent(line)?.let { s ->
+                _beaconSensors.update { it.copy(lastShockG = s.peakG, shockCount = it.shockCount + 1) }
+            }
             NmeaParser.parse(line)?.let {
                 lastFix = it
                 positionRxMs = nowMs()

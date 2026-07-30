@@ -20,6 +20,8 @@ import org.pureagave.zodiac.control.core.ops.toDriveTarget
 import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
+import org.pureagave.zodiac.control.core.telemetry.Odometer
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 
 data class CockpitUiState(
@@ -108,6 +110,21 @@ data class CockpitUiState(
      * instead of being silently swallowed by the fire-and-forget launch.
      */
     val commandError: String? = null,
+    /**
+     * Ambient light (lux) from the Sensor Hub's `$ZENV`, or null when no beacon
+     * is feeding it. Drives the auto-dim ([luxToBrightness] → window brightness);
+     * null leaves the tablet on its own system brightness.
+     */
+    val ambientLux: Double? = null,
+    /** Beacon health heartbeat (`$ZBCN`) for the ops footer; null until one arrives. */
+    val beaconHealth: BeaconHealth? = null,
+    /** Trip + lifetime odometer (`$ZODO`) for the ops footer; null until one arrives. */
+    val odometer: Odometer? = null,
+    /**
+     * Transient shock/impact alert (peak g from `$ZSHK`); non-null only while the
+     * alert banner is showing, then cleared on a timer by the ViewModel.
+     */
+    val shockAlertG: Double? = null,
 ) {
     companion object {
         const val DEFAULT_TILT_DEG: Int = 40

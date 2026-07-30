@@ -93,6 +93,15 @@ class ZodiacApplication : Application() {
      */
     val fakeLocationSource: FakeLocationSource by lazy { FakeLocationSource(scope = applicationScope) }
 
+    /**
+     * The shared-WiFi GPS + Sensor Hub receiver, hoisted out of the registry so
+     * the cockpit can also read its low-rate beacon channels ([beaconSensors]) —
+     * the same instance is used both in the routed source and by the ViewModel.
+     */
+    val networkLocationSource: NetworkLocationSource by lazy {
+        NetworkLocationSource(applicationContext = this, scope = applicationScope)
+    }
+
     val locationSource: RoutedLocationSource by lazy {
         val registry =
             LocationSourceRegistry(
@@ -108,7 +117,7 @@ class ZodiacApplication : Application() {
                             applicationContext = this,
                             scope = applicationScope,
                         ),
-                        NetworkLocationSource(applicationContext = this, scope = applicationScope),
+                        networkLocationSource,
                     ),
             )
         RoutedLocationSource(

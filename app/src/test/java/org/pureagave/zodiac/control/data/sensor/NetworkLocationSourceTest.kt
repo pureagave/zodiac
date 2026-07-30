@@ -116,6 +116,50 @@ class NetworkLocationSourceTest {
         }
 
     @Test
+    fun beacon_sensor_channels_populate_the_bundle() =
+        runBlocking {
+            val port = 10182
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                val ok =
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZENV,315.0"), port)
+                        sendUdp(nmea("ZBCN,87,1,9,3600"), port)
+                        sendUdp(nmea("ZODO,1234.5,987654.0"), port)
+                        val s = source.beaconSensors.value
+                        s.ambientLight?.lux == 315.0 && s.beaconHealth?.batteryPct == 87 && s.odometer?.tripMeters == 1234.5
+                    }
+                assertTrue("ZENV/ZBCN/ZODO should populate the beacon-sensors bundle", ok)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun a_shock_event_increments_the_count_and_records_its_peak() =
+        runBlocking {
+            val port = 10183
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                val ok =
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZSHK,2.35"), port)
+                        val s = source.beaconSensors.value
+                        s.shockCount >= 1 && s.lastShockG in 2.3..2.4
+                    }
+                assertTrue("a ZSHK frame should bump the shock count + record its peak", ok)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
     fun active_fix_goes_stale_when_position_stops_arriving() =
         runBlocking {
             val port = 10180
