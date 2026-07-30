@@ -2,6 +2,17 @@
 
 What's worth doing next, drawn from `audit.md` (2026-04-26) and a few items surfaced in the M/L sweep. Critical and High audit items are all done — see `done.md`. The remaining items are real but none block shipping.
 
+## 2026 map migration (event-critical) — data staged 2026-07-30
+
+The 2026 Innovate GIS is live and **the city moved ~583 m SW from 2025** (axis unchanged at 45.0°). 2025 coords at a 2026 event = every ego/nav ~583 m off. The 9 layers are downloaded to `assets/brc/2026/` (incl. new `dmz` + `gate_road`; no `art` — art/camps are BM-API and 2026-embargoed) and `GoldenSpike.Y2026` is captured. Remaining to flip the app to 2026:
+
+- [ ] Point the base map at 2026: `PlayaMapRepository` default `year "2025"→"2026"`; confirm `GeoJsonParser` handles all 2026 layers (and decide whether to render the new `dmz`).
+- [ ] Flip the ~8 `GoldenSpike.Y2025` refs → `Y2026` (projection, nav, ops, address entry, sun times, DriverNight, PlayaMapPanel). Consider a single active-year indirection rather than N edits.
+- [ ] Update `NavTarget.MAN` → `Y2026`; re-resolve **HOME** (camp Heiau & 2:15) and **TEMPLE** (44.9°/762 m from the 2026 Man) on the 2026 grid.
+- [ ] **Verify ring radii** (Esplanade + A–L in `PlayaPoi`/`Camp`) against the 2026 street data — likely unchanged (template stable) but confirm before trusting address entry.
+- [ ] **DECISION (art/camps):** `DiscoveryRepository`/`BmApiClient` still project about `Y2025` and fetch 2025 locations (2026 embargoed). On a 2026 base map, 2025 art would sit ~583 m off. Choose: hide art until BM releases 2026, or keep 2025 art on a 2025 origin (mixed) — don't silently misplace it.
+- [ ] On-device verify the rendered city + a known address lands correctly before trusting it for navigation.
+
 ## Operational gap (do soonest)
 
 - [ ] **M10** — pull in Timber, tag every source's lifecycle, write a rolling file under `getExternalFilesDir(...)`. Without logs we can't postmortem a tablet that misbehaves on the playa. Add a debug screen later that displays the last N lines.

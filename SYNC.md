@@ -6,6 +6,14 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-30 — 2026 GIS data is live; city moved ~583 m (base-map migration staged)
+
+BM published the **2026 Innovate GIS** (`burningmantech/innovate-GIS-data` → `2026/GeoJSON`). Pulled all 9 layers into `assets/brc/2026/` (city_blocks, cpns, dmz *(new)*, gate_road *(new)*, plazas, street_lines, street_outlines, toilets, trash_fence — **no art**; art/camps are the BM-API side, 2026-embargoed). Derived the georeference from the data:
+- **The Man moved ~583 m SW.** 2026 "The Man" CPN = `lon -119.20788409599999, lat 40.783247448000054` (2025 was `-119.20300709606865, 40.78696344894566`). Captured as `GoldenSpike.Y2026`. **Running 2025 coords at a 2026 event = every ego/nav ~583 m off** — this is why the update matters.
+- **City did NOT rotate:** every 2026 radial confirms the 12:00 axis is still **45.0°** (Temple 44.9°, 4:30 portal exactly 180.0°, 3:00 → 135.1°, 9:00 → 315.1°). So `BRC_AXIS_BEARING_DEG` is unchanged.
+
+Staged only (build green, nothing wired yet — `PlayaMapRepository` still defaults to "2025"). Full flip is an event-critical task in `tasks/open.md` with the two real decisions flagged: (1) a single active-year indirection vs flipping ~8 `Y2025` refs; (2) **art/camps** — 2025 locations projected about `Y2025` would sit ~583 m off a 2026 base map, so either hide art until BM releases 2026 or keep it on a 2025 origin (mixed). Wants on-device verification (a known address must land right) before trusting it for nav.
+
 ## 2026-07-30 — Phase 3a: tablet consumes beacon sensors + ambient-light auto-dim
 
 Tablet side of the sensor channels (commit `20f7f8a`) — plumbing + the auto-dim,
