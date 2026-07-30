@@ -47,6 +47,11 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
     p.add_argument("--dmx-url", default="http://127.0.0.1:9090", help="olad HTTP API base URL")
     p.add_argument("--dmx-pan-center", type=float, default=270.0, help="fixture pan (deg) for az=0")
     p.add_argument("--dmx-pan-gain", type=float, default=1.0, help="fixture pan deg per az deg")
+    p.add_argument(
+        "--dmx-no-sound",
+        action="store_true",
+        help="disable the idle sound-reactive light show (ignore the beacon's $ZAUD)",
+    )
     p.add_argument("--once", action="store_true", help="emit one frame and exit")
     p.add_argument("--verbose", "-v", action="store_true")
     return p.parse_args(argv)
@@ -68,6 +73,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     tracker = None
     dmx_sink = None
+    zaud = None
     if args.dmx != "none":
         from .dmx import build_sink
         from .tracker import Tracker, TrackerConfig
@@ -76,6 +82,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             TrackerConfig(pan_center_deg=args.dmx_pan_center, pan_gain=args.dmx_pan_gain)
         )
         dmx_sink = build_sink(args.dmx, universe=args.dmx_universe, base_url=args.dmx_url)
+        if not args.dmx_no_sound:
+            from .audio_bus import ZaudListener
+
+            zaud = ZaudListener()
+            zaud.start()  # idle sound show pulses the head to the beacon's $ZAUD
 
     running = {"go": True}
 
@@ -104,7 +115,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(f"[{t:7.2f}s] {len(threats):2d} contacts -> {sent} targets  {frame}", flush=True)
             if tracker is not None and dmx_sink is not None:
                 dt = 1.0e9 if args.once else (period if last_t is None else t - last_t)
-                tf = tracker.update(threats, dt)
+                audio = zaud.latest() if zaud is not None else None
+                tf = tracker.update(threats, dt, audio)
                 dmx_sink.send(tf.channels)
                 if args.verbose:
                     aim = f"id={tf.target_id}" if tf.target_id is not None else "idle"
@@ -122,6 +134,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         if tracker is not None and dmx_sink is not None:
             dmx_sink.send(tracker.park().channels)  # rest + black out the head
             dmx_sink.close()
+        if zaud is not None:
+            zaud.close()
         detector.close()
         broadcaster.close()
     return 0

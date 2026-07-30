@@ -118,5 +118,48 @@ class TrackerHysteresisTest(unittest.TestCase):
         self.assertEqual(2, f.target_id)  # collision wins regardless of size/stickiness
 
 
+class TrackerSoundReactiveTest(unittest.TestCase):
+    def _audio(self, rms, peak, beat):
+        from zvision.audio_bus import AudioLevel
+
+        return AudioLevel(rms=rms, peak=peak, beat=beat)
+
+    def test_idle_pulses_to_loud_sound(self):
+        trk = Tracker(TrackerConfig())  # gain 4.0
+        f = trk.update([], dt=1.0e9, audio=self._audio(0.5, 0.6, False))
+        self.assertEqual(255, f.dimmer)  # 0.5*4 clamps to full
+        self.assertIsNone(f.target_id)
+
+    def test_a_beat_flashes_full(self):
+        trk = Tracker(TrackerConfig())
+        f = trk.update([], dt=1.0e9, audio=self._audio(0.05, 0.1, True))
+        self.assertEqual(255, f.dimmer) # beat overrides the quiet rms
+
+    def test_silence_stays_dark(self):
+        trk = Tracker(TrackerConfig())
+        f = trk.update([], dt=1.0e9, audio=self._audio(0.001, 0.002, False))
+        self.assertEqual(0, f.dimmer) # below the silence floor
+
+    def test_quiet_music_scales_the_dimmer(self):
+        trk = Tracker(TrackerConfig(sound_gain=1.0))
+        f = trk.update([], dt=1.0e9, audio=self._audio(0.5, 0.6, False))
+        self.assertEqual(127, f.dimmer) # 0.5 * 255
+
+    def test_a_live_target_ignores_sound(self):
+        trk = Tracker(TrackerConfig())
+        f = trk.update(
+            [DriverThreat(rel_az_deg=0.0, size=0.5, id=1)],
+            dt=1.0e9,
+            audio=self._audio(0.0, 0.0, False), # dead silence
+        )
+        self.assertEqual(255, f.dimmer) # full track dimmer, not the sound level
+        self.assertEqual(1, f.target_id)
+
+    def test_disabled_stays_dark_when_idle(self):
+        trk = Tracker(TrackerConfig(sound_reactive=False))
+        f = trk.update([], dt=1.0e9, audio=self._audio(0.9, 1.0, True))
+        self.assertEqual(0, f.dimmer) # sound ignored entirely
+
+
 if __name__ == "__main__":
     unittest.main()

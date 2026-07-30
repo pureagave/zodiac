@@ -14,9 +14,12 @@ proven with ``--dmx fake`` before the real dongle and fixture ever arrive.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from .threat import DriverThreat
+
+if TYPE_CHECKING:  # runtime-free: keep the socket-backed audio_bus out of this pure module
+    from .audio_bus import AudioLevel
 
 DMX_MAX = 255
 DMX16_MAX = 65535
@@ -106,6 +109,15 @@ class TrackerConfig:
     dimmer_collision: int = 255
     dimmer_idle: int = 0
 
+    # Sound-reactive light show when idle (no target): the beacon's $ZAUD rms
+    # drives the master dimmer and a detected beat flashes it, so the head pulses
+    # to the music between detections. A live target always overrides this with
+    # the full track dimmer — reactivity never compromises tracking.
+    sound_reactive: bool = True
+    sound_gain: float = 4.0 # rms(0..1) * gain -> brightness fraction, then clamped
+    sound_silence: float = 0.03 # below this scaled level, stay dark (true quiet)
+    beat_dimmer: int = 255 # flash to this on a detected beat
+
     # Hysteresis: while following a contact, only switch to a different one when
     # it's at least this much nearer (by size). Stops the head ping-ponging
     # between two contacts at similar range. Collisions bypass this.
@@ -146,12 +158,22 @@ class Tracker:
         self._pan_deg = self.cfg.pan_center_deg if park_pan != park_pan else park_pan
         self._tilt_deg = self.cfg.tilt_far_deg if park_tilt != park_tilt else park_tilt
 
-    def update(self, threats: List[DriverThreat], dt: float) -> TrackerFrame:
+    def update(
+        self,
+        threats: List[DriverThreat],
+        dt: float,
+        audio: "Optional[AudioLevel]" = None,
+    ) -> TrackerFrame:
         target = self._pick(threats)
         if target is None:
             # Nobody to follow: hold aim (a random idle sweep would read as a
-            # false detection) and black out the head.
-            self._dimmer = self.cfg.dimmer_idle
+            # false detection). Pulse to the music if we have a sound feed,
+            # otherwise black out the head.
+            self._dimmer = (
+                self._sound_dimmer(audio)
+                if audio is not None and self.cfg.sound_reactive
+                else self.cfg.dimmer_idle
+            )
         else:
             tgt_pan = _clamp(
                 self.cfg.pan_center_deg + target.rel_az_deg * self.cfg.pan_gain,
@@ -178,6 +200,17 @@ class Tracker:
         self._dimmer = self.cfg.dimmer_idle
         self._current_id = None
         return self._frame(None)
+
+    def _sound_dimmer(self, audio: "AudioLevel") -> int:
+        """Master-dimmer level for the idle sound show: a detected beat flashes to
+        [beat_dimmer]; otherwise rms scales the brightness, going fully dark below
+        the silence floor so a quiet room isn't a dimly-lit head."""
+        if audio.beat:
+            return self.cfg.beat_dimmer
+        level = audio.rms * self.cfg.sound_gain
+        if level < self.cfg.sound_silence:
+            return 0
+        return int(_clamp(level, 0.0, 1.0) * DMX_MAX)
 
     def _pick(self, threats: List[DriverThreat]) -> Optional[DriverThreat]:
         if not threats:
