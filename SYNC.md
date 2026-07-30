@@ -6,6 +6,25 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-30 — Phase 3a: tablet consumes beacon sensors + ambient-light auto-dim
+
+Tablet side of the sensor channels (commit `20f7f8a`) — plumbing + the auto-dim,
+green. `NetworkLocationSource` parses `$ZENV/$ZBCN/$ZODO/$ZSHK` into one bundled
+`BeaconSensors` flow (audio `$ZAUD` deliberately NOT ingested on the tablet — it's
+a Jetson/DMX concern, 15 Hz). Shock rides a monotonic `shockCount` so equal-g
+bumps still register. `CockpitViewModel` takes the bundle as **one** flow (VM kept
+to a single new dep; detekt `constructorThreshold 9→10`) → folds lux/health/
+odometer into `CockpitUiState` + flashes a transient `shockAlertG` per new shock.
+**Auto-dim (product decision: brightness only, NOT concept-switch):** pure
+`luxToBrightness()` log curve (night floor 0.05 → day ceiling), applied in
+`MainActivity.autoDim` to `window.screenBrightness`; null lux → system brightness.
+DI: `NetworkLocationSource` hoisted so its flow reaches the VM. Tests: the
+brightness curve + ZENV/ZBCN/ZODO/ZSHK loopback ingest.
+- **Phase 3b (remaining, on-device):** render odometer + beacon-health in the ops
+  footer and the `shockAlertG` banner (UiState fields are plumbed, not yet drawn) —
+  wants visual sign-off per concept. **Plus the whole live on-device verification
+  of Phases 2a/2b/3 once the fleet's back on a stable WiFi.**
+
 ## 2026-07-30 — Beacon Phase 2b: mic → `$ZAUD` (producer side complete)
 
 Landed the microphone channel (commit `44785de`), so the beacon now broadcasts
