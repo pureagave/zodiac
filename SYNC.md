@@ -6,6 +6,39 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-30 — Beacon sensor-channel expansion (sound/light/shock/health/odometer) — Phases 1 + 2a
+
+Extending the Sensor Hub (XCover beacon) from GPS+heading+tilt into a broader
+fleet sensor: five new proprietary sentences, same `$ZTLM` pattern (read sensor →
+format → multicast bus → consumer). User picked all five: **sound, light, shock,
+beacon-health, track/mileage.** Building in green phased commits, unit-tested
+without the devices (on-device verify deferred — network in flux during a move).
+
+- **Phase 1 (commit `d23050a`) — the wire contract, both sides, zero runtime change.**
+  `$ZAUD,rms,peak,beat` (sound) · `$ZENV,lux` (light) · `$ZSHK,peakG` (shock,
+  event-driven) · `$ZBCN,batt,fixQ,sats,uptimeS` (health) · `$ZODO,tripM,totalM`
+  (odometer). Beacon `Nmea.kt` builders (Locale.US + shared checksum); app
+  `NmeaParser` parsers with isFinite/range guards + a shared `fieldsForType()` /
+  `finiteAt()` helper (refactored `parseVehicleTelemetry` onto it); five
+  `core/telemetry` models. Tests both sides. detekt `thresholdInObjects: 18` for
+  the growing central parser (flagged: split the proprietary Z-sentences if it
+  grows further).
+- **Phase 2a (commit `c88ccef`) — beacon reads the four no-permission sensors.**
+  `TYPE_LIGHT`→ZENV; `TYPE_LINEAR_ACCELERATION`→`ShockDetector` (threshold +
+  refractory, pure/tested)→event ZSHK; battery (sticky `ACTION_BATTERY_CHANGED`)
+  + fix-quality/sats (from the GGA passthrough) + uptime→ZBCN; `TripOdometer`
+  (haversine + 5 m jitter floor, pure/tested; total persisted in SharedPreferences)
+  →ZODO. Slow channels ride the 250 ms loop on a tick divisor; `onSensorChanged`
+  split per sensor. Full beacon gate green.
+- **Still to do:** **Phase 2b** — mic/`$ZAUD` (needs `RECORD_AUDIO` + manifest
+  `foregroundServiceType` + runtime request + `AudioRecord` RMS/beat, isolated
+  because it touches permissions). **Phase 3** — tablet consumers + UI (ingest the
+  5 sentences into `NetworkLocationSource` StateFlows → VM → UI: **auto day/night
+  from lux [product decision: auto-switch vs suggest], beacon-health + odometer in
+  the ops footer, shock alert**; mind the VM `constructorThreshold: 9` — bundle the
+  new sources). **Phase 4** — Jetson `$ZAUD`→DMX sound-reactive tracker (Python).
+  **On-device verification of all of it is pending a stable network.**
+
 ## 2026-07-29 — DMX tracker light software (`zvision` drives a moving head)
 
 Built the edge-box's second output: a moving-head "tracker" light that physically
