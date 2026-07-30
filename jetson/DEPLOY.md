@@ -8,6 +8,20 @@ The design goal: **every stage is verifiable on its own.** You prove the network
 path with `--source fake` before a camera is ever attached, so if something
 breaks later you know it's the camera/model, not the bus.
 
+## Bring-up checklist (day the NVMe arrives)
+
+Each box is proven before the next; each maps to a section below.
+
+- [ ] **Flash** JetPack 6.x to the NVMe, first-boot Ubuntu, `nvpmodel -m 0` (MAXN Super) — §1
+- [ ] **Network**: Ethernet → travel router; note the Jetson's IP (`--iface-ip`) — §2
+- [ ] **Install**: `sudo jetson/scripts/install.sh` (zvision service + config) — §3
+- [ ] **Prove the bus, no camera**: `python3 -m zvision --source fake -v` → tablet DRIVER HUD shows the moving demo — §4 ✅ this is the big one
+- [ ] **Attach camera(s)**: `v4l2-ctl --list-devices`, then `--source thermal` and walk in front of it — §5
+- [ ] **Make permanent**: set the real source in `/etc/default/zvision`, `systemctl restart zvision` — §6
+- [ ] *(optional, any time)* **DMX light**: `sudo jetson/scripts/install-ola.sh`, patch the dongle, `--dmx ola` — §7
+
+Prereqs already in hand: Jetson kit + PSU, Lepton+PureThermal, RGB cam, DMX dongle+cables+head, router. Still needed before a *field* install (not for bench bring-up): germanium thermal window, vents, vibration pads, short USB cables. Software is 100% ready — the box just needs to boot.
+
 ---
 
 ## 0. What you're building
