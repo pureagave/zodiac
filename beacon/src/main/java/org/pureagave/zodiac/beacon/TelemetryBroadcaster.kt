@@ -1,10 +1,12 @@
 package org.pureagave.zodiac.beacon
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.hardware.GeomagneticField
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -14,11 +16,15 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.location.OnNmeaMessageListener
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +39,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.MulticastSocket
+import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
@@ -87,6 +94,13 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val PREFS_NAME = "zodiac_beacon"
     private const val PREF_TOTAL_METERS = "odometer_total_m"
 
+    // Mic capture: 16 kHz mono 16-bit, 1024-sample frames → ~15 Hz $ZAUD frames,
+    // fast enough for sound-reactive lighting. Only a level/beat number leaves the
+    // phone — no audio is stored or transmitted.
+    private const val AUDIO_SAMPLE_RATE = 16_000
+    private const val AUDIO_FRAME_SAMPLES = 1024
+    private const val BYTES_PER_SAMPLE = 2
+
     private val _status = MutableStateFlow("Idle")
     val status: StateFlow<String> = _status.asStateFlow()
     private val _running = MutableStateFlow(false)
@@ -125,6 +139,7 @@ object TelemetryBroadcaster : SensorEventListener {
     private var prefs: SharedPreferences? = null
     private var shockDetector: ShockDetector? = null
     private var odometer: TripOdometer? = null
+    private var audioRecord: AudioRecord? = null
 
     @SuppressLint("MissingPermission")
     fun start(context: Context) {
@@ -174,6 +189,7 @@ object TelemetryBroadcaster : SensorEventListener {
         // acceleration (gravity removed, fast) feeds the shock detector.
         sm.getDefaultSensor(Sensor.TYPE_LIGHT)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
         sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        startAudioCapture(app, running)
 
         running.launch {
             var tick = 0L
@@ -201,6 +217,11 @@ object TelemetryBroadcaster : SensorEventListener {
         sensorManager?.unregisterListener(this)
         scope?.cancel()
         scope = null
+        audioRecord?.let { rec ->
+            runCatching { rec.stop() }
+            rec.release()
+        }
+        audioRecord = null
         socket?.close()
         socket = null
         _running.value = false
@@ -270,6 +291,52 @@ object TelemetryBroadcaster : SensorEventListener {
     }
 
     private fun speedKph(): Double = (lastLocation?.speed?.toDouble() ?: 0.0) * MPS_TO_KPH
+
+    /**
+     * Start the mic capture loop that emits `$ZAUD` for sound-reactive lighting.
+     * RECORD_AUDIO is optional: if it's not granted (or the device has no usable
+     * mic), we simply skip it and every other channel keeps broadcasting. Only a
+     * level/beat number is emitted — no audio is recorded or transmitted.
+     */
+    private fun startAudioCapture(
+        app: Context,
+        loopScope: CoroutineScope,
+    ) {
+        if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        val record = createAudioRecord() ?: return
+        audioRecord = record
+        val levels = AudioLevels()
+        record.startRecording()
+        loopScope.launch {
+            val buf = ShortArray(AUDIO_FRAME_SAMPLES)
+            while (isActive) {
+                val n = runCatching { record.read(buf, 0, buf.size) }.getOrDefault(-1)
+                if (n <= 0) break // stopped/released or read error → end the loop
+                val f = levels.analyze(buf, n)
+                send(Nmea.zaud(f.rms, f.peak, f.beat))
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission") // caller checks RECORD_AUDIO before invoking
+    private fun createAudioRecord(): AudioRecord? {
+        val minBuf = AudioRecord.getMinBufferSize(AUDIO_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val record =
+            runCatching {
+                AudioRecord(
+                    MediaRecorder.AudioSource.MIC,
+                    AUDIO_SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT,
+                    max(minBuf, AUDIO_FRAME_SAMPLES * BYTES_PER_SAMPLE),
+                )
+            }.getOrNull()
+        if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
+            record?.release()
+            return null
+        }
+        return record
+    }
 
     /** Battery percent from the sticky ACTION_BATTERY_CHANGED intent (0 if unknown). */
     private fun batteryPct(): Int {

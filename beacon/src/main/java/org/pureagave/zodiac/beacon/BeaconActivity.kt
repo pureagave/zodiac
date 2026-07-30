@@ -90,7 +90,9 @@ class BeaconActivity : AppCompatActivity() {
     }
 
     private fun requestNeededPermissions() {
-        val needed = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        // RECORD_AUDIO is optional — deny it and everything else still broadcasts;
+        // only the $ZAUD sound level goes silent (see TelemetryBroadcaster).
+        val needed = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             needed += Manifest.permission.POST_NOTIFICATIONS
         }
