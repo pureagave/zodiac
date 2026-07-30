@@ -647,8 +647,8 @@ class CockpitViewModelTest {
                 runCurrent()
                 val centerFix = vm.uiState.value.egoFix
                 assertNotNull(centerFix)
-                assertEquals(GoldenSpike.Y2025.lat, centerFix!!.location.lat, 1e-9)
-                assertEquals(GoldenSpike.Y2025.lon, centerFix.location.lon, 1e-9)
+                assertEquals(GoldenSpike.ACTIVE.lat, centerFix!!.location.lat, 1e-9)
+                assertEquals(GoldenSpike.ACTIVE.lon, centerFix.location.lon, 1e-9)
 
                 // Teleporting north pushes an immediate fix at a higher latitude.
                 vm.nudgeFakeGps(0.0, 500.0)
@@ -665,8 +665,8 @@ class CockpitViewModelTest {
                 runCurrent()
                 val resetFix = vm.uiState.value.egoFix
                 assertNotNull(resetFix)
-                assertEquals(GoldenSpike.Y2025.lat, resetFix!!.location.lat, 1e-9)
-                assertEquals(GoldenSpike.Y2025.lon, resetFix.location.lon, 1e-9)
+                assertEquals(GoldenSpike.ACTIVE.lat, resetFix!!.location.lat, 1e-9)
+                assertEquals(GoldenSpike.ACTIVE.lon, resetFix.location.lon, 1e-9)
             } finally {
                 store.clear()
             }
@@ -894,7 +894,7 @@ private class ControllablePlayaMapRepository : PlayaMapRepository {
  * tests use — enough for routeTo to produce a real in-city route.
  */
 private fun routableMap(): PlayaMap {
-    val projection = PlayaProjection(GoldenSpike.Y2025)
+    val projection = PlayaProjection(GoldenSpike.ACTIVE)
 
     fun polarLatLon(
         radiusM: Double,

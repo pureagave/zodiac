@@ -185,7 +185,7 @@ private const val TILT_ZOOM_BOOST: Double = 1.0
 
 /** The perspective tilt angle applied in TILT mode (fixed; see the graphicsLayer note). */
 private const val TILT_ANGLE_DEG: Float = 45f
-private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
+private val PLAYA_PROJECTION = PlayaProjection(GoldenSpike.ACTIVE)
 
 /**
  * Shared BRC map viewport for both concepts (RADAR / MAP). Wraps the existing

@@ -13,6 +13,7 @@ import org.pureagave.zodiac.control.burnin.BurnInConfig
 import org.pureagave.zodiac.control.burnin.BurnInConfigStore
 import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.core.connection.TransportType
+import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.data.FakeTelemetryRepository
 import org.pureagave.zodiac.control.data.RoutedVehicleGateway
@@ -73,6 +74,7 @@ class ZodiacApplication : Application() {
         AssetsPlayaMapRepository(
             assets = assets,
             binaryCache = PlayaMapBinaryCache(cacheDir = cacheDir),
+            year = GoldenSpike.ACTIVE_YEAR.toString(),
         )
     }
 
@@ -172,9 +174,11 @@ class ZodiacApplication : Application() {
             source = BmApiClient(),
             scope = applicationScope,
             cacheDir = cacheDir,
-            // 2025 = latest year with released locations; 2026 locations are
-            // embargoed until ~3 weeks pre-event (and hidden from users per ToS).
-            year = 2025,
+            // Active year. 2026 art/camp locations are embargoed until ~3 weeks
+            // pre-event, so this returns nothing until BM releases them — no markers
+            // now, auto-populating (correctly placed) on release. Matches the 2026
+            // base map; no 2025 art shown ~583 m off the moved city.
+            year = GoldenSpike.ACTIVE_YEAR,
         )
     }
 }

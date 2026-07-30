@@ -56,7 +56,7 @@ fun headingGuidanceBar(
     aim: LatLon? = null,
     modifier: Modifier = Modifier,
 ) {
-    val projection = remember { PlayaProjection(GoldenSpike.Y2025) }
+    val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
     // Label + distance refer to the final destination; the chevron steers toward
     // [aim] — the next route corner (e.g. the 2:30 entrance) — falling back to the
     // destination itself when there's no street route.

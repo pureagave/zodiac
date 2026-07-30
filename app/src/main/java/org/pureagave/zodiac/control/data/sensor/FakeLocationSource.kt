@@ -30,7 +30,7 @@ import kotlin.math.sin
  */
 class FakeLocationSource(
     private val scope: CoroutineScope,
-    private val center: LatLon = GoldenSpike.Y2025,
+    private val center: LatLon = GoldenSpike.ACTIVE,
     private val tickMillis: Long = DEFAULT_TICK_MS,
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.FAKE

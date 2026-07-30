@@ -17,4 +17,13 @@ object GoldenSpike {
      * task (art/camp POIs stay 2025 until BM releases 2026 locations).
      */
     val Y2026: LatLon = LatLon(lon = -119.20788409599999, lat = 40.783247448000054)
+
+    /**
+     * The BRC year the cockpit is deployed for, and its Golden Spike origin — the
+     * single place to flip when the city moves. Every projection, nav target, and
+     * the bundled map layers key off these. Axis bearing is stable (still 45°, see
+     * [org.pureagave.zodiac.control.core.navigation.BRC_AXIS_BEARING_DEG_2025]).
+     */
+    val ACTIVE: LatLon = Y2026
+    const val ACTIVE_YEAR: Int = 2026
 }

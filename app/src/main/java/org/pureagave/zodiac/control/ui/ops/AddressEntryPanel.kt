@@ -64,7 +64,7 @@ fun addressEntryPanel(
     onDriveToAddress: (ClockTime, String) -> Unit,
     onClose: () -> Unit,
 ) {
-    val projection = remember { PlayaProjection(GoldenSpike.Y2025) }
+    val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
     var stage by remember { mutableStateOf(Stage.CLOCK) }
     var entry by remember { mutableStateOf("") }
     var clock by remember { mutableStateOf<ClockTime?>(null) }

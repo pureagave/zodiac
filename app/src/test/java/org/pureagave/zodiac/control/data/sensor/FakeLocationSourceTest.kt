@@ -13,7 +13,7 @@ import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeLocationSourceTest {
-    private val projection = PlayaProjection(GoldenSpike.Y2025)
+    private val projection = PlayaProjection(GoldenSpike.ACTIVE)
 
     @Test
     fun start_emits_active_within_one_tick() =

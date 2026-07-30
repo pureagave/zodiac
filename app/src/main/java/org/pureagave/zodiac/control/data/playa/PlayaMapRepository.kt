@@ -135,8 +135,14 @@ class AssetsPlayaMapRepository(
             plazas = GeoJsonParser.parsePolygons(read("plazas"), nameKey = "Name"),
             toilets = GeoJsonParser.parsePolygons(read("toilets"), nameKey = "ref"),
             cpns = GeoJsonParser.parsePoints(read("cpns"), nameKey = "NAME", kindKey = "TYPE"),
-            art = GeoJsonParser.parsePoints(read("art"), nameKey = "name", kindKey = "program"),
+            // Art is optional: the 2026 GIS ships no art layer (art comes from the
+            // BM API, embargoed until ~3 weeks pre-event), so a missing file is
+            // an empty layer, not a load failure.
+            art = readOptional("art")?.let { GeoJsonParser.parsePoints(it, nameKey = "name", kindKey = "program") }.orEmpty(),
         )
 
     private fun read(name: String): String = reader.read(year, name)
+
+    /** [read], but null when the layer isn't bundled for this year (e.g. no 2026 art). */
+    private fun readOptional(name: String): String? = runCatching { reader.read(year, name) }.getOrNull()
 }

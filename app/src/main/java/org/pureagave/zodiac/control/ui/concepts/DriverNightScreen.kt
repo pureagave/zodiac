@@ -80,7 +80,7 @@ fun driverNightScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val typeface = remember { ResourcesCompat.getFont(context, R.font.orbitron) }
-    val projection = remember { PlayaProjection(GoldenSpike.Y2025) }
+    val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
     val threats = state.threats
 
     // Relative bearing to the active target, clamped onto the heading arch.

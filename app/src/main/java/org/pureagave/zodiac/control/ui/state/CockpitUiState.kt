@@ -175,4 +175,4 @@ data class CockpitUiState(
 }
 
 /** Shared projection for drive-to resolution (nearest-toilet distances). */
-private val NAV_PROJECTION = PlayaProjection(GoldenSpike.Y2025)
+private val NAV_PROJECTION = PlayaProjection(GoldenSpike.ACTIVE)

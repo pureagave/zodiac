@@ -79,7 +79,7 @@ class CockpitViewModel(
      * because the model is large and never has to round-trip through the
      * Composable layer — only the resulting [NavigationCue] does.
      */
-    private val projection = PlayaProjection(GoldenSpike.Y2025)
+    private val projection = PlayaProjection(GoldenSpike.ACTIVE)
     private var cityModel: PlayaCityModel? = null
 
     /**

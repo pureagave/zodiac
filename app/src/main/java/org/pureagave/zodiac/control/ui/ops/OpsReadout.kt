@@ -55,7 +55,7 @@ fun opsReadout(
     modifier: Modifier = Modifier,
 ) {
     val zone = remember { ZoneId.of("America/Los_Angeles") }
-    val projection = remember { PlayaProjection(GoldenSpike.Y2025) }
+    val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
 
     var now by remember { mutableStateOf(ZonedDateTime.now(zone)) }
     LaunchedEffect(zone) {
@@ -64,7 +64,7 @@ fun opsReadout(
             delay(TICK_MS)
         }
     }
-    val sun = remember(now.toLocalDate()) { sunTimes(now.toLocalDate(), GoldenSpike.Y2025.lat, GoldenSpike.Y2025.lon, zone) }
+    val sun = remember(now.toLocalDate()) { sunTimes(now.toLocalDate(), GoldenSpike.ACTIVE.lat, GoldenSpike.ACTIVE.lon, zone) }
     // Distance to the final destination; the arrow points at [aim] (the next
     // route corner) so it agrees with the guidance chevron.
     val aimLoc = aim ?: target?.location

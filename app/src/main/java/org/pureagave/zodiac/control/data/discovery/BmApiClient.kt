@@ -29,7 +29,7 @@ interface DiscoverySource {
 class BmApiClient(
     private val apiKey: String = BuildConfig.BM_API_KEY,
     private val baseUrl: String = "https://api.burningman.org",
-    private val projection: PlayaProjection = PlayaProjection(GoldenSpike.Y2025),
+    private val projection: PlayaProjection = PlayaProjection(GoldenSpike.ACTIVE),
 ) : DiscoverySource {
     override suspend fun fetch(year: Int): List<PlayaPoi> =
         withContext(Dispatchers.IO) {
