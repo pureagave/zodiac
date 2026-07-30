@@ -10,7 +10,7 @@ The 2026 Innovate GIS is live and **the city moved ~583 m SW from 2025** (axis u
 - [ ] Flip the ~8 `GoldenSpike.Y2025` refs → `Y2026` (projection, nav, ops, address entry, sun times, DriverNight, PlayaMapPanel). Consider a single active-year indirection rather than N edits.
 - [ ] Update `NavTarget.MAN` → `Y2026`; re-resolve **HOME** (camp Heiau & 2:15) and **TEMPLE** (44.9°/762 m from the 2026 Man) on the 2026 grid.
 - [ ] **Verify ring radii** (Esplanade + A–L in `PlayaPoi`/`Camp`) against the 2026 street data — likely unchanged (template stable) but confirm before trusting address entry.
-- [ ] **DECISION (art/camps):** `DiscoveryRepository`/`BmApiClient` still project about `Y2025` and fetch 2025 locations (2026 embargoed). On a 2026 base map, 2025 art would sit ~583 m off. Choose: hide art until BM releases 2026, or keep 2025 art on a 2025 origin (mixed) — don't silently misplace it.
+- [ ] **art/camps — DECIDED (hide until 2026 releases):** point `DiscoveryRepository` at year 2026 (returns empty while embargoed → no markers; auto-populates on release) and `BmApiClient`'s projection at the active (2026) spike so released 2026 art lands correctly. No 2025 art shown on the 2026 map.
 - [ ] On-device verify the rendered city + a known address lands correctly before trusting it for navigation.
 
 ## Operational gap (do soonest)
