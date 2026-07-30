@@ -2,6 +2,11 @@ package org.pureagave.zodiac.control.data.sensor.nmea
 
 import org.pureagave.zodiac.control.core.geo.LatLon
 import org.pureagave.zodiac.control.core.sensor.GpsFix
+import org.pureagave.zodiac.control.core.telemetry.AmbientLight
+import org.pureagave.zodiac.control.core.telemetry.AudioLevel
+import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
+import org.pureagave.zodiac.control.core.telemetry.Odometer
+import org.pureagave.zodiac.control.core.telemetry.ShockEvent
 import org.pureagave.zodiac.control.core.telemetry.VehicleTelemetry
 
 /**
@@ -55,15 +60,80 @@ object NmeaParser {
      * [VehicleTelemetry], or null for any other/invalid sentence.
      */
     fun parseVehicleTelemetry(line: String): VehicleTelemetry? {
-        val sentence = line.trim().trimEnd('\r', '\n')
-        if (!sentence.startsWith("$") || !checksumValid(sentence)) return null
-        val fields = sentence.substringBefore('*').drop(1).split(',')
-        if (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN) != "TLM") return null
-        val pitch = fields.getOrNull(TLM_PITCH)?.toDoubleOrNull()?.takeIf { it.isFinite() }
-        val roll = fields.getOrNull(TLM_ROLL)?.toDoubleOrNull()?.takeIf { it.isFinite() }
-        val speed = fields.getOrNull(TLM_SPEED)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+        val fields = fieldsForType(line, "TLM") ?: return null
+        val pitch = fields.finiteAt(TLM_PITCH)
+        val roll = fields.finiteAt(TLM_ROLL)
+        val speed = fields.finiteAt(TLM_SPEED)
         return if (pitch != null && roll != null && speed != null) {
             VehicleTelemetry(pitchDeg = pitch, rollDeg = roll, speedKph = speed)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Parse `$ZAUD,rms,peak,beat*cs` (ambient sound for reactive lighting) into an
+     * [AudioLevel], or null for any other/invalid sentence. Levels must be finite
+     * and non-negative; `beat` is any int (0 = no onset).
+     */
+    fun parseAudioLevel(line: String): AudioLevel? {
+        val fields = fieldsForType(line, "AUD") ?: return null
+        val rms = fields.finiteAt(AUD_RMS)?.takeIf { it >= 0.0 }
+        val peak = fields.finiteAt(AUD_PEAK)?.takeIf { it >= 0.0 }
+        val beat = fields.getOrNull(AUD_BEAT)?.toIntOrNull()
+        return if (rms != null && peak != null && beat != null) {
+            AudioLevel(rms = rms, peak = peak, beat = beat != 0)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Parse `$ZENV,lux*cs` (ambient light) into an [AmbientLight], or null. Lux
+     * must be finite and non-negative.
+     */
+    fun parseAmbientLight(line: String): AmbientLight? {
+        val fields = fieldsForType(line, "ENV") ?: return null
+        val lux = fields.finiteAt(ENV_LUX)?.takeIf { it >= 0.0 } ?: return null
+        return AmbientLight(lux = lux)
+    }
+
+    /**
+     * Parse `$ZSHK,peakG*cs` (a shock/impact event) into a [ShockEvent], or null.
+     * Peak-g must be finite and non-negative.
+     */
+    fun parseShockEvent(line: String): ShockEvent? {
+        val fields = fieldsForType(line, "SHK") ?: return null
+        val peakG = fields.finiteAt(SHK_PEAK_G)?.takeIf { it >= 0.0 } ?: return null
+        return ShockEvent(peakG = peakG)
+    }
+
+    /**
+     * Parse `$ZBCN,batt,fixQ,sats,uptimeS*cs` (beacon health) into a
+     * [BeaconHealth], or null. All four are integers; a missing/garbage field
+     * rejects the whole sentence.
+     */
+    fun parseBeaconHealth(line: String): BeaconHealth? {
+        val fields = fieldsForType(line, "BCN") ?: return null
+        val batt = fields.getOrNull(BCN_BATTERY)?.toIntOrNull()
+        val fixQ = fields.getOrNull(BCN_FIX_QUALITY)?.toIntOrNull()
+        val sats = fields.getOrNull(BCN_SATELLITES)?.toIntOrNull()
+        val uptime = fields.getOrNull(BCN_UPTIME)?.toLongOrNull()
+        // Split into two checks so no single condition exceeds detekt's complexity limit.
+        if (batt == null || fixQ == null || sats == null) return null
+        return if (uptime == null) null else BeaconHealth(batteryPct = batt, fixQuality = fixQ, satellites = sats, uptimeSec = uptime)
+    }
+
+    /**
+     * Parse `$ZODO,tripM,totalM*cs` (odometer) into an [Odometer], or null.
+     * Distances must be finite and non-negative (a negative odometer is nonsense).
+     */
+    fun parseOdometer(line: String): Odometer? {
+        val fields = fieldsForType(line, "ODO") ?: return null
+        val trip = fields.finiteAt(ODO_TRIP)?.takeIf { it >= 0.0 }
+        val total = fields.finiteAt(ODO_TOTAL)?.takeIf { it >= 0.0 }
+        return if (trip != null && total != null) {
+            Odometer(tripMeters = trip, totalMeters = total)
         } else {
             null
         }
@@ -150,6 +220,26 @@ object NmeaParser {
         return ((course % DEGREES_PER_CIRCLE) + DEGREES_PER_CIRCLE) % DEGREES_PER_CIRCLE
     }
 
+    /**
+     * Shared front-end for the single-type proprietary sentences: strip line
+     * endings, validate the checksum, split fields, and confirm the 3-char type.
+     * Returns the field list (type in `[0]`) or null if malformed or a different
+     * type. The multi-type dispatchers ([parse], [parseHeadingDeg]) inline this
+     * since they match several types at once.
+     */
+    private fun fieldsForType(
+        line: String,
+        type: String,
+    ): List<String>? {
+        val sentence = line.trim().trimEnd('\r', '\n')
+        if (!sentence.startsWith("$") || !checksumValid(sentence)) return null
+        val fields = sentence.substringBefore('*').drop(1).split(',')
+        return if (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN) == type) fields else null
+    }
+
+    /** Field at [index] as a finite Double, or null if absent/garbage/non-finite. */
+    private fun List<String>.finiteAt(index: Int): Double? = getOrNull(index)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+
     private fun checksumValid(sentence: String): Boolean {
         val starIdx = sentence.indexOf('*')
         val checksumStr = if (starIdx < 0) "" else sentence.substring(starIdx + 1)
@@ -187,6 +277,27 @@ object NmeaParser {
     private const val TLM_PITCH = 1
     private const val TLM_ROLL = 2
     private const val TLM_SPEED = 3
+
+    // ZAUD ambient sound: rms, peak, beat.
+    private const val AUD_RMS = 1
+    private const val AUD_PEAK = 2
+    private const val AUD_BEAT = 3
+
+    // ZENV ambient light: lux.
+    private const val ENV_LUX = 1
+
+    // ZSHK shock event: peak g.
+    private const val SHK_PEAK_G = 1
+
+    // ZBCN beacon health: battery%, fix-quality, satellites, uptime-seconds.
+    private const val BCN_BATTERY = 1
+    private const val BCN_FIX_QUALITY = 2
+    private const val BCN_SATELLITES = 3
+    private const val BCN_UPTIME = 4
+
+    // ZODO odometer: trip metres, total metres.
+    private const val ODO_TRIP = 1
+    private const val ODO_TOTAL = 2
 
     private const val NMEA_LAT_DEG_DIVISOR = 100.0
     private const val MINUTES_PER_DEGREE = 60.0

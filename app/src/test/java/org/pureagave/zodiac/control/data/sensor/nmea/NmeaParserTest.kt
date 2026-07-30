@@ -3,6 +3,7 @@ package org.pureagave.zodiac.control.data.sensor.nmea
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NmeaParserTest {
@@ -95,6 +96,75 @@ class NmeaParserTest {
     fun ztlm_rejects_missing_or_garbage_fields() {
         assertNull(NmeaParser.parseVehicleTelemetry(nmea("ZTLM,3.5,-2.0"))) // only two values
         assertNull(NmeaParser.parseVehicleTelemetry(nmea("ZTLM,abc,1.0,2.0")))
+    }
+
+    @Test
+    fun parses_zaud_audio_level() {
+        val a = NmeaParser.parseAudioLevel(nmea("ZAUD,0.125,0.800,1"))
+        assertNotNull(a)
+        assertEquals(0.125, a!!.rms, COORD_TOLERANCE)
+        assertEquals(0.800, a.peak, COORD_TOLERANCE)
+        assertTrue(a.beat)
+        assertEquals(false, NmeaParser.parseAudioLevel(nmea("ZAUD,0.1,0.2,0"))?.beat) // beat=0 → false
+    }
+
+    @Test
+    fun parses_zenv_ambient_light() {
+        assertEquals(315.0, NmeaParser.parseAmbientLight(nmea("ZENV,315.0"))?.lux ?: -1.0, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun parses_zshk_shock_event() {
+        assertEquals(2.35, NmeaParser.parseShockEvent(nmea("ZSHK,2.35"))?.peakG ?: -1.0, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun parses_zbcn_beacon_health() {
+        val h = NmeaParser.parseBeaconHealth(nmea("ZBCN,87,1,9,3600"))
+        assertNotNull(h)
+        assertEquals(87, h!!.batteryPct)
+        assertEquals(1, h.fixQuality)
+        assertEquals(9, h.satellites)
+        assertEquals(3600L, h.uptimeSec)
+    }
+
+    @Test
+    fun parses_zodo_odometer() {
+        val o = NmeaParser.parseOdometer(nmea("ZODO,1234.5,987654.0"))
+        assertNotNull(o)
+        assertEquals(1234.5, o!!.tripMeters, COORD_TOLERANCE)
+        assertEquals(987654.0, o.totalMeters, COORD_TOLERANCE)
+    }
+
+    @Test
+    fun new_parsers_reject_wrong_type_and_bad_checksum() {
+        // A valid HDT is none of the new proprietary types.
+        assertNull(NmeaParser.parseAudioLevel(nmea("GPHDT,90.0,T")))
+        assertNull(NmeaParser.parseAmbientLight(nmea("GPHDT,90.0,T")))
+        assertNull(NmeaParser.parseShockEvent(nmea("GPHDT,90.0,T")))
+        assertNull(NmeaParser.parseBeaconHealth(nmea("GPHDT,90.0,T")))
+        assertNull(NmeaParser.parseOdometer(nmea("GPHDT,90.0,T")))
+        assertNull(NmeaParser.parseAudioLevel("\$ZAUD,0.1,0.2,0*00")) // bad checksum
+        assertNull(NmeaParser.parseOdometer("\$ZODO,1.0,2.0*00"))
+    }
+
+    @Test
+    fun new_parsers_reject_non_finite_and_negative() {
+        assertNull(NmeaParser.parseAudioLevel(nmea("ZAUD,NaN,0.2,0")))
+        assertNull(NmeaParser.parseAudioLevel(nmea("ZAUD,-0.1,0.2,0"))) // negative level
+        assertNull(NmeaParser.parseAmbientLight(nmea("ZENV,-5.0"))) // negative lux
+        assertNull(NmeaParser.parseAmbientLight(nmea("ZENV,Infinity")))
+        assertNull(NmeaParser.parseShockEvent(nmea("ZSHK,-1.0"))) // negative g
+        assertNull(NmeaParser.parseOdometer(nmea("ZODO,-1.0,2.0"))) // negative distance
+    }
+
+    @Test
+    fun new_parsers_reject_missing_or_garbage_fields() {
+        assertNull(NmeaParser.parseAudioLevel(nmea("ZAUD,0.1,0.2"))) // missing beat
+        assertNull(NmeaParser.parseAudioLevel(nmea("ZAUD,0.1,0.2,x"))) // garbage beat
+        assertNull(NmeaParser.parseBeaconHealth(nmea("ZBCN,87,1,9"))) // missing uptime
+        assertNull(NmeaParser.parseBeaconHealth(nmea("ZBCN,87,1,9,abc"))) // garbage uptime
+        assertNull(NmeaParser.parseOdometer(nmea("ZODO,1234.5"))) // missing total
     }
 
     @Test

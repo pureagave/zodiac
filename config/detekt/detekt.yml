@@ -39,6 +39,11 @@ complexity:
     # vector HUD, so it carries a stack of small private Canvas/DrawScope
     # helpers (grid, arch, figure, bracket, reticle, text). 18 fits that.
     thresholdInFiles: 18
+    # NmeaParser is the fleet's one central sentence reader; it grows a parser per
+    # proprietary sentence (ZTLM/ZAUD/ZENV/ZSHK/ZBCN/ZODO) alongside standard
+    # GGA/RMC/heading. If it keeps growing, split the proprietary Z-sentences into
+    # their own object.
+    thresholdInObjects: 18
 
 naming:
   FunctionNaming:
