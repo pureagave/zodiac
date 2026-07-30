@@ -6,6 +6,19 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-07-30 — Beacon Phase 2b: mic → `$ZAUD` (producer side complete)
+
+Landed the microphone channel (commit `44785de`), so the beacon now broadcasts
+**all five** new channels + the original GPS/heading/tilt. `AudioLevels` (pure,
+tested): PCM block → normalized rms/peak + energy-vs-running-average beat flag;
+`AudioRecord` loop (16 kHz mono, ~15 Hz) emits `$ZAUD` per frame — only a
+level/beat number leaves the phone, no audio stored/transmitted. `RECORD_AUDIO`
+optional (denied → audio skipped, rest keeps broadcasting); manifest gains the
+mic permission + `foregroundServiceType=location|microphone`. **Producer side is
+now feature-complete; remaining = Phase 3 tablet consumers/UI (product call:
+lux → auto-dim brightness only, NOT concept-switch) + Phase 4 Jetson `$ZAUD`→DMX;
+all pending on-device verification once the network settles.**
+
 ## 2026-07-30 — Beacon sensor-channel expansion (sound/light/shock/health/odometer) — Phases 1 + 2a
 
 Extending the Sensor Hub (XCover beacon) from GPS+heading+tilt into a broader
