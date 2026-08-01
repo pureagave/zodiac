@@ -63,9 +63,6 @@ object TelemetryBroadcaster : SensorEventListener {
     // APs that rate-limit/drop multicast.
     const val GROUP = "239.7.7.10"
     private const val LIMITED_BROADCAST = "255.255.255.255"
-    private const val BYTE_MASK = 0xFF
-    private const val OCTET2_SHIFT = 8
-    private const val OCTET3_SHIFT = 16
     private const val TTL = 1
     private const val HDT_INTERVAL_MS = 250L
     private const val GPS_MIN_INTERVAL_MS = 1000L
@@ -82,11 +79,6 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val ENV_EVERY_TICKS = 8
     private const val ODO_EVERY_TICKS = 8
     private const val HEALTH_EVERY_TICKS = 20
-
-    // GGA field indices for the fix-quality + satellite-count the heartbeat reports.
-    private const val GGA_FIX_QUALITY_FIELD = 6
-    private const val GGA_SATS_FIELD = 7
-    private const val SENTENCE_TYPE_LEN = 3
 
     private const val BATTERY_SCALE_PCT = 100
     private const val MS_PER_SEC = 1000L
@@ -354,12 +346,9 @@ object TelemetryBroadcaster : SensorEventListener {
 
     /** Pull fix-quality + satellite count out of a passing GGA for the heartbeat. */
     private fun updateFixHealth(nmea: String) {
-        val body = nmea.trim().trimEnd('\r', '\n').substringBefore('*')
-        if (!body.startsWith("$")) return
-        val fields = body.drop(1).split(',')
-        if (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN) != "GGA") return
-        fields.getOrNull(GGA_FIX_QUALITY_FIELD)?.toIntOrNull()?.let { fixQuality = it }
-        fields.getOrNull(GGA_SATS_FIELD)?.toIntOrNull()?.let { satellites = it }
+        val health = BeaconNet.parseFixHealth(nmea)
+        health.fixQuality?.let { fixQuality = it }
+        health.satellites?.let { satellites = it }
     }
 
     override fun onAccuracyChanged(
@@ -375,9 +364,7 @@ object TelemetryBroadcaster : SensorEventListener {
     private fun subnetBroadcast(wifi: WifiManager): InetAddress {
         @Suppress("DEPRECATION")
         val ip = wifi.dhcpInfo?.ipAddress ?: 0
-        val a = ip and BYTE_MASK
-        val b = (ip shr OCTET2_SHIFT) and BYTE_MASK
-        val c = (ip shr OCTET3_SHIFT) and BYTE_MASK
-        return runCatching { InetAddress.getByName("$a.$b.$c.255") }.getOrDefault(InetAddress.getByName(LIMITED_BROADCAST))
+        val host = BeaconNet.subnetBroadcastHost(ip) ?: LIMITED_BROADCAST
+        return runCatching { InetAddress.getByName(host) }.getOrDefault(InetAddress.getByName(LIMITED_BROADCAST))
     }
 }

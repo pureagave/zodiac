@@ -28,4 +28,20 @@ class ShockDetectorTest {
         assertNull(det.sample(20.0, 499L)) // still suppressed
         assertNotNull(det.sample(20.0, 600L)) // re-armed after the window
     }
+
+    @Test
+    fun exactly_at_threshold_fires() {
+        // The gate is `g < thresholdG`, so a sample landing *exactly* on the
+        // threshold is a fire, not a miss. Pick a threshold equal to 20 m/s² in g
+        // so the same float division reproduces it precisely.
+        val g20 = 20.0 / 9.80665
+        val det = ShockDetector(thresholdG = g20)
+        assertNotNull(det.sample(magnitudeMps2 = 20.0, nowMs = 0L))
+    }
+
+    @Test
+    fun negative_magnitude_never_fires() {
+        val det = ShockDetector(thresholdG = 1.5)
+        assertNull(det.sample(magnitudeMps2 = -50.0, nowMs = 0L))
+    }
 }

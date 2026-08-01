@@ -47,4 +47,39 @@ class AudioLevelsTest {
         // No baseline yet, so even a loud opening frame can't be a beat.
         assertFalse(AudioLevels().analyze(buffer(20_000)).beat)
     }
+
+    @Test
+    fun count_reads_only_the_first_n_samples_ignoring_the_tail() {
+        // First 100 samples are full-scale; the rest are silent. With count=100 we
+        // measure only the loud head (rms ~ 1.0), not the diluted whole buffer.
+        val head =
+            ShortArray(256) { i ->
+                if (i < 100 && i % 2 == 0) {
+                    Short.MAX_VALUE
+                } else if (i < 100) {
+                    Short.MIN_VALUE
+                } else {
+                    0
+                }
+            }
+        val loud = AudioLevels().analyze(head, count = 100)
+        assertEquals(1.0, loud.rms, 0.001)
+
+        // The same buffer read in full averages in 156 silent samples -> much quieter.
+        val whole = AudioLevels().analyze(head)
+        assertTrue("full read (${whole.rms}) should be quieter than the head-only read", whole.rms < loud.rms)
+    }
+
+    @Test
+    fun sustained_loud_stops_beating_once_the_average_catches_up() {
+        val al = AudioLevels()
+        repeat(5) { al.analyze(buffer(100)) } // quiet baseline
+        // The first loud frame is a beat (jump above the average).
+        assertTrue(al.analyze(buffer(12_000)).beat)
+        // Held loud: the running average climbs toward the new energy, so after a
+        // few frames the ratio drops below the sensitivity and beats stop.
+        var stillBeating = true
+        repeat(30) { stillBeating = al.analyze(buffer(12_000)).beat }
+        assertFalse("sustained loudness should stop registering as beats", stillBeating)
+    }
 }
