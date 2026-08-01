@@ -13,6 +13,7 @@ proven with ``--dmx fake`` before the real dongle and fixture ever arrive.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional
 
@@ -49,8 +50,10 @@ def _approach(current: float, target: float, max_step: float) -> float:
 def deg_to_dmx16(deg: float, range_deg: float) -> tuple:
     """Fixture angle -> (coarse, fine) DMX bytes across its full mechanical range.
     16-bit so a slow tracker slews smoothly; callers drop ``fine`` for 8-bit-only
-    fixtures. ``range_deg`` <= 0 is treated as a dead axis (parks at 0)."""
-    if range_deg <= 0:
+    fixtures. ``range_deg`` <= 0 is treated as a dead axis (parks at 0). A
+    non-finite ``deg`` (the park sentinel is NaN, and ``round(nan)`` raises)
+    also parks at 0 rather than crashing the frame."""
+    if range_deg <= 0 or not math.isfinite(deg):
         return 0, 0
     v = round(_clamp(deg / range_deg, 0.0, 1.0) * DMX16_MAX)
     return (v >> 8) & 0xFF, v & 0xFF

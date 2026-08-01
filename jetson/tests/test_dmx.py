@@ -1,6 +1,6 @@
 import unittest
 
-from zvision.dmx import FakeDmxSink, build_sink
+from zvision.dmx import FakeDmxSink, OlaDmxSink, build_sink
 
 
 class FakeDmxSinkTest(unittest.TestCase):
@@ -29,6 +29,26 @@ class FakeDmxSinkTest(unittest.TestCase):
         sink.send({0: 200, 513: 200, 1: 42})  # 0 and 513 are invalid
         self.assertEqual(42, sink.frame[0])
         self.assertEqual(512, len(sink.frame))  # frame stays exactly one universe
+
+    def test_float_values_truncate_toward_zero(self):
+        # The tracker's slewed dimmer/pan can be fractional; _merge int()-truncates.
+        sink = FakeDmxSink()
+        sink.send({1: 127.9})
+        self.assertEqual(127, sink.frame[0])  # truncated, not rounded to 128
+
+
+class OlaDmxSinkTest(unittest.TestCase):
+    def test_unreachable_olad_is_swallowed_and_counted(self):
+        # Port 0 is never a listening olad, so urlopen raises — the sink must
+        # swallow it (a lighting glitch can't take down the HUD broadcaster),
+        # count the error, leave sends at 0, and stash the message.
+        sink = OlaDmxSink(base_url="http://127.0.0.1:0")
+        sink.send({1: 255})  # must not raise
+        self.assertEqual(1, sink.errors)
+        self.assertEqual(0, sink.sends)
+        self.assertIsNotNone(sink._last_error)
+        # The frame is still merged locally even though the transmit failed.
+        self.assertEqual(255, sink.frame[0])
 
 
 class BuildSinkTest(unittest.TestCase):

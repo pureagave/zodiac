@@ -37,6 +37,13 @@ class DmxMappingTest(unittest.TestCase):
     def test_dead_axis_parks_at_zero(self):
         self.assertEqual((0, 0), deg_to_dmx16(90.0, 0.0))
 
+    def test_non_finite_deg_parks_at_zero(self):
+        # The park sentinel is NaN; round(nan) raises, so deg_to_dmx16 must guard
+        # non-finite angles and park at 0 rather than crash the frame.
+        self.assertEqual((0, 0), deg_to_dmx16(float("nan"), 540.0))
+        self.assertEqual((0, 0), deg_to_dmx16(float("inf"), 540.0))
+        self.assertEqual((0, 0), deg_to_dmx16(float("-inf"), 540.0))
+
 
 class TrackerAimTest(unittest.TestCase):
     def test_dead_ahead_points_at_pan_center(self):
