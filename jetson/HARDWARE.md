@@ -11,7 +11,7 @@ cross-section · system layout · build order, in one sheet.
 
 **In hand / covered:**
 - [x] Jetson Orin Nano Super Dev Kit **+ its included 19 V PSU** (bench power covered)
-- [x] **NVMe M.2 2280 SSD, 512 GB** — ordered 2026-07-30, en route (512 > the 256 spec'd = more headroom for JetPack + models + recordings)
+- [x] **NVMe M.2 2280 SSD, 512 GB** — in hand 2026-07-31 (512 > the 256 spec'd = more headroom for JetPack + models + recordings)
 - [x] FLIR Lepton 3.5 + PureThermal 3
 - [x] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
 - [x] Camera-head housing (aluminum CCTV box)
