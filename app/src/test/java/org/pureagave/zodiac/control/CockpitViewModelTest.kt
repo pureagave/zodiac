@@ -43,6 +43,10 @@ import org.pureagave.zodiac.control.core.navigation.ClockTime
 import org.pureagave.zodiac.control.core.navigation.clockToBearing
 import org.pureagave.zodiac.control.core.ops.NavTarget
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.telemetry.AmbientLight
+import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
+import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
+import org.pureagave.zodiac.control.core.telemetry.Odometer
 import org.pureagave.zodiac.control.data.FakeVehicleGateway
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
@@ -839,6 +843,179 @@ class CockpitViewModelTest {
                 store.clear()
             }
         }
+
+    @Test
+    fun beaconSensors_foldAmbientHealthOdometer_intoState() =
+        runTest {
+            val sensors = MutableStateFlow(BeaconSensors())
+            val store = ViewModelStore()
+            try {
+                val vm = beaconVm(this.backgroundScope, store, sensors)
+                advanceUntilIdle()
+                // Defaults: no beacon telemetry yet.
+                assertNull(vm.uiState.value.ambientLux)
+                assertNull(vm.uiState.value.beaconHealth)
+                assertNull(vm.uiState.value.odometer)
+
+                val health = BeaconHealth(batteryPct = 87, fixQuality = 1, satellites = 9, uptimeSec = 3600L)
+                val odo = Odometer(tripMeters = 1234.5, totalMeters = 987654.0)
+                sensors.value =
+                    BeaconSensors(
+                        ambientLight = AmbientLight(lux = 315.0),
+                        beaconHealth = health,
+                        odometer = odo,
+                    )
+                advanceUntilIdle()
+
+                assertEquals(315.0, vm.uiState.value.ambientLux!!, 0.0)
+                assertEquals(health, vm.uiState.value.beaconHealth)
+                assertEquals(odo, vm.uiState.value.odometer)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun beaconSensors_nullAmbientLight_keepsAmbientLuxNull() =
+        runTest {
+            val sensors = MutableStateFlow(BeaconSensors())
+            val store = ViewModelStore()
+            try {
+                val vm = beaconVm(this.backgroundScope, store, sensors)
+                advanceUntilIdle()
+
+                // Health/odometer present, but no ambient light reading -> lux stays null.
+                sensors.value =
+                    BeaconSensors(
+                        ambientLight = null,
+                        beaconHealth = BeaconHealth(batteryPct = 50, fixQuality = 0, satellites = 0, uptimeSec = 1L),
+                    )
+                advanceUntilIdle()
+
+                assertNull(vm.uiState.value.ambientLux)
+                assertNotNull(vm.uiState.value.beaconHealth)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun shock_setsAlertG_thenClearsAfterTimeout() =
+        runTest {
+            val sensors = MutableStateFlow(BeaconSensors())
+            val store = ViewModelStore()
+            try {
+                val vm = beaconVm(this.backgroundScope, store, sensors)
+                advanceUntilIdle()
+                assertNull(vm.uiState.value.shockAlertG)
+
+                // A new shock (count went up) arms the transient alert banner.
+                sensors.value = BeaconSensors(lastShockG = 2.4, shockCount = 1)
+                runCurrent()
+                assertEquals(2.4, vm.uiState.value.shockAlertG!!, 0.0)
+
+                // It clears itself after SHOCK_ALERT_MS (2000 ms).
+                advanceTimeBy(SHOCK_ALERT_MS)
+                runCurrent()
+                assertNull(vm.uiState.value.shockAlertG)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun shock_secondShockBeforeTimeout_reArmsTheTimer() =
+        runTest {
+            val sensors = MutableStateFlow(BeaconSensors())
+            val store = ViewModelStore()
+            try {
+                val vm = beaconVm(this.backgroundScope, store, sensors)
+                advanceUntilIdle()
+
+                // First shock arms the banner.
+                sensors.value = BeaconSensors(lastShockG = 2.0, shockCount = 1)
+                runCurrent()
+                assertEquals(2.0, vm.uiState.value.shockAlertG!!, 0.0)
+
+                // A second shock 500 ms later cancels the first timer and re-arms;
+                // the banner shows the new g and does NOT clear when the *first*
+                // timer would have fired.
+                advanceTimeBy(HALF_SHOCK_ALERT_MS)
+                runCurrent()
+                sensors.value = BeaconSensors(lastShockG = 3.1, shockCount = 2)
+                runCurrent()
+                assertEquals(3.1, vm.uiState.value.shockAlertG!!, 0.0)
+
+                // 1500 ms after the *second* shock is still inside its own window
+                // (would have been past the first shock's 2000 ms window).
+                advanceTimeBy(SHOCK_ALERT_MS - HALF_SHOCK_ALERT_MS)
+                runCurrent()
+                assertEquals(3.1, vm.uiState.value.shockAlertG!!, 0.0)
+
+                // The remaining 500 ms clears it.
+                advanceTimeBy(HALF_SHOCK_ALERT_MS)
+                runCurrent()
+                assertNull(vm.uiState.value.shockAlertG)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun shock_sameMagnitudeTwice_firesTwice_becauseCountIncrements() =
+        runTest {
+            val sensors = MutableStateFlow(BeaconSensors())
+            val store = ViewModelStore()
+            try {
+                val vm = beaconVm(this.backgroundScope, store, sensors)
+                advanceUntilIdle()
+
+                // First bump at 1.8 g.
+                sensors.value = BeaconSensors(lastShockG = 1.8, shockCount = 1)
+                runCurrent()
+                assertEquals(1.8, vm.uiState.value.shockAlertG!!, 0.0)
+
+                // Let it clear.
+                advanceTimeBy(SHOCK_ALERT_MS)
+                runCurrent()
+                assertNull(vm.uiState.value.shockAlertG)
+
+                // An equal-magnitude second bump still registers because the
+                // *count* incremented (the fold compares counts, not g values).
+                sensors.value = BeaconSensors(lastShockG = 1.8, shockCount = 2)
+                runCurrent()
+                assertEquals(1.8, vm.uiState.value.shockAlertG!!, 0.0)
+
+                advanceTimeBy(SHOCK_ALERT_MS)
+                runCurrent()
+                assertNull(vm.uiState.value.shockAlertG)
+            } finally {
+                store.clear()
+            }
+        }
+}
+
+/** How long a shock/impact alert banner stays before it clears (mirrors the VM constant). */
+private const val SHOCK_ALERT_MS: Long = 2_000L
+private const val HALF_SHOCK_ALERT_MS: Long = 500L
+
+/** A VM wired with no-op deps plus a caller-supplied [beaconSensors] flow for the sensor-fold tests. */
+private fun beaconVm(
+    scope: CoroutineScope,
+    store: ViewModelStore,
+    beaconSensors: StateFlow<BeaconSensors>,
+): CockpitViewModel {
+    val factory =
+        CockpitViewModelFactory(
+            telemetryRepository = StaticTelemetryRepo(),
+            vehicleGateway = FakeVehicleGateway(),
+            playaMapRepository = NoOpPlayaMapRepository,
+            locationSource = newFakeRoutedLocationSource(scope),
+            preferences = NoOpCockpitPreferences(),
+            fakeLocationSource = FakeLocationSource(scope = scope),
+            beaconSensors = beaconSensors,
+        )
+    return ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 }
 
 private object NoOpPlayaMapRepository : PlayaMapRepository {

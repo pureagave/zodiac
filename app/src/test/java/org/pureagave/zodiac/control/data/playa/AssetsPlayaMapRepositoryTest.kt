@@ -91,6 +91,33 @@ class AssetsPlayaMapRepositoryTest {
             assertFalse(repo.loadResult.value is MapLoadResult.Failed)
         }
 
+    @Test
+    fun missing_art_layer_is_an_empty_layer_not_a_load_failure() =
+        runTest {
+            // The 2026 GIS ships no "art" layer; a reader that throws only for art
+            // (and returns valid GeoJSON for everything else) must still Load, with
+            // an empty art layer and every other layer populated.
+            val repo =
+                AssetsPlayaMapRepository(
+                    reader = ArtMissingReader(IOException("art.geojson not found")),
+                    year = "2026",
+                    ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+                )
+
+            repo.load()
+
+            val result = repo.loadResult.value
+            assertTrue("expected Loaded, got $result", result is MapLoadResult.Loaded)
+            val map = (result as MapLoadResult.Loaded).map
+            // Art fell back to empty rather than failing the whole load...
+            assertTrue("art should be empty when the layer is absent", map.art.isEmpty())
+            // ...and the non-optional layers still parsed.
+            assertEquals(1, map.trashFence.size)
+            assertEquals(1, map.streetLines.size)
+            assertEquals("Esplanade", map.streetLines[0].name)
+            assertEquals(1, map.cpns.size)
+        }
+
     private class ThrowingReader(
         private val error: Throwable,
     ) : PlayaAssetReader {
@@ -98,6 +125,25 @@ class AssetsPlayaMapRepositoryTest {
             year: String,
             name: String,
         ): String = throw error
+    }
+
+    /**
+     * Valid GeoJSON for every layer except "art", which throws — modelling the
+     * 2026 dataset that ships no art layer. Delegates to [FakeReader] so the
+     * other layers assemble a real, assertable map.
+     */
+    private class ArtMissingReader(
+        private val error: Throwable,
+    ) : PlayaAssetReader {
+        private val delegate = FakeReader()
+
+        override fun read(
+            year: String,
+            name: String,
+        ): String {
+            if (name == "art") throw error
+            return delegate.read(year, name)
+        }
     }
 
     /**
