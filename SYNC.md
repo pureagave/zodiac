@@ -6,6 +6,13 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-01 — Docs sync + test-coverage expansion (two sub-agents) + fleet on latest
+
+Fleet-wide catch-up while device-managing:
+- **Fleet updated to the latest build.** S9+ (SM-X810) + A54 (SM-A546V) got the cockpit build over USB/wireless and a sticky `adb tcpip 5555` link (survives sleep, resets on reboot — reconnect via the rotating wireless-debug port otherwise). XCover (SM-G715U beacon) got the latest **beacon** build (all 5 sensor channels); its mic/`$ZAUD` needs a one-time STOP→START to pick up the RECORD_AUDIO grant (no rush — nothing consumes `$ZAUD` until the Jetson light runs). Fire HD 10 still pending. OLED tablets are slept (backgrounded app → no keep-screen-on lock → backlight off), woken only for screencaps.
+- **Docs audit + fix (sub-agent, commit `1ef88b8`):** README/CLAUDE/ARCHITECTURE/jetson-README brought current — three concepts (RADAR/MAP/DRIVER), all 5 beacon channels, DMX tracker + idle `$ZAUD` show, 2026 map, auto-dim, device roster w/ model numbers, dual-CI. Every claim verified against code. SYNC untouched (append-only). **Flagged:** `HANDOFF.md` is a "read-me-first/current-state" doc but timestamped 2026-07-06 + still says two concepts — left as a dated snapshot pending a call on whether it's living or historical.
+- **Test-coverage audit + build (two sub-agents, commits `db6c44c`/`3ab701a`/`d7aa2c0`): +31 tests → App 409, Beacon 35, Jetson 83, all green.** Closed the zero-coverage gaps: VM shock-alert timing + beacon-sensor fold, `GoldenSpike.ACTIVE==Y2026` pin, `PlayaMapRepository` art-optional fallback, NavTarget/Camp 2026 coords, beacon GGA/subnet (extracted `BeaconNet` internal seam), `OlaDmxSink` error-swallow. Two behavior-preserving hardening fixes surfaced: `deg_to_dmx16` non-finite guard (park sentinel is NaN, `round(nan)` raised) + the beacon net seam.
+
 ## 2026-07-30 — 2026 base-map migration DONE in code + Jetson bring-up prep + sound→DMX
 
 Big autonomous push (user away, "do all the things you can"):
