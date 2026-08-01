@@ -33,9 +33,9 @@ Two principles shape everything:
 | **Hero dashboard** | Main cockpit — address entry, full map, all concepts | Galaxy Tab S9+ (SM-X810), Android 13/14 | 12.4" OLED | ✅ in use |
 | **Driver night display** (×2, 1 spare) | Dim night HUD for the driver — thermal threats + minimal nav | Galaxy A54, OLED | 6.4" OLED | 🚧 HUD built; phones to buy ~2026-07-23 |
 | **Fleet tablets** | Passenger / crew displays (RADAR / MAP) | mixed Fire HD 10 / Galaxy Tab | LCD / OLED | ✅ |
-| **Vehicle Sensor Hub** | Broadcasts vehicle telemetry (GPS + compass + speed + IMU) | XCover Pro (SM-G715U) now; Pi + u-blox + IMU later | (screen off) | ✅ Zodiac Beacon app (`:beacon`) — GPS + compass verified |
-| **Thermal edge box** | Pedestrian detection at the vehicle front; drives the DMX light | Jetson Orin Nano Super (~$249, 67 TOPS) + FLIR camera | — | 📋 |
-| **DMX tracker light** | Steerable "we-see-you" spotlight slaved to thermal detections | user's gimbal moving-head + USB-DMX | — | 📋 |
+| **Vehicle Sensor Hub** | Broadcasts vehicle telemetry — GPS + compass + IMU tilt + speed + **mic/lux/shock/health/odometer** | XCover Pro (SM-G715U) now; Pi + u-blox + IMU later | (screen off) | ✅ Zodiac Beacon app (`:beacon`) — GPS + compass verified; 5 proprietary sensor channels added (§4) |
+| **Thermal edge box** | Pedestrian detection at the vehicle front; drives the DMX light | Jetson Orin Nano Super (~$249, 67 TOPS) + FLIR camera | — | 🚧 `zvision` software built + tested (motion-detector bring-up); hardware to bench-flash (`jetson/DEPLOY.md`) |
+| **DMX tracker light** | Steerable "we-see-you" spotlight slaved to thermal detections; pulses to `$ZAUD` when idle | moving-head + USB-DMX (in hand) | — | 🚧 `zvision/tracker.py`+`dmx.py`+OLA built + tested; on-vehicle calibration pending |
 | **Proximity alarm** | Cheap, robust "something's close in front" hard alarm | ESP32 + 24GHz radar / TF-Luna LiDAR + red beacon | red beacon | 📋 |
 | **Network** | WiFi AP + DHCP (single subnet, dynamic) | travel router; Starlink = WAN (non-critical) | — | ✅ |
 
@@ -58,9 +58,10 @@ Single L2 subnet, **dynamic DHCP → no hardcoded IPs anywhere.**
 - **Discovery via the transport itself.** One-to-many streams ride **fixed
   multicast groups** — the group address is baked into the app, independent of
   whatever DHCP hands out. A source announces itself simply by transmitting;
-  subscribers join the group and listen. No IP config, no handshake. 📋
-  *(Today `NetworkLocationSource` uses UDP broadcast + a MulticastLock ✅;
-  migrating to multicast groups is the next step.)*
+  subscribers join the group and listen. No IP config, no handshake. ✅
+  *(Telemetry rides `239.7.7.10:10110`, threats `239.7.7.20:10120`; both the
+  beacon/Jetson senders and the tablet consumers also send/accept a
+  subnet-broadcast copy + hold a `MulticastLock`, for APs that drop multicast.)*
 - **mDNS / DNS-SD** (Android `NsdManager`) for richer **service discovery +
   health/status** and any unicast/TCP endpoints. Fully link-local — works with
   no internet. 📋
@@ -74,8 +75,9 @@ Single L2 subnet, **dynamic DHCP → no hardcoded IPs anywhere.**
 
 | Channel | Source | Consumers | Payload | Status |
 |---|---|---|---|---|
-| **Vehicle telemetry** | Sensor Hub | all tablets | position, GPS speed & course, **compass heading**, IMU, altitude, fix quality, sat count, UTC | 🚧 |
-| **Thermal threats** | Jetson edge box | all tablets + DMX light | per-contact bearing, size, range/TTC estimate, velocity, class, collision flag | 📋 |
+| **Vehicle telemetry** | Sensor Hub (`:beacon`) | all tablets | position, GPS speed & course, **compass heading**, IMU tilt, fix quality, sat count, UTC | ✅ position/heading/tilt/health; NMEA on `239.7.7.10:10110` |
+| **Sensor channels** | Sensor Hub (`:beacon`) | all tablets | `$ZAUD` mic level, `$ZENV` lux, `$ZSHK` shock-g, `$ZBCN` health, `$ZODO` odometer | ✅ built (tablets auto-dim on `$ZENV`) |
+| **Thermal threats** | Jetson edge box | all tablets + DMX light | per-contact bearing, size, collision flag (`ZTHREAT` on `239.7.7.20:10120`) | 🚧 protocol + both ends built; camera/model in progress |
 | **Destination / nav** | Hero dashboard | all tablets | active drive-to target | 📋 |
 | **Vehicle commands** (future) | TBD | vehicle | heading / speed (transports are fake today) | 📋 |
 | **Raw thermal** (optional) | Jetson | opt-in viewers | MJPEG/RTSP thermal video for screens that want the literal heatmap | 📋 |
@@ -104,11 +106,15 @@ display; the compass fills the gap GPS course leaves at low speed.
 **Implementation path:**
 - Bring-up ✅ — **GPSd Forwarder** app (NMEA GPS only) on the XCover, verified
   end-to-end (its GPS drove a tablet's ego over WiFi).
-- Next 📋 — a small **custom broadcaster** (or the production Pi) that reads GNSS
-  + magnetometer + IMU and publishes a telemetry message on the telemetry group.
-  *(The decodeais "GPS+Compass Forwarder" adds compass as an interim option.)*
-- Tablet side — `NetworkLocationSource` consumes NMEA today ✅; extend to a
-  telemetry consumer that fills heading from the compass, etc. 📋
+- **Zodiac Beacon (`:beacon`) ✅** — the custom broadcaster is built: reads GNSS +
+  magnetometer + IMU and publishes `$GPHDT` (true heading), `$ZTLM` (tilt+speed),
+  and five proprietary sensor channels (`$ZAUD`/`$ZENV`/`$ZSHK`/`$ZBCN`/`$ZODO`)
+  on the telemetry group. GPS + compass verified; the sensor channels are newer.
+  The production Pi + u-blox is the later hardware swap.
+- Tablet side — `NetworkLocationSource` consumes the beacon's NMEA ✅: GPS +
+  `$GPHDT` heading + `$ZTLM` tilt, plus the five sensor channels into
+  `core/telemetry/*` via its `beaconSensors` flow; `$ZENV` lux auto-dims the
+  screen (`ScreenBrightness.luxToBrightness`).
 
 ---
 
@@ -121,16 +127,23 @@ Package `org.pureagave.zodiac.control`. Kotlin + Jetpack Compose. Reactive core:
 - **`CockpitScreen` dispatcher** → concepts (a concept ≈ a device role/mode):
   - **RADAR** — *Aliens* M41A sweep scope. ✅
   - **MAP** — *Alien* Nostromo gauge wall. ✅
-  - **DRIVER** — Star-Wars-'83 vector night HUD (see §7). 🚧 phase 1 built
+  - **DRIVER** — Star-Wars-'83 vector night HUD (see §7). 🚧 built: renders
+    threat contacts from `data/vision/NetworkThreatSource` (or the fake) via
+    `DriverNightScreen`; waiting on real thermal detections from the Jetson
 - **`LocationSource` abstraction** — FAKE / SYSTEM / BLE / USB ✅, **NET** ✅
   (`NetworkLocationSource`, verified end-to-end with the real phone). Routed +
-  registry + runtime selector chips (chips auto-populate from the enum).
+  registry + runtime selector chips (chips auto-populate from the enum). NET also
+  parses the beacon's five sensor channels → `beaconSensors` flow (`$ZENV` lux
+  auto-dims the screen via `ScreenBrightness`). ✅
+- **`ThreatSource` abstraction** — FAKE / NET (`data/vision/*ThreatSource` behind
+  `RoutedThreatSource`); consumes `ThreatProtocol` frames from the Jetson threat
+  group → `DriverNightScreen`. ✅ (real detections pending the edge box)
 - **`TransportAdapter`** (vehicle commands) — all fake today; real BLE/USB/WiFi
   transports are a future milestone. 📋
 - **Playa map + navigation** — GeoJSON → binary cache → `PlayaMapRepository`;
-  `PlayaProjection` (equirectangular on the Golden Spike); `PlayaRoute`
-  street-following routing across the BRC polar grid ✅; drive-to targets
-  HOME / MAN / TEMPLE / BATH / ADDR ✅.
+  `PlayaProjection` (equirectangular on the Golden Spike, active year
+  `GoldenSpike.ACTIVE` = **2026**); `PlayaRoute` street-following routing across
+  the BRC polar grid ✅; drive-to targets HOME / MAN / TEMPLE / BATH / ADDR ✅.
 - **Playa discovery** — offline-first BM API cache → RADAR contacts / MAP
   markers. ✅
 - **OLED burn-in mitigation** — idle state machine + pixel-shift + dim/sleep,
@@ -184,18 +197,27 @@ their bearings align. It fills exactly the gap thermal has:
   robust than either alone; the Jetson has the inputs (2× CSI + USB) and
   headroom (67 TOPS) to run both and merge their detections onto the bus.
 
-### DMX gimbal tracker light 📋
+### DMX gimbal tracker light 🚧 (software built)
 
 A steerable follow-spot slaved to the thermal detections — a "we see you"
 headlight that spotlights the detected pedestrian. Safety *and* spectacle.
 
+- **Software built** — the `zvision` runner drives the head in-process from the
+  same per-frame contact list the HUD broadcaster gets. `zvision/tracker.py` is
+  the target-selection + pan/tilt mapping + slew logic; `zvision/dmx.py` is the
+  transport (`FakeDmxSink` + `OlaDmxSink` → local `olad` over HTTP). Prove with
+  `--dmx fake` (log-only), transmit with `--dmx ola`. OLA bring-up is scripted
+  (`jetson/scripts/install-ola.sh`, `jetson/DEPLOY.md §7`). On-vehicle pan
+  calibration (`--dmx-pan-center` / `--dmx-pan-gain`) is the remaining step.
 - The Jetson already has **bearing (+ rough range)** per contact → map to
   **pan/tilt** (one-time calibration of the light's pan-zero to the vehicle's
   forward axis) → **DMX**.
-- **USB-DMX interface:** generic FTDI/OpenDMX ~$25, or Enttec DMX USB Pro
-  ~$140. The Jetson runs OLA (Open Lighting Architecture) or a small DMX lib.
-- **Behavior:** slew to the nearest / collision-course contact; dim-up or go
-  red on "lock"; scan between contacts if several.
+- **USB-DMX interface:** a genuine FTDI FT232R/RL OLA dongle (~$15–25, `ftdidmx`
+  plugin) is the buy; olad is CPU-pinned to a dedicated Orin core so the ML
+  workload can't jitter DMX timing. See `jetson/HARDWARE.md` for selection.
+- **Behavior:** slew to the nearest / collision-course contact; **when idle
+  (no contact) it pulses to the beacon's `$ZAUD` audio** — a sound-reactive
+  show (`zvision/audio_bus.py`). `--dmx-no-sound` disables the idle show.
 - **Caveats:** finite slew speed (fine at 5 mph, not for sprinters); one target
   at a time → priority logic; moving heads pull real power (100–300 W+) →
   vehicle power budget; dust on the fixture.
@@ -256,12 +278,16 @@ dusty, windy, open playa. Red alert reuses the app's reserved red-for-faults.
 
 - ✅ Shared-WiFi GPS (`NET`) verified end-to-end with the real phone.
 - ✅ Street-following BRC routing; drive-to; discovery; burn-in; RADAR/MAP.
-- 🚧 DRIVER night HUD — phase 1 (render + wire) done; next = fake moving threat
-  source, then real on-playa/in-city nav context.
-- 📋 Migrate fleet bus to **multicast groups + mDNS**.
-- 📋 **Telemetry hub** — broadcast compass + IMU + full telemetry, not just GPS.
-- 📋 **Jetson thermal detection** (classical CV → public-thermal-data ML).
-- 📋 **DMX tracker light** slaved to detections.
+- ✅ 2026 base-map migration (`GoldenSpike.ACTIVE` = 2026; on-device verify pending).
+- ✅ **Telemetry hub** (`:beacon`) — broadcasts compass + IMU tilt + five sensor
+  channels (`$ZAUD`/`$ZENV`/`$ZSHK`/`$ZBCN`/`$ZODO`); tablets consume + auto-dim.
+- ✅ Fleet bus on **fixed multicast groups** (+ subnet-broadcast fallback). mDNS
+  service discovery still 📋.
+- 🚧 DRIVER night HUD — renders threat contacts (network/fake source) built; next
+  = real on-playa/in-city nav context.
+- 🚧 **zvision edge box** — motion-detector bring-up + threat protocol + DMX
+  tracker built and tested; hardware bench-flash + trained thermal model next.
+- 📋 **Jetson trained thermal detection** (classical CV → public-thermal-data ML).
 - 📋 **Proximity alarm.**
 - 📋 Real vehicle transports (BLE/USB/WiFi) replacing the fakes.
 

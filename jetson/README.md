@@ -2,7 +2,10 @@
 
 Runs on the roof-mounted **Jetson Orin Nano Super**. Turns thermal / RGB camera
 frames into vehicle-relative **threat contacts** and broadcasts them on the
-fleet bus, where every tablet's DRIVER night-HUD is already listening.
+fleet bus, where every tablet's DRIVER night-HUD is already listening. A second,
+optional output drives a **DMX moving-head "tracker" light** that points at those
+same contacts and — when idle — pulses to the beacon's `$ZAUD` audio (see the
+[DMX section in DEPLOY.md](DEPLOY.md#7-bring-up-the-dmx-tracker-light-optional-independent-of-the-camera)).
 
 ```
  camera(s) ──▶ detector ──▶ DriverThreat[] ──▶ ThreatBroadcaster ──▶ fleet bus
@@ -21,7 +24,7 @@ protocol. The round-trip tests here also guard that contract.
 ```bash
 cd jetson
 python3 -m zvision --source fake -v        # emit synthetic contacts, print each frame
-python3 -m unittest discover -s tests -t . # 29 tests, standard library only
+python3 -m unittest discover -s tests -t . # 80 tests, standard library only
 ```
 
 `--source fake` needs nothing installed — it's how you prove the bus and light
@@ -50,12 +53,16 @@ later.
 | `zvision/detector.py` | `FakeDetector` (stdlib) + `MotionDetector` (cv2) |
 | `zvision/geometry.py` | bbox → (rel_az, size) + constant-bearing collision rule |
 | `zvision/capture.py` | UVC camera wrapper (cv2) |
-| `zvision/app.py` | CLI runner / broadcast loop |
+| `zvision/tracker.py` | DMX tracker light — target-select + pan/tilt map + slew + idle sound show |
+| `zvision/dmx.py` | DMX transport — `FakeDmxSink` (stdlib) + `OlaDmxSink` (posts to `olad`) |
+| `zvision/audio_bus.py` | `$ZAUD` listener — beacon mic levels for the idle sound-reactive show |
+| `zvision/app.py` | CLI runner / broadcast + tracker loop |
 | `systemd/zvision.service` | auto-start unit |
 | `scripts/install.sh` | provision to `/opt/zodiac/jetson` + enable service |
+| `scripts/install-ola.sh` | OLA (`olad`) + `ftdidmx` plugin, CPU-pinned, on-boot |
 
 ## Docs
 
-- **[DEPLOY.md](DEPLOY.md)** — full hardware bring-up (flash → network → prove-with-fake → camera → permanent)
+- **[DEPLOY.md](DEPLOY.md)** — full hardware bring-up (flash → network → prove-with-fake → camera → permanent → DMX tracker light)
 - **[HARDWARE.md](HARDWARE.md)** — edge-box bill of materials, wiring, power & thermal budget
 - **[DETECTOR.md](DETECTOR.md)** — roadmap from today's motion blobs to the trained thermal model (H100)

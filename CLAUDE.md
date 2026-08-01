@@ -4,9 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting **Amazon Fire and Samsung Galaxy Tab** tablets in landscape (the Galaxy Tab S9+ OLED is the main dashboard; the Fire HD 10 LCD is the performance floor). Currently a v0.1.0 prototype. Two runtime-switchable cockpit "concepts" — `RADAR` and `MAP` (`core/model/CockpitConcept`; the original A `CRT VECTOR` and B `PERSPECTIVE` were dropped and C/D lost their letter tags, 2026-07-04) — share the same underlying state and an 80s green-phosphor aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
+Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting **Amazon Fire and Samsung Galaxy Tab** tablets in landscape (the Galaxy Tab S9+ OLED is the main dashboard; the Fire HD 10 LCD is the performance floor). Currently a v0.1.0 prototype. Three runtime-switchable cockpit "concepts" — `RADAR`, `MAP`, and `DRIVER` (`core/model/CockpitConcept`; the original A `CRT VECTOR` and B `PERSPECTIVE` were dropped and the survivors lost their letter tags, 2026-07-04; `DRIVER`, the OLED night HUD, was added later) — share the same underlying state and an 80s green-phosphor aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
 
 Package: `org.pureagave.zodiac.control`
+
+**Monorepo — three modules:**
+- `:app` — the Android cockpit app (this file's main subject).
+- `:beacon` — the [Zodiac Beacon](#zodiac-beacon-sensor-hub), a headless phone sensor-hub broadcaster (`org.pureagave.zodiac.beacon`).
+- `jetson/` — `zvision`, a Python vision edge box on a Jetson Orin Nano Super (thermal/RGB → threat contacts on the fleet bus + a DMX tracker light). Docs in `jetson/*.md`.
 
 ## Build & Test Commands
 
@@ -23,14 +28,14 @@ Package: `org.pureagave.zodiac.control`
 ./gradlew assembleRelease            # R8 minify + resource shrink (unsigned without a keystore)
 ```
 
-CI runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDebug on push/PR to `main` (via the Gradle wrapper). Run the same gates locally before each commit.
+Android CI (`android-ci.yml`, `:app`-scoped) runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDebug on push/PR to `main` (via the Gradle wrapper). A separate `jetson-ci.yml` (path-filtered to `jetson/**`) runs the `zvision` Python unit tests. Run the app gates locally before each commit; run `jetson` tests (`cd jetson && python -m unittest discover -s tests -t .`) when touching the edge box.
 
 ## Architecture
 
 **Reactive state with Coroutines + Flow.** ViewModel subscribes to repository/gateway flows and exposes a single `StateFlow<CockpitUiState>` to the Compose UI.
 
 **Key layers:**
-- `CockpitScreen` — top-level dispatcher: reads `CockpitConcept` and routes to one of the two concept screens — `RADAR` (`ui/concepts/MotionTrackerScreen`) / `MAP` (`ui/concepts/InstrumentBayScreen`). Each renders the operational readout (`ui/ops/opsReadout`) as a first-class themed footer: BRC clock / sun / **drive-to guidance** (bearing + distance + heading-relative arrow to the active `core/ops/NavTarget` — HOME/MAN/TEMPLE, chosen via a prominent full-width `DRIVE TO` bar (`ui/ops/driveToBar`) above the footer).
+- `CockpitScreen` — top-level dispatcher: reads `CockpitConcept` and routes to one of three concept screens — `RADAR` (`ui/concepts/MotionTrackerScreen`) / `MAP` (`ui/concepts/InstrumentBayScreen`) / `DRIVER` (`ui/concepts/DriverNightScreen`). RADAR/MAP render the operational readout (`ui/ops/opsReadout`) as a first-class themed footer: BRC clock / sun / **drive-to guidance** (bearing + distance + heading-relative arrow to the active `core/ops/NavTarget` — HOME/MAN/TEMPLE, chosen via a prominent full-width `DRIVE TO` bar (`ui/ops/driveToBar`) above the footer). `DRIVER` is the OLED night HUD — a mostly-black vector display that renders thermal threat contacts + minimal nav (see "Vision / threats").
 - `ui/viewmodel/CockpitViewModel` — state orchestration, input validation (heading 0-359, speed 0-160), command dispatch, map/GPS/concept actions
 - `ui/state/CockpitUiState` — immutable data class, updated via `.copy()` (includes `commandError` surfaced from failed command sends)
 - `data/VehicleConnectionGateway` / `data/RoutedVehicleGateway` — interface + pure router that forwards commands to the currently selected transport adapter (note: switching transports does **not** disconnect the old adapter — see `RoutedVehicleGatewayTest`)
@@ -39,9 +44,13 @@ CI runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDe
 - `core/model/VehicleCommand` — sealed interface (`SetHeading`, `SetSpeed`)
 - `core/connection/ConnectionModels` — TransportType enum, ConnectionPhase, ConnectionState
 
-**GPS / location (see "GPS sourcing"):** `data/sensor/*LocationSource` (Fake/System/BLE/USB) behind `RoutedLocationSource` + `LocationSourceRegistry`, feeding `data/sensor/nmea/NmeaParser`. Same selector-chip pattern as transports.
+**GPS / location (see "GPS sourcing"):** `data/sensor/*LocationSource` (Fake/System/BLE/USB/**Network**) behind `RoutedLocationSource` + `LocationSourceRegistry`, feeding `data/sensor/nmea/NmeaParser`. Same selector-chip pattern as transports. `NetworkLocationSource` (NET) is the shipped, verified shared-WiFi fleet path — it also parses the beacon's five proprietary sensor sentences (see "Beacon sensor channels") and exposes them via a `beaconSensors` flow.
 
-**Playa map + navigation:** `data/playa/` (GeoJSON parser → binary cache → `PlayaMapRepository`), `core/geo/` (equirectangular `PlayaProjection`, `PlayaViewport`), `core/navigation/` (`PlayaNavigator`, clock-bearing cues), rendered by `ui/playamap/` (projection, markers, labels, pan/pinch touch input).
+**Beacon sensor channels:** the `:beacon` broadcasts five proprietary NMEA sentences beyond GPS/heading/tilt — `$ZAUD` (mic rms/peak/beat), `$ZENV` (ambient lux), `$ZSHK` (shock/impact g), `$ZBCN` (beacon health: battery/fix/sats/uptime), `$ZODO` (trip+lifetime odometer). `NmeaParser` parses them into `core/telemetry/*` models (`AudioLevel`, `AmbientLight`, `ShockEvent`, `BeaconHealth`, `Odometer`, aggregated in `BeaconSensors`); `NetworkLocationSource.beaconSensors` → `CockpitViewModel` → `CockpitUiState`. `$ZENV` lux drives an **auto-dim** of screen brightness: `ui/state/ScreenBrightness.luxToBrightness` (log-scaled) applied by `MainActivity.autoDim`.
+
+**Vision / threats (DRIVER concept):** `data/vision/*ThreatSource` (Fake/Network) behind `RoutedThreatSource` consume `ThreatProtocol` frames the Jetson broadcasts on the fleet threat group; `core/vision/DriverThreat` + `ThreatProtocol` (byte-exact mirror of the Python side) model per-contact bearing/size/collision. Rendered by `ui/concepts/DriverNightScreen`.
+
+**Playa map + navigation:** `data/playa/` (GeoJSON parser → binary cache → `PlayaMapRepository`), `core/geo/` (equirectangular `PlayaProjection`, `PlayaViewport`), `core/navigation/` (`PlayaNavigator`, clock-bearing cues), rendered by `ui/playamap/` (projection, markers, labels, pan/pinch touch input). Active year is a single source of truth: `core/geo/GoldenSpike.ACTIVE` = `Y2026` (base assets in `app/src/main/assets/brc/2026/`; the 2026 city moved ~583 m SW from 2025 but the 12:00 axis is still 45°). The 2026 GIS ships no art layer — art/camp markers come from the BM API and stay hidden until BM releases 2026 data (~3 weeks pre-event).
 
 **Preferences:** `data/prefs/DataStoreCockpitPreferences` persists GPS source / map mode / tilt / zoom / concept / burn-in config across launches (Jetpack DataStore).
 
@@ -53,17 +62,19 @@ CI runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDe
 
 ## GPS sourcing
 
-Fire tablets have no built-in GNSS. Architecture is a pluggable `LocationSource` (FAKE / SYSTEM / BLE / USB / NET — NET is planned), parallel to the transport adapter pattern. Fleet target is 8-10 tablets in one vehicle, so the production path is a single shared GPS source on the car's local WiFi rather than per-tablet receivers:
+Fire tablets have no built-in GNSS. Architecture is a pluggable `LocationSource` (FAKE / SYSTEM / BLE / USB / **NET**), parallel to the transport adapter pattern. Fleet target is 8-10 tablets in one vehicle, so a single shared sensor hub broadcasts on the car's local WiFi rather than per-tablet receivers. **NET is shipped and verified end-to-end.**
 
-- **Bring-up:** iPhone running GPS2IP broadcasts NMEA over UDP `10110` on the car's existing travel-router WiFi.
-- **Production:** Pi Zero 2 W + u-blox USB GNSS + roof antenna, running `gpsd` + UDP NMEA broadcaster on the same WiFi. Pi only does GPS; the travel router keeps the AP/DHCP role.
-- Tablet side: `NetworkLocationSource` listens on UDP `10110`, feeds lines into the existing `NmeaParser`, emits `LocationSourceState` like every other source. Same selector chip pattern.
+- **Hub:** the `:beacon` app (Zodiac Beacon), on the XCover Pro phone today; Pi Zero 2 W + u-blox USB GNSS + roof antenna later. The travel router keeps the AP/DHCP role.
+- **Tablet side:** `NetworkLocationSource` listens on the fixed fleet multicast group `239.7.7.10:10110` (subnet-broadcast fallback; holds a `MulticastLock`), feeds lines into `NmeaParser`, emits `LocationSourceState` like every other source. Same selector chip pattern.
+- Earlier bring-up used an iPhone running GPS2IP to prove `NetworkLocationSource` before the beacon app existed.
 
-The phone bring-up exists specifically to prove `NetworkLocationSource` end-to-end before any hardware is bought.
+## Zodiac Beacon (sensor hub)
+
+`:beacon` (`org.pureagave.zodiac.beacon`) is a headless foreground-service app that turns a phone into the vehicle's sensor hub. `TelemetryBroadcaster` forwards raw GNSS NMEA verbatim and adds: `$GPHDT` (compass true heading, from `Nmea.hdt`), `$ZTLM` (IMU pitch/roll + speed), and the five proprietary channels — `$ZAUD` (mic levels via `AudioLevels`), `$ZENV` (lux), `$ZSHK` (shock via `ShockDetector`), `$ZBCN` (health), `$ZODO` (odometer via `TripOdometer`). Sentence builders + XOR checksum are in `Nmea.kt`. Broadcasts to the fixed multicast group + subnet-broadcast fallback on UDP `10110`. Only a mic level/beat number leaves the phone — no audio is recorded or transmitted. Tests: `beacon/src/test/.../{Nmea,AudioLevels,ShockDetector,TripOdometer}Test.kt`.
 
 ## UI Structure
 
-`CockpitScreen` dispatches on the active `CockpitConcept` (two concepts). `RADAR` (`MotionTrackerScreen`) is the *Aliens* M41A sweep-scope — a circular scope whose sweep arm lights up the real BRC map. `MAP` (`InstrumentBayScreen`) is the *Alien* Nostromo gauge-wall — bordered tiles (heading dial, speed gauge, ground-track map, cell/throttle gauges). Both share the control strip (`ConceptControls`) and the `opsReadout` footer, each rendered in its own palette.
+`CockpitScreen` dispatches on the active `CockpitConcept` (three concepts). `RADAR` (`MotionTrackerScreen`) is the *Aliens* M41A sweep-scope — a circular scope whose sweep arm lights up the real BRC map. `MAP` (`InstrumentBayScreen`) is the *Alien* Nostromo gauge-wall — bordered tiles (heading dial, speed gauge, ground-track map, cell/throttle gauges). `DRIVER` (`DriverNightScreen`) is the Star-Wars-vector OLED night HUD for the driver phone — mostly-black, thermal threat contacts as hollow wireframe figures + minimal nav. RADAR/MAP share the control strip (`ConceptControls`) and the `opsReadout` footer, each rendered in its own palette.
 
 Center-viewport touch drives the **map**, not the vehicle: drag to pan, pinch to zoom, two-finger twist to rotate (`ui/playamap/MapTouchInput`). Heading/speed are set programmatically / by the synthetic GPS, not by tapping the viewport. (An earlier X→heading / Y→speed mapping was replaced by the map interaction.)
 
@@ -80,7 +91,7 @@ Color system (semantic, set 2026-07-04; shared constants in `ui/concepts/Concept
 
 ## Workspace
 
-- `tasks/open.md` — active work items; `tasks/done.md` — completed; `tasks/someday.md` — backlog
+- `tasks/open.md` — active work items; `tasks/done.md` — completed
 - `design/` — UI concept docs and vehicle wireframe references
 - Tone: direct, technical, code over commentary. The user is a hardware/systems engineer.
 
