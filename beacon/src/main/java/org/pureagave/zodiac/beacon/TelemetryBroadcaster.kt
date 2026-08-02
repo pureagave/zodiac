@@ -79,6 +79,7 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val ENV_EVERY_TICKS = 8
     private const val ODO_EVERY_TICKS = 8
     private const val HEALTH_EVERY_TICKS = 20
+    private const val STATUS_EVERY_TICKS = 4 // rebuild the on-device readout ~1 Hz
 
     private const val BATTERY_SCALE_PCT = 100
     private const val MS_PER_SEC = 1000L
@@ -125,6 +126,14 @@ object TelemetryBroadcaster : SensorEventListener {
     @Volatile private var totalMeters: Double = 0.0
 
     @Volatile private var sentences: Long = 0
+
+    @Volatile private var lastShockG: Double = 0.0
+
+    @Volatile private var audioRms: Double = 0.0
+
+    @Volatile private var audioBeat: Boolean = false
+
+    @Volatile private var audioActive: Boolean = false
 
     private var startElapsedMs: Long = 0
     private var appContext: Context? = null
@@ -194,6 +203,7 @@ object TelemetryBroadcaster : SensorEventListener {
                     send(Nmea.zbcn(batteryPct(), fixQuality, satellites, uptimeSec()))
                     persistTotal()
                 }
+                if (tick % STATUS_EVERY_TICKS == 0L) _status.value = statusText()
                 tick++
                 delay(HDT_INTERVAL_MS)
             }
@@ -214,23 +224,45 @@ object TelemetryBroadcaster : SensorEventListener {
             rec.release()
         }
         audioRecord = null
+        audioActive = false
         socket?.close()
         socket = null
         _running.value = false
         _status.value = "Stopped"
     }
 
-    /** GNSS sentence from the OS → forward verbatim and refresh the status text. */
+    /** GNSS sentence from the OS → forward it verbatim + refresh fix health. The
+     * full status readout is rebuilt on the broadcast loop (see [statusText]). */
     private fun forward(nmea: String) {
         send(if (nmea.endsWith("\n")) nmea else "$nmea\r\n")
         updateFixHealth(nmea)
+    }
+
+    /**
+     * Everything the beacon is currently broadcasting, for the on-device readout —
+     * one line per channel family: position (GNSS), heading/tilt/speed (HDT/ZTLM),
+     * ambient light (ZENV), last shock (ZSHK), health (ZBCN), odometer (ZODO), and
+     * the mic level (ZAUD). Refreshed ~1 Hz from the broadcast loop.
+     */
+    private fun statusText(): String {
         val loc = lastLocation
-        _status.value =
-            buildString {
-                append(if (loc != null) "GPS %.5f, %.5f".format(loc.latitude, loc.longitude) else "GPS acquiring…")
-                append("\nHeading ${headingDeg.toInt()}°   •   sent $sentences")
-                append("\n→ $GROUP:$PORT")
-            }
+        val up = uptimeSec()
+        val mic = if (audioActive) "rms %.2f%s".format(audioRms, if (audioBeat) "  ♪BEAT" else "") else "off (grant mic → \$ZAUD)"
+        return buildString {
+            append(if (loc != null) "GPS    %.5f, %.5f".format(loc.latitude, loc.longitude) else "GPS    acquiring…")
+            append("\nHDG    ${headingDeg.toInt()}°   TILT p${pitchDeg.toInt()} r${rollDeg.toInt()}   SPD ${speedKph().toInt()} kph")
+            append("\nLIGHT  ${luxValue.toInt()} lx    SHOCK %.1f g peak".format(lastShockG))
+            append(
+                "\nHEALTH ${batteryPct()}%%  fix q$fixQuality/$satellites sat  up %02d:%02d:%02d".format(
+                    up / 3600,
+                    (up % 3600) / 60,
+                    up % 60,
+                ),
+            )
+            append("\nODO    %.2f km trip / %.1f km total".format(tripMeters / 1000.0, totalMeters / 1000.0))
+            append("\nMIC    $mic")
+            append("\n→ $GROUP:$PORT   ·   sent $sentences")
+        }
     }
 
     private fun send(line: String) {
@@ -279,7 +311,10 @@ object TelemetryBroadcaster : SensorEventListener {
         val v = event.values
         val magnitude = sqrt((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).toDouble())
         val nowMs = event.timestamp / NANOS_PER_MS
-        shockDetector?.sample(magnitude, nowMs)?.let { peakG -> send(Nmea.zshk(peakG)) }
+        shockDetector?.sample(magnitude, nowMs)?.let { peakG ->
+            lastShockG = peakG
+            send(Nmea.zshk(peakG))
+        }
     }
 
     private fun speedKph(): Double = (lastLocation?.speed?.toDouble() ?: 0.0) * MPS_TO_KPH
@@ -297,6 +332,7 @@ object TelemetryBroadcaster : SensorEventListener {
         if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
         val record = createAudioRecord() ?: return
         audioRecord = record
+        audioActive = true
         val levels = AudioLevels()
         record.startRecording()
         loopScope.launch {
@@ -305,6 +341,8 @@ object TelemetryBroadcaster : SensorEventListener {
                 val n = runCatching { record.read(buf, 0, buf.size) }.getOrDefault(-1)
                 if (n <= 0) break // stopped/released or read error → end the loop
                 val f = levels.analyze(buf, n)
+                audioRms = f.rms
+                audioBeat = f.beat
                 send(Nmea.zaud(f.rms, f.peak, f.beat))
             }
         }

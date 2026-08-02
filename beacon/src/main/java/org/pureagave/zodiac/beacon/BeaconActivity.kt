@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -63,8 +64,9 @@ class BeaconActivity : AppCompatActivity() {
             TextView(this).apply {
                 text = "Idle"
                 textSize = STATUS_SP
+                typeface = Typeface.MONOSPACE // monospace so the per-channel columns line up
                 setTextColor(Color.parseColor("#C77DFF"))
-                gravity = Gravity.CENTER
+                gravity = Gravity.START
                 setPadding(0, pad, 0, pad)
             }
         toggle =
@@ -103,7 +105,7 @@ class BeaconActivity : AppCompatActivity() {
     private companion object {
         const val PAD_DP = 24f
         const val TITLE_SP = 30f
-        const val STATUS_SP = 20f
+        const val STATUS_SP = 14f // smaller: the readout is now a 7-line per-channel dump
         const val PERM_REQUEST = 1
         const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
     }
