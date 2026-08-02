@@ -19,9 +19,9 @@ cross-section · system layout · build order, in one sheet.
 - [x] Car power DC-DC buck converter
 - [x] Networking — router + Ethernet cable
 - [x] **DMX interface** (FTDI dongle) + **DMX cables** + **moving-head fixture**
+- [x] **Thermal window — germanium D15 × 1 mm, 2-sided AR** (Amazon, ~$68, ordered 2026-08-02, ETA mid-Aug). 15 mm is right — the Lepton mounts the window close, so it clears the ~57° FOV. (Thorlabs/Edmund $200–750 = lab overkill; single-unit Amazon/eBay/AliExpress germanium is the tier.) **Cut a scrap of HDPE for bench bring-up so a late shipment can't block the Lepton.**
 
-**Still needed:**
-- [ ] **Thermal window — AR-coated germanium** (~25 mm) — now the one "order early" item; supply is tight; the thermal can't see through glass/plastic
+**Still needed (cheap last-mile, no lead time):**
 - [ ] **Gore/ePTFE breather vent ×2** (one per box)
 - [ ] **Bracket vibration pads** — rubber isolators for the shared mount
 - [ ] **Short shielded USB cables** (thermal + RGB + tether)
