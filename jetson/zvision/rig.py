@@ -298,9 +298,28 @@ def build_rig(
     dedup_deg: float = DEFAULT_DEDUP_DEG,
     factory=build_camera,
 ) -> MultiDetector:
-    """Open every mount in the rig. ``factory`` is injectable so tests can build
-    a whole rig without hardware."""
-    return MultiDetector([(m, factory(m)) for m in mounts], dedup_deg=dedup_deg)
+    """Open every mount in the rig, skipping any camera that won't open.
+
+    Same call as the per-frame guard in :class:`MultiDetector`, one stage
+    earlier: on a vehicle where five USB cameras enumerate in whatever order
+    they feel like, one missing ``/dev/videoN`` must cost you that arc, not the
+    entire night's detection. The caller decides what to do if *nothing* opened
+    — check :attr:`MultiDetector.mounts` before running.
+
+    ``factory`` is injectable so tests can build a whole rig without hardware."""
+    opened: List[Tuple[CameraMount, Detector]] = []
+    for mount in mounts:
+        try:
+            opened.append((mount, factory(mount)))
+        # Broad by design: OpenCV/V4L2 raise a wide variety of things for a
+        # device that isn't there, and none of them should end the run.
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"zvision: camera {mount.name} ({mount.device}) would not open, skipped: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+    return MultiDetector(opened, dedup_deg=dedup_deg)
 
 
 def coverage_gaps(mounts: Sequence[CameraMount], step_deg: float = 1.0) -> List[Tuple[float, float]]:

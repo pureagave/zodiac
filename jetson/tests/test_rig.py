@@ -252,6 +252,28 @@ class MultiDetectorTest(unittest.TestCase):
         rig = build_rig(mounts, factory=lambda m: StubDetector([contact(0.0, tid=1)]))
         self.assertEqual(2, len(rig.detect(0.0)))
 
+    def test_a_camera_that_will_not_open_is_skipped_not_fatal(self):
+        def factory(mount):
+            if mount.name == "missing":
+                raise RuntimeError("could not open camera '/dev/video9'")
+            return StubDetector([contact(0.0, tid=1)])
+
+        mounts = [CameraMount("missing", device="/dev/video9"), CameraMount("good")]
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            rig = build_rig(mounts, factory=factory)
+        self.assertEqual(["good"], [m.name for m in rig.mounts])
+        self.assertEqual(1, len(rig.detect(0.0)))
+        self.assertIn("/dev/video9", err.getvalue())
+
+    def test_a_rig_where_nothing_opens_is_empty(self):
+        def factory(mount):
+            raise RuntimeError("no camera")
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            rig = build_rig([CameraMount("a"), CameraMount("b")], factory=factory)
+        self.assertEqual([], rig.mounts)
+        self.assertEqual([], rig.detect(0.0))
+
 
 class CoverageGapsTest(unittest.TestCase):
     def test_single_ultra_wide_leaves_the_rear_blind(self):

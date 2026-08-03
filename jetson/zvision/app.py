@@ -138,6 +138,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         broadcast=args.broadcast,
     )
     detector = build_rig(mounts, dedup_deg=args.merge_deg)
+    if not detector.mounts:
+        # Every camera failed to open. Better to exit loudly than to sit there
+        # broadcasting a confident "all clear" while completely blind.
+        print("zvision: no cameras opened — nothing to detect with", file=sys.stderr, flush=True)
+        broadcaster.close()
+        return 3
+    mounts = detector.mounts  # whatever actually opened
 
     tracker = None
     dmx_sink = None

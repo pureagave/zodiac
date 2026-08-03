@@ -70,6 +70,14 @@ class RigCliTest(unittest.TestCase):
         self.assertEqual(2, rc)
         self.assertIn("azimuth", err.getvalue())
 
+    def test_exits_rather_than_broadcasting_all_clear_while_blind(self):
+        # Every camera failed to open: a confident empty frame would tell the
+        # HUD "nobody around" when we simply can't see.
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = main(["--once", "--camera", "rgb:/dev/video99"])
+        self.assertEqual(3, rc)
+        self.assertIn("no cameras opened", err.getvalue())
+
     def test_verbose_rig_banner_reports_the_blind_arc(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             _run_once(["-v", "--camera", "fake:az=0:fov=160"])
