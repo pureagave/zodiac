@@ -6,7 +6,13 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
-## 2026-08-03 — Thermal camera → FLIR Lepton **Ultra Wide** (160°), + 3× ordered
+## 2026-08-03 — Session handoff (context restart to a newer Claude Code)
+
+Fresh-instance orientation lives in the memory **`project_zodiac_resume_point.md`** (comprehensive) — read it + the entries below. State: **whole fleet on the latest build**, **main clean/green** (app 409 / beacon 35 / jetson 83 tests). This long session shipped: the 5 beacon sensor channels (producer+consumer) + tablet auto-dim, the beacon on-device full readout, the DMX tracker + sound-reactive light, the 2026 map migration, a docs sync + test-coverage expansion, and the thermal-camera switch to the Lepton Ultra Wide.
+
+**⭐ THE NEXT TASK (approved by the user, deliberately NOT started — do it fresh):** in `jetson/zvision`, (1) replace the linear `bbox_to_rel_az` with a **fisheye→azimuth** map + default `--hfov 160` for the UW lens, and (2) add **multi-camera merge** — N `detect()` streams, each tagged with a mount-angle+FOV, fused into one full-circle threat list (rig = 1 forward thermal + several RGB for 360°). Device-independent + unit-testable; the surround DRIVER HUD is the on-device follow-up.
+
+## 2026-08-03 — Thermal camera → FLIR Lepton **Ultra Wide** (160°)
 
 Switched the thermal sensor from the planned Lepton 3.5 (57°, radiometric) to the **Lepton Ultra Wide: 160° FOV, 120×120, non-radiometric**, on a **PureThermal Mini USB** carrier (compact + standard USB-C, plug-and-play `/dev/videoN`). **One thermal camera** (1 board + 1 UW). **360° surround will come from cheaper RGB (IMX462) cameras, not more thermals** — the one thermal is the forward / total-dark sensor where it earns its cost. Rationale: the mission is people **all around** a slow art car, so wide surround coverage beats forward range; non-radiometric is fine because zvision detects warm blobs by **contrast/motion, not absolute °C** (and the daytime 120 °F ground already rules out temp-thresholding). Germanium window upsized **D15→D20** and must mount **~2 mm from the lens** (at 160°, required window radius ≈ standoff × tan80° ≈ ×5.7). Nothing bought until now — the earlier "3.5 + PT3 ordered" note was never actually placed.
 
