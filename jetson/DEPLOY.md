@@ -112,16 +112,55 @@ enumerate:
 v4l2-ctl --list-devices          # find which /dev/videoN is which
 v4l2-ctl -d /dev/video0 --all    # sanity: resolution/format
 ```
-Lepton 3.5 is 160×120. A USB webcam will be a second `/dev/videoN`.
+Lepton Ultra Wide is 120×120. Each RGB camera will be a further `/dev/videoN`.
 
 Run the real detector:
 ```bash
-python3 -m zvision --source thermal --device /dev/video0 --hz 10 --hfov 57 -v
+python3 -m zvision --source thermal --device /dev/video0 --hz 10 --hfov 160 -v
 ```
 Walk in front of the camera — you should see contacts appear, their `rel_az`
 tracking left/right and `size` growing as you approach, on both the console and
-the HUD. `--hfov` must match your lens (Lepton 3.5 standard ≈ 57°); it sets the
-left/right angle mapping, so calibrate it if bearings look compressed/stretched.
+the HUD.
+
+`--hfov` must match your lens (Lepton **Ultra Wide** = 160°, the default) and
+`--lens` its projection — `equidistant` for a fisheye like the UW,
+`rectilinear` for an ordinary lens like the RGB modules. Together they set the
+angle mapping, so calibrate if bearings look compressed or stretched. If your
+lens' quoted FOV is a *diagonal* rather than a width, say so with `--fov-ref d`;
+on a wide lens over a near-square sensor the two differ by tens of degrees.
+
+**Sanity check it physically.** Stand at a known bearing (say 45° off the nose,
+paced out on the ground) and confirm the console's `rel_az` agrees. Do it once
+at the centre and once near the frame edge — the edge is where a wrong lens
+model shows up, and it's the same number that aims the tracker light.
+
+### 5b. The surround rig (multiple cameras)
+
+One thermal forward plus RGB around the body. Repeat `--camera` per camera,
+each with its mounting bearing (`az`, +right off the nose) and optics:
+```bash
+python3 -m zvision -v \
+  --camera thermal:/dev/video0:az=0:fov=160:lens=fisheye:name=thermal \
+  --camera rgb:/dev/video2:az=120:fov=90:lens=pinhole:name=stbd-aft \
+  --camera rgb:/dev/video4:az=-120:fov=90:lens=pinhole:name=port-aft
+```
+zvision merges them into one full-circle contact list: bearings rotated into
+vehicle terms, ids namespaced per camera, and one person seen by two
+overlapping cameras collapsed to a single contact (`--merge-deg`, default 8°).
+
+Verbose start-up prints each camera's arc **and any blind sector** — check that
+before you go hunting for contacts that were never visible:
+```
+     thermal: thermal /dev/video0 az=+0° fov=160°h equidistant -> covers -80°..+80°
+    stbd-aft: rgb /dev/video2 az=+120° fov=90°h rectilinear -> covers +75°..+165°
+    port-aft: rgb /dev/video4 az=-120° fov=90°h rectilinear -> covers -165°..-75°
+  blind: +166°..+195°
+```
+Measure each camera's `az` against the vehicle's actual nose, not by eye — an
+error there rotates every contact from that camera and swings the tracker light
+onto the wrong person. A camera that won't open (or dies mid-run) costs you its
+arc, not the run; if *none* open, zvision exits rather than broadcasting a
+confident "all clear" while blind.
 
 ## 6. Make it permanent
 
@@ -177,7 +216,11 @@ ZVISION_ARGS=--source thermal --device /dev/video0 --hz 10 --dmx ola
 | Console shows frames, HUD shows nothing | multicast dropped at router bridge — broadcast leg should cover it; verify tablet and Jetson share a `/24`, check AP client-isolation is **off** |
 | `-> 0 targets` in logs | no network route yet (`network-online.target` not reached) — check `ip addr`, set `--iface-ip` |
 | `could not open camera` | wrong `/dev/videoN` (`v4l2-ctl --list-devices`), or cv2 missing on a non-JetPack box (`pip install opencv-python numpy`) |
-| bearings compressed/stretched | `--hfov` doesn't match the lens |
+| bearings compressed/stretched | `--hfov` doesn't match the lens, or `--lens` has the wrong projection (fisheye = `equidistant`, ordinary = `rectilinear`); if the datasheet FOV is a diagonal, add `--fov-ref d` |
+| one camera's contacts all sit at the wrong bearing | that camera's `az=` doesn't match how it's actually bolted on — measure it against the nose |
+| one person shows up twice in a camera overlap | raise `--merge-deg`; lower it if two people standing close together get collapsed into one |
+| `no cameras opened`, exit 3 | none of the rig's devices enumerated — `v4l2-ctl --list-devices`, check USB power/hub |
+| a camera vanished but the run continued | by design — check stderr for `camera <name> failing, dropped`; that arc is blind until it's back |
 | contacts flicker / bad ids | motion detector is bring-up-grade; the trained model replaces it — for now raise `--hz` and ensure a stable mount |
 | `--dmx ola` runs but the head doesn't move | universe not patched (`ola_dev_info` → `ola_patch`), or the wrong universe (`--dmx-universe`). Confirm with `ola_set_dmx -u 0 -d 128,0,128`. |
 | DMX flickers / stutters | another OLA plugin is fighting for the FT232 (leave only `ftdidmx` on), or olad isn't CPU-pinned — re-run `install-ola.sh`; check `systemctl show olad -p CPUAffinity` |
@@ -190,6 +233,12 @@ One UDP datagram per frame, ASCII, to `239.7.7.20:10120` (+ subnet broadcast):
 ```
 ZTHREAT;<id>:<relAzDeg>:<size>:<collision>;<id>:<relAzDeg>:<size>:<collision>...
 ```
-`collision` is `0`/`1`; a bare `ZTHREAT` means **all clear**. Defined in
-`zvision/threat_protocol.py`, mirrored from the tablet's Kotlin
-`core/vision/ThreatProtocol.kt`. Changing it means changing both sides.
+`collision` is `0`/`1`; a bare `ZTHREAT` means **all clear**. `relAzDeg` is a
+**full-circle** bearing off the nose, ±180 (it was capped at ±90 while there was
+only a forward camera). Defined in `zvision/threat_protocol.py`, mirrored from
+the tablet's Kotlin `core/vision/ThreatProtocol.kt`. Changing it means changing
+both sides.
+
+> The DRIVER HUD still *draws* only the forward half — it places a contact by
+> `az / THERMAL_HALF_FOV_DEG` — so rear contacts ride the bus today but aren't
+> displayed. The surround HUD layout is the follow-up.

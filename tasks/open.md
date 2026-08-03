@@ -14,6 +14,18 @@ The 2026 Innovate GIS went live; **the city moved ~583 m SW** (axis unchanged at
 - [ ] **On-device verify** the rendered 2026 city + type a known address (e.g. our camp 2:15 & H) and confirm it lands on the right corner — the one gate before trusting nav.
 - [ ] *(optional)* render the new `dmz` layer; final re-pull of the GIS closer to the event (dataset still being edited).
 
+## Surround vision — zvision rig DONE 2026-08-03, HUD + calibration open
+
+zvision now runs a ring of cameras and merges them into one full-circle contact list (`jetson/zvision/rig.py`), and the ZTHREAT wire carries the full ±180. See the SYNC entry for the four commits.
+
+- [x] Fisheye/rectilinear lens models (`pixel_to_bearing`), `--hfov` default 57 → 160, `--lens`, `--fov-ref`.
+- [x] Multi-camera rig: `--camera` specs, mount-angle rotation, per-camera id namespacing, overlap dedup, coverage/blind-arc report, per-camera failure tolerance.
+- [x] Wire arc ±90 → ±180 on both sides; `DriverNightScreen` explicitly filters to the forward half so nothing changed on screen.
+- [ ] **Surround DRIVER HUD** (on-device) — rear contacts are on the bus and nothing draws them. Needs a layout decision: full 360 ring vs forward view + rear strip. Drop `HUD_FORWARD_ARC_DEG` when it lands.
+- [ ] **Is the Lepton UW's 160° horizontal or diagonal?** Decides `--fov-ref`; a 160° *horizontal* figure across a square sensor implies an impossible ~226° diagonal, so this is worth resolving off the datasheet or on the bench before trusting edge bearings.
+- [ ] **Calibrate each camera's `az`** against the vehicle's actual nose once mounted — an error there rotates that camera's entire contact set and swings the tracker light onto the wrong person.
+- [ ] **Decide RGB count + lens FOV** — that's what closes the ring. The UW already covers the forward 160°, so the RGB cameras mainly own the sides and rear; `zvision -v` prints the resulting blind sectors.
+
 ## Operational gap (do soonest)
 
 - [ ] **M10** — pull in Timber, tag every source's lifecycle, write a rolling file under `getExternalFilesDir(...)`. Without logs we can't postmortem a tablet that misbehaves on the playa. Add a debug screen later that displays the last N lines.

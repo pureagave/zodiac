@@ -11,7 +11,7 @@ Package: `org.pureagave.zodiac.control`
 **Monorepo — three modules:**
 - `:app` — the Android cockpit app (this file's main subject).
 - `:beacon` — the [Zodiac Beacon](#zodiac-beacon-sensor-hub), a headless phone sensor-hub broadcaster (`org.pureagave.zodiac.beacon`).
-- `jetson/` — `zvision`, a Python vision edge box on a Jetson Orin Nano Super (thermal/RGB → threat contacts on the fleet bus + a DMX tracker light). Docs in `jetson/*.md`.
+- `jetson/` — `zvision`, a Python vision edge box on a Jetson Orin Nano Super (a ring of thermal/RGB cameras → one full-circle threat list on the fleet bus + a DMX tracker light). Docs in `jetson/*.md`.
 
 ## Build & Test Commands
 
@@ -48,7 +48,7 @@ Android CI (`android-ci.yml`, `:app`-scoped) runs ktlint, detekt, **Android Lint
 
 **Beacon sensor channels:** the `:beacon` broadcasts five proprietary NMEA sentences beyond GPS/heading/tilt — `$ZAUD` (mic rms/peak/beat), `$ZENV` (ambient lux), `$ZSHK` (shock/impact g), `$ZBCN` (beacon health: battery/fix/sats/uptime), `$ZODO` (trip+lifetime odometer). `NmeaParser` parses them into `core/telemetry/*` models (`AudioLevel`, `AmbientLight`, `ShockEvent`, `BeaconHealth`, `Odometer`, aggregated in `BeaconSensors`); `NetworkLocationSource.beaconSensors` → `CockpitViewModel` → `CockpitUiState`. `$ZENV` lux drives an **auto-dim** of screen brightness: `ui/state/ScreenBrightness.luxToBrightness` (log-scaled) applied by `MainActivity.autoDim`.
 
-**Vision / threats (DRIVER concept):** `data/vision/*ThreatSource` (Fake/Network) behind `RoutedThreatSource` consume `ThreatProtocol` frames the Jetson broadcasts on the fleet threat group; `core/vision/DriverThreat` + `ThreatProtocol` (byte-exact mirror of the Python side) model per-contact bearing/size/collision. Rendered by `ui/concepts/DriverNightScreen`.
+**Vision / threats (DRIVER concept):** `data/vision/*ThreatSource` (Fake/Network) behind `RoutedThreatSource` consume `ThreatProtocol` frames the Jetson broadcasts on the fleet threat group; `core/vision/DriverThreat` + `ThreatProtocol` (byte-exact mirror of the Python side) model per-contact bearing/size/collision. `relAzDeg` is a **full-circle** bearing (±180) since the edge box fuses a ring of cameras — but `DriverNightScreen` still draws only the forward half (`HUD_FORWARD_ARC_DEG`), so rear contacts ride the bus undisplayed until the surround HUD lands.
 
 **Playa map + navigation:** `data/playa/` (GeoJSON parser → binary cache → `PlayaMapRepository`), `core/geo/` (equirectangular `PlayaProjection`, `PlayaViewport`), `core/navigation/` (`PlayaNavigator`, clock-bearing cues), rendered by `ui/playamap/` (projection, markers, labels, pan/pinch touch input). Active year is a single source of truth: `core/geo/GoldenSpike.ACTIVE` = `Y2026` (base assets in `app/src/main/assets/brc/2026/`; the 2026 city moved ~583 m SW from 2025 but the 12:00 axis is still 45°). The 2026 GIS ships no art layer — art/camp markers come from the BM API and stay hidden until BM releases 2026 data (~3 weeks pre-event).
 

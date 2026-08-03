@@ -8,11 +8,11 @@ same contacts and — when idle — pulses to the beacon's `$ZAUD` audio (see th
 [DMX section in DEPLOY.md](DEPLOY.md#7-bring-up-the-dmx-tracker-light-optional-independent-of-the-camera)).
 
 ```
- camera(s) ──▶ detector ──▶ DriverThreat[] ──▶ ThreatBroadcaster ──▶ fleet bus
-  Lepton /                 (rel_az, size,       ZTHREAT frames        239.7.7.20:10120
-  USB RGB                   collision, id)      (UDP, TTL 1)          + subnet broadcast
-                                                                          │
-                                              tablets: NetworkThreatSource ▶ DRIVER HUD
+ camera ring ──▶ detector ──▶ rig merge ──▶ ThreatBroadcaster ──▶ fleet bus
+  UW thermal      per camera   full-circle    ZTHREAT frames       239.7.7.20:10120
+  + RGB x N       (rel_az,     bearings +     (UDP, TTL 1)         + subnet broadcast
+                   size, id)   overlap dedup                            │
+                                            tablets: NetworkThreatSource ▶ DRIVER HUD
 ```
 
 The wire format (`zvision/threat_protocol.py`) is a **byte-exact mirror** of the
@@ -24,7 +24,7 @@ protocol. The round-trip tests here also guard that contract.
 ```bash
 cd jetson
 python3 -m zvision --source fake -v        # emit synthetic contacts, print each frame
-python3 -m unittest discover -s tests -t . # 80 tests, standard library only
+python3 -m unittest discover -s tests -t . # 152 tests, standard library only
 ```
 
 `--source fake` needs nothing installed — it's how you prove the bus and light
@@ -43,6 +43,42 @@ PureThermal, or a USB webcam) and moving bodies show up on the HUD immediately.
 The trained thermal/RGB model drops in behind the same `detect()` signature
 later.
 
+`--hfov` defaults to **160°** for the Lepton Ultra Wide, and `--lens` selects
+the projection (`equidistant` for a fisheye, `rectilinear` for an ordinary
+lens). Getting these right matters: bearings drive both the HUD *and* where a
+real spotlight points.
+
+## The surround rig (360°)
+
+The vehicle carries one ultra-wide thermal forward plus several RGB cameras
+around the body. Repeat `--camera` once per camera, telling each where it looks
+and what it looks through; `rig.py` fuses them into a single full-circle contact
+list — bearings rotated into vehicle terms, track ids namespaced per camera, and
+the same person seen by two overlapping cameras collapsed to one contact.
+
+```bash
+python3 -m zvision -v \
+  --camera thermal:/dev/video0:az=0:fov=160:lens=fisheye:name=thermal \
+  --camera rgb:/dev/video2:az=120:fov=90:lens=pinhole:name=stbd-aft \
+  --camera rgb:/dev/video4:az=-120:fov=90:lens=pinhole:name=port-aft
+```
+
+`az` is the camera's bearing off the nose (+right), so `az=180` faces astern.
+Verbose start-up prints each camera's covered arc **and the blind sectors**, so
+you find out the ring doesn't close now rather than by wondering why someone
+standing behind the car never appeared:
+
+```
+     thermal: fake /dev/video0 az=+0° fov=160°h equidistant -> covers -80°..+80°
+    stbd-aft: fake /dev/video0 az=+120° fov=90°h equidistant -> covers +75°..+165°
+    port-aft: fake /dev/video0 az=-120° fov=90°h equidistant -> covers -165°..-75°
+  blind: +166°..+195°
+```
+
+A camera that won't open, or starts throwing mid-run, costs you its arc — not
+the run. If *nothing* opens, the runner exits rather than broadcasting a
+confident "all clear" while blind.
+
 ## Layout
 
 | file | role |
@@ -51,7 +87,8 @@ later.
 | `zvision/fleet_bus.py` | multicast group/port constants (mirrors Kotlin) |
 | `zvision/broadcaster.py` | UDP sender — multicast **and** subnet broadcast |
 | `zvision/detector.py` | `FakeDetector` (stdlib) + `MotionDetector` (cv2) |
-| `zvision/geometry.py` | bbox → (rel_az, size) + constant-bearing collision rule |
+| `zvision/geometry.py` | pixel → (az, el) through a lens model, bbox → size, constant-bearing collision rule |
+| `zvision/rig.py` | camera mounts, `--camera` spec parsing, full-circle merge + overlap dedup |
 | `zvision/capture.py` | UVC camera wrapper (cv2) |
 | `zvision/tracker.py` | DMX tracker light — target-select + pan/tilt map + slew + idle sound show |
 | `zvision/dmx.py` | DMX transport — `FakeDmxSink` (stdlib) + `OlaDmxSink` (posts to `olad`) |

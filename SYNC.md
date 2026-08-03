@@ -6,6 +6,75 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-03 — zvision UW fisheye + multi-camera 360° merge (THE next task — done)
+
+Built the approved next task in `jetson/zvision`, device-independent and green
+(app 410 / beacon 35 / **jetson 152**). Four commits, each runnable.
+
+**1. Real lens models (`geometry.py`, commit `ccda40a`).** `pixel_to_bearing`
+unprojects (cx, cy) → (az, el) through a selectable projection —
+`rectilinear` / `equidistant` (f-theta) / `equisolid`, plus `linear` to keep the
+old map — normalised by frame aspect, using `atan2` so a >180° lens' edge
+bearings stay correctly signed instead of folding back toward zero.
+- **Correction to the premise:** the old flat `(cx-0.5)*hfov` was described as
+  wrong at the edges. For an *equidistant* fisheye it's actually exact **along
+  the horizontal centreline** — that's why it survived on the narrow Lepton. The
+  real errors are (a) **`--hfov 57` on a 160° lens**, by far the biggest, (b)
+  off-centreline contacts, where vertical off-axis angle feeds into azimuth, and
+  (c) **rectilinear lenses** (the RGB modules), which are never linear in x.
+- **New decision — `FOV_HORIZONTAL` vs `FOV_DIAGONAL` (`--fov-ref`).** Datasheets
+  don't say which dimension a quoted FOV spans and on a wide lens it's decisive:
+  **160° horizontal across a square sensor implies a ~226° diagonal (physically
+  impossible)**, while 160° diagonal on that sensor is only ~113° horizontal. We
+  need to determine which the Lepton UW's 160° actually is before trusting edge
+  bearings — the code supports both, the hardware answer is still open.
+
+**2. Wire arc ±90 → ±180 (commit `a8dedb3`, both sides).** The ZTHREAT contract
+capped bearings at ±90 ("not in front of the vehicle") — that filter would have
+silently deleted **every** rear contact before it reached a tablet. Widened in
+`threat_protocol.py` **and** Kotlin `ThreatProtocol.kt` together (byte-exact
+mirror; the round-trip tests guard the tablet's half). *User chose this over
+keeping the wire narrow.* `DriverNightScreen` now filters to the forward ±90
+explicitly, because it places contacts at `az/THERMAL_HALF_FOV_DEG` — an
+unfiltered rear contact would draw off-canvas and, worse, **a collision astern
+would fire "! BRAKE !" at the driver**. Display is unchanged; surround HUD is
+the follow-up.
+
+**3. Multi-camera rig (`rig.py`, commit `8b199fd`).** N cameras → one full-circle
+list: `camera-local az --(+ mount_az)--> global az --(overlap dedup)--> merged`.
+- `CameraMount` (where it looks / how wide / what lens) + `arc()` +
+  **`coverage_gaps()`** — verbose start-up prints each arc *and the blind
+  sectors*, so a ring that doesn't close is found at boot, not by wondering why
+  someone behind the car never appeared.
+- `--camera thermal:/dev/video0:az=0:fov=160:lens=fisheye`, repeatable
+  (*user chose repeatable CLI flags over a JSON rig file*). Unknown keys are a
+  hard error — a typo'd mount angle aims a real spotlight at the wrong person.
+- `to_global` namespaces track ids per camera (`ID_STRIDE`), else the tracker
+  light latches onto "id 1" and gets a different person each frame as cameras
+  take turns. Ad-hoc id 0 stays 0 everywhere.
+- `merge_contacts` collapses **cross-camera** duplicates within `--merge-deg`
+  (8° default) but never merges two contacts a single camera deliberately
+  resolved; ties break collision-then-nearest.
+- `--hfov` default **57 → 160**; `build_detector` → `rig.build_camera`.
+
+**4. A camera that won't open must not sink the rig (commit `0158716`).** Found
+by smoking the CLI: eager `build_rig` died with a raw traceback on one missing
+`/dev/videoN`. On a vehicle where five USB cameras enumerate in whatever order
+they like, that trades one blind arc for a blind night. Now skipped-and-reported
+at startup (mirroring the existing per-frame guard); if *nothing* opens the
+runner **exits 3** rather than settling into a confident stream of empty
+"all clear" frames while completely blind.
+
+**Follow-ups this leaves:**
+- **Surround DRIVER HUD** (on-device, tablet side) — rear contacts are on the
+  bus now and nothing draws them.
+- **Is the UW's 160° horizontal or diagonal?** Decides `--fov-ref`; check the
+  FLIR datasheet or measure it on the bench.
+- **Calibrate each mount's `az` physically** against the vehicle nose — an error
+  there rotates that camera's whole contact set and swings the light.
+- **RGB count + lens FOV still TBD** — that choice is what closes the ring
+  (the UW already covers the forward 160°, so the RGB ring mainly owns sides/rear).
+
 ## 2026-08-03 — Session handoff (context restart to a newer Claude Code)
 
 Fresh-instance orientation lives in the memory **`project_zodiac_resume_point.md`** (comprehensive) — read it + the entries below. State: **whole fleet on the latest build**, **main clean/green** (app 409 / beacon 35 / jetson 83 tests). This long session shipped: the 5 beacon sensor channels (producer+consumer) + tablet auto-dim, the beacon on-device full readout, the DMX tracker + sound-reactive light, the 2026 map migration, a docs sync + test-coverage expansion, and the thermal-camera switch to the Lepton Ultra Wide.

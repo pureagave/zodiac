@@ -12,7 +12,7 @@ cross-section · system layout · build order, in one sheet.
 **In hand / covered:**
 - [x] Jetson Orin Nano Super Dev Kit **+ its included 19 V PSU** (bench power covered)
 - [x] **NVMe M.2 2280 SSD, 512 GB** — in hand 2026-07-31 (512 > the 256 spec'd = more headroom for JetPack + models + recordings)
-- [x] **FLIR Lepton Ultra Wide + PureThermal Mini USB** (ordered ~2026-08, on the way — **one thermal camera**: 1 board + 1 UW module). **Switched from the 3.5:** the UW is **160° FOV** (vs 57°), **120×120**, **non-radiometric**. Wide surround coverage fits the "people all around a slow art car" mission; non-radiometric is fine (zvision detects warm blobs by contrast/motion, not absolute °C). **Code implication:** zvision's linear `bbox→rel_az` + `--hfov 57` need a fisheye→azimuth correction and `--hfov 160` for accurate bearings on the wide lens. Mini USB = compact + standard USB-C (plug-and-play `/dev/videoN`).
+- [x] **FLIR Lepton Ultra Wide + PureThermal Mini USB** (ordered ~2026-08, on the way — **one thermal camera**: 1 board + 1 UW module). **Switched from the 3.5:** the UW is **160° FOV** (vs 57°), **120×120**, **non-radiometric**. Wide surround coverage fits the "people all around a slow art car" mission; non-radiometric is fine (zvision detects warm blobs by contrast/motion, not absolute °C). **Code implication — DONE (2026-08-03):** zvision now unprojects pixels through a real lens model (`--lens equidistant` for the fisheye) and defaults `--hfov` to 160. Mini USB = compact + standard USB-C (plug-and-play `/dev/videoN`).
 - [x] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
 - [x] Camera-head housing (aluminum CCTV box)
 - [x] Jetson enclosure — KKSB Orin Nano Super case (`B0FRJ1WBQF`)
@@ -70,10 +70,19 @@ cross-section · system layout · build order, in one sheet.
   (max sensitivity), auto-switched. That's the recommended buy for "max data,
   day and night." Its onboard 940 nm LEDs are short-range only — add item 5a to
   see people at 10–30 m.
-- **FOV — match the Lepton (~57° H).** These ship with wide M12 lenses (~85° H).
-  Either crop the RGB down to the thermal frame, or swap the **interchangeable
-  M12 lens** to ~4–6 mm (~60°) for a tighter match. Set each camera's `--hfov`
-  in zvision so bearings are correct.
+- **FOV.** These ship with wide M12 lenses (~85° H) and the lens is
+  interchangeable. Two different jobs, so two different answers:
+  - *Co-mounted forward RGB, registered pixel-for-pixel to the thermal:* match
+    the thermal's FOV so a fixed 2D transform lines the frames up.
+  - *Surround ring cameras (the current plan):* don't match anything — each is
+    its own sensor covering its own arc. Pick lenses so the arcs overlap
+    slightly and the ring closes, and declare each camera's real FOV, lens
+    projection and mounting bearing in its `--camera` spec. `zvision -v` prints
+    the resulting coverage and any blind sector.
+
+  **Open:** RGB count and lens FOV are still TBD; that choice is what decides
+  whether the ring closes. Note the UW thermal's 160° means the *thermal* alone
+  already covers the forward 160°, so the RGB ring mainly owns the sides and rear.
 - **Alignment is software, one-time.** Co-mount both cameras **rigidly on one
   bracket, close together (small baseline), same look direction**; then a fixed
   2D scale/offset/rotation registers the thermal ↔ RGB frames. At 10–30 m the
@@ -229,7 +238,9 @@ before the next:
    Jetson box shaded + vented; USB-tether the cameras.
 7. **Wire** — power 12 V → DC-DC → 19 V; network Ethernet or AX210.
 8. **Heat check** — `tegrastats` in the sun (SoC < ~85 °C under load); confirm
-   both cameras enumerate (`v4l2-ctl --list-devices`); set each `--hfov`.
+   every camera enumerates (`v4l2-ctl --list-devices`); give each one a
+   `--camera` spec with its measured mounting bearing, FOV and lens model, and
+   check the verbose banner reports the blind sectors you expect.
 9. **Verify end-to-end** — `--source thermal` (+ rgb), walk in front, confirm
    contacts on the DRIVER HUD.
 
