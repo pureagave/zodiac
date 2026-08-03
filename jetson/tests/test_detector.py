@@ -1,6 +1,6 @@
 import unittest
 
-from zvision.detector import FakeDetector, build_detector
+from zvision.detector import FakeDetector
 
 
 class FakeDetectorTest(unittest.TestCase):
@@ -23,13 +23,6 @@ class FakeDetectorTest(unittest.TestCase):
         for tenth in range(0, 200):
             sweeper = next(c for c in d.detect(tenth / 10.0) if c.id == 1)
             self.assertLessEqual(abs(sweeper.rel_az_deg), 40.0)
-
-
-class BuildDetectorTest(unittest.TestCase):
-    def test_fake_source_needs_no_hardware(self):
-        det = build_detector("fake", hfov_deg=57.0, device="/dev/video0", width=160, height=120)
-        self.assertIsInstance(det, FakeDetector)
-        det.close()
 
 
 if __name__ == "__main__":

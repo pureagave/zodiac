@@ -4,6 +4,15 @@
     python -m zvision --source thermal --hz 10     # real Lepton on /dev/video0
     python -m zvision --once                        # single-frame smoke test
 
+A surround rig is N repeated ``--camera`` flags, each carrying where that camera
+looks and what it looks through; their contacts are fused into one full-circle
+list (see ``rig.py``)::
+
+    python -m zvision \
+      --camera thermal:/dev/video0:az=0:fov=160:lens=fisheye \
+      --camera rgb:/dev/video2:az=120:fov=90:lens=pinhole \
+      --camera rgb:/dev/video4:az=-120:fov=90:lens=pinhole -v
+
 On exit it emits one empty "all clear" frame so the HUD clears immediately
 instead of freezing on the last contacts.
 """
@@ -18,7 +27,8 @@ from typing import List, Optional
 
 from . import fleet_bus
 from .broadcaster import ThreatBroadcaster
-from .detector import build_detector
+from .geometry import FOV_HORIZONTAL, LENS_EQUIDISTANT, LENS_MODELS
+from .rig import DEFAULT_DEDUP_DEG, CameraMount, build_rig, coverage_gaps, parse_camera_spec
 from .threat_protocol import format_frame
 
 
@@ -28,7 +38,41 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
     )
     p.add_argument("--source", choices=["fake", "thermal", "rgb"], default="fake")
     p.add_argument("--hz", type=float, default=10.0, help="broadcast rate (Hz)")
-    p.add_argument("--hfov", type=float, default=57.0, help="camera horizontal FOV (deg)")
+    p.add_argument(
+        "--hfov",
+        type=float,
+        default=160.0,
+        help="single-camera FOV (deg); default suits the Lepton Ultra Wide",
+    )
+    p.add_argument(
+        "--lens",
+        choices=list(LENS_MODELS),
+        default=LENS_EQUIDISTANT,
+        help="single-camera projection model (fisheye lenses are 'equidistant')",
+    )
+    p.add_argument(
+        "--fov-ref",
+        choices=["h", "d"],
+        default=FOV_HORIZONTAL,
+        help="is --hfov measured across the frame width (h) or its diagonal (d)?",
+    )
+    p.add_argument(
+        "--camera",
+        action="append",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "add a camera to the rig: source[:device][:az=..][:fov=..][:fovref=h|d]"
+            "[:lens=..][:name=..][:width=..][:height=..]. Repeat for a surround rig; "
+            "overrides --source/--device/--hfov."
+        ),
+    )
+    p.add_argument(
+        "--merge-deg",
+        type=float,
+        default=DEFAULT_DEDUP_DEG,
+        help="collapse contacts this close in bearing seen by different cameras (0 disables)",
+    )
     p.add_argument("--group", default=fleet_bus.THREAT_GROUP)
     p.add_argument("--port", type=int, default=fleet_bus.THREAT_PORT)
     p.add_argument("--iface-ip", default=None, help="local IP of the vehicle-network NIC")
@@ -57,8 +101,34 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _mounts_from_args(args: argparse.Namespace) -> List[CameraMount]:
+    """The rig described by the CLI: explicit ``--camera`` specs if given, else
+    the legacy single forward camera built from ``--source``/``--hfov``."""
+    if args.camera:
+        return [parse_camera_spec(spec, index=i) for i, spec in enumerate(args.camera)]
+    return [
+        CameraMount(
+            name=args.source,
+            source=args.source,
+            device=args.device,
+            mount_az_deg=0.0,
+            fov_deg=args.hfov,
+            fov_ref=args.fov_ref,
+            lens=args.lens,
+            width=args.width,
+            height=args.height,
+        )
+    ]
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = _parse_args(argv)
+
+    try:
+        mounts = _mounts_from_args(args)
+    except ValueError as exc:
+        print(f"zvision: {exc}", file=sys.stderr, flush=True)
+        return 2
 
     broadcaster = ThreatBroadcaster(
         group=args.group,
@@ -67,9 +137,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         bind_ip=args.bind_ip,
         broadcast=args.broadcast,
     )
-    detector = build_detector(
-        args.source, hfov_deg=args.hfov, device=args.device, width=args.width, height=args.height
-    )
+    detector = build_rig(mounts, dedup_deg=args.merge_deg)
 
     tracker = None
     dmx_sink = None
@@ -100,10 +168,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     start = time.monotonic()
     if args.verbose:
         print(
-            f"zvision: source={args.source} -> {args.group}:{args.port} "
+            f"zvision: {len(mounts)} camera(s) -> {args.group}:{args.port} "
             f"+ subnet broadcast @ {args.hz}Hz",
             flush=True,
         )
+        for m in mounts:
+            left, right = m.arc()
+            print(
+                f"  {m.name:>10}: {m.source} {m.device} az={m.mount_az_deg:+.0f}° "
+                f"fov={m.fov_deg:.0f}°{m.fov_ref} {m.lens} -> covers {left:+.0f}°..{right:+.0f}°",
+                flush=True,
+            )
+        gaps = coverage_gaps(mounts)
+        if gaps:
+            arcs = ", ".join(f"{a:+.0f}°..{b:+.0f}°" for a, b in gaps)
+            print(f"  blind: {arcs}", flush=True)
+        else:
+            print("  blind: none — the ring closes", flush=True)
     last_t: Optional[float] = None
     try:
         while running["go"]:

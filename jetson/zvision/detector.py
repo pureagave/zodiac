@@ -11,7 +11,13 @@ from __future__ import annotations
 import math
 from typing import List, Optional, Protocol
 
-from .geometry import CollisionEstimator, bbox_height_to_size, bbox_to_rel_az
+from .geometry import (
+    FOV_HORIZONTAL,
+    LENS_EQUIDISTANT,
+    CollisionEstimator,
+    bbox_height_to_size,
+    pixel_to_bearing,
+)
 from .threat import DriverThreat
 
 
@@ -62,7 +68,9 @@ class MotionDetector:
     def __init__(
         self,
         camera,
-        hfov_deg: float = 57.0,
+        fov_deg: float = 160.0,
+        lens: str = LENS_EQUIDISTANT,
+        fov_ref: str = FOV_HORIZONTAL,
         min_area_frac: float = 0.004,
         match_dist: float = 0.15,
     ) -> None:
@@ -70,7 +78,9 @@ class MotionDetector:
 
         self._cv2 = cv2
         self._camera = camera
-        self._hfov = hfov_deg
+        self._fov = fov_deg
+        self._lens = lens
+        self._fov_ref = fov_ref
         self._min_area_frac = min_area_frac
         self._match_dist = match_dist
         self._bg = cv2.createBackgroundSubtractorMOG2(detectShadows=False)
@@ -91,6 +101,7 @@ class MotionDetector:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         min_area = self._min_area_frac * w * h
+        aspect = h / w if w else 1.0
         seen: dict[int, tuple[float, float]] = {}
         out: List[DriverThreat] = []
         for c in contours:
@@ -101,7 +112,11 @@ class MotionDetector:
             cy_norm = (y + bh / 2.0) / h
             tid = self._assign_id(cx_norm, cy_norm, seen)
             seen[tid] = (cx_norm, cy_norm)
-            az = bbox_to_rel_az(cx_norm, self._hfov)
+            # Aim at the contact's feet-to-head centre through the real lens
+            # model: on a wide fisheye the vertical offset shifts azimuth too.
+            az, _el = pixel_to_bearing(
+                cx_norm, cy_norm, self._fov, aspect, self._lens, self._fov_ref
+            )
             size = bbox_height_to_size(bh / h)
             collision = self._collision.update(tid, az, size, t)
             out.append(DriverThreat(rel_az_deg=az, size=size, collision=collision, id=tid))
@@ -134,23 +149,6 @@ class MotionDetector:
         closer = getattr(self._camera, "close", None)
         if closer:
             closer()
-
-
-def build_detector(
-    source: str,
-    hfov_deg: float,
-    device: str,
-    width: int,
-    height: int,
-) -> Detector:
-    """Factory: ``fake`` needs nothing; ``thermal``/``rgb`` open a UVC camera and
-    wrap it in the motion detector. Camera/cv2 imports stay lazy."""
-    if source == "fake":
-        return FakeDetector()
-    from .capture import UvcCamera
-
-    camera = UvcCamera(device, width=width, height=height)
-    return MotionDetector(camera, hfov_deg=hfov_deg)
 
 
 # Keep the optional-return import referenced for type-checkers without requiring
