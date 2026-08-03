@@ -12,7 +12,7 @@ cross-section · system layout · build order, in one sheet.
 **In hand / covered:**
 - [x] Jetson Orin Nano Super Dev Kit **+ its included 19 V PSU** (bench power covered)
 - [x] **NVMe M.2 2280 SSD, 512 GB** — in hand 2026-07-31 (512 > the 256 spec'd = more headroom for JetPack + models + recordings)
-- [x] **FLIR Lepton Ultra Wide + PureThermal Mini USB** (ordered ~2026-08, on the way — **×3 boards + UW modules**, i.e. spares and/or a multi-cam surround option). **Switched from the 3.5:** the UW is **160° FOV** (vs 57°), **120×120**, **non-radiometric**. Wide surround coverage fits the "people all around a slow art car" mission; non-radiometric is fine (zvision detects warm blobs by contrast/motion, not absolute °C). **Code implication:** zvision's linear `bbox→rel_az` + `--hfov 57` need a fisheye→azimuth correction and `--hfov 160` for accurate bearings on the wide lens. Mini USB = compact + standard USB-C (plug-and-play `/dev/videoN`).
+- [x] **FLIR Lepton Ultra Wide + PureThermal Mini USB** (ordered ~2026-08, on the way — **one thermal camera**: 1 board + 1 UW module). **Switched from the 3.5:** the UW is **160° FOV** (vs 57°), **120×120**, **non-radiometric**. Wide surround coverage fits the "people all around a slow art car" mission; non-radiometric is fine (zvision detects warm blobs by contrast/motion, not absolute °C). **Code implication:** zvision's linear `bbox→rel_az` + `--hfov 57` need a fisheye→azimuth correction and `--hfov 160` for accurate bearings on the wide lens. Mini USB = compact + standard USB-C (plug-and-play `/dev/videoN`).
 - [x] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
 - [x] Camera-head housing (aluminum CCTV box)
 - [x] Jetson enclosure — KKSB Orin Nano Super case (`B0FRJ1WBQF`)
