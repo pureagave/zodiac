@@ -12,14 +12,14 @@ cross-section · system layout · build order, in one sheet.
 **In hand / covered:**
 - [x] Jetson Orin Nano Super Dev Kit **+ its included 19 V PSU** (bench power covered)
 - [x] **NVMe M.2 2280 SSD, 512 GB** — in hand 2026-07-31 (512 > the 256 spec'd = more headroom for JetPack + models + recordings)
-- [x] FLIR Lepton 3.5 + PureThermal 3
+- [x] **FLIR Lepton Ultra Wide + PureThermal Mini USB** (ordered ~2026-08, on the way — **×3 boards + UW modules**, i.e. spares and/or a multi-cam surround option). **Switched from the 3.5:** the UW is **160° FOV** (vs 57°), **120×120**, **non-radiometric**. Wide surround coverage fits the "people all around a slow art car" mission; non-radiometric is fine (zvision detects warm blobs by contrast/motion, not absolute °C). **Code implication:** zvision's linear `bbox→rel_az` + `--hfov 57` need a fisheye→azimuth correction and `--hfov 160` for accurate bearings on the wide lens. Mini USB = compact + standard USB-C (plug-and-play `/dev/videoN`).
 - [x] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
 - [x] Camera-head housing (aluminum CCTV box)
 - [x] Jetson enclosure — KKSB Orin Nano Super case (`B0FRJ1WBQF`)
 - [x] Car power DC-DC buck converter
 - [x] Networking — router + Ethernet cable
 - [x] **DMX interface** (FTDI dongle) + **DMX cables** + **moving-head fixture**
-- [x] **Thermal window — germanium D15 × 1 mm, 2-sided AR** (Amazon, ~$68, ordered 2026-08-02, ETA mid-Aug). 15 mm is right — the Lepton mounts the window close, so it clears the ~57° FOV. (Thorlabs/Edmund $200–750 = lab overkill; single-unit Amazon/eBay/AliExpress germanium is the tier.) **Cut a scrap of HDPE for bench bring-up so a late shipment can't block the Lepton.**
+- [x] **Thermal window — germanium D20 × 1 mm, 2-sided AR** (Amazon, ~$90, ordered 2026-08-02; D15 was cancelled). Upsized to 20 mm **for the UW's 160° FOV** — at 160° the window must be **mounted ~2 mm from the lens front** to avoid vignetting (required radius ≈ standoff × tan(80°) ≈ standoff × 5.7); D20 at ~2 mm clears essentially the full 160°, D15 would clip corners. Don't go bigger — flat-window edge rays (~80° incidence) fall outside the AR coating anyway. (Thorlabs/Edmund $200–750 = lab overkill.) **Cut a scrap of HDPE for bench bring-up so a late shipment can't block the Lepton.**
 
 **Still needed (cheap last-mile, no lead time):**
 - [ ] **Gore/ePTFE breather vent ×2** (one per box)

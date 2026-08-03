@@ -6,6 +6,14 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-03 — Thermal camera → FLIR Lepton **Ultra Wide** (160°), + 3× ordered
+
+Switched the thermal sensor from the planned Lepton 3.5 (57°, radiometric) to the **Lepton Ultra Wide: 160° FOV, 120×120, non-radiometric**, on **PureThermal Mini USB** carriers (compact + standard USB-C, plug-and-play `/dev/videoN`). Ordered **×3 boards + UW modules** (spares and/or a multi-cam surround option — TBD). Rationale: the mission is people **all around** a slow art car, so wide surround coverage beats forward range; non-radiometric is fine because zvision detects warm blobs by **contrast/motion, not absolute °C** (and the daytime 120 °F ground already rules out temp-thresholding). Germanium window upsized **D15→D20** and must mount **~2 mm from the lens** (at 160°, required window radius ≈ standoff × tan80° ≈ ×5.7). Nothing bought until now — the earlier "3.5 + PT3 ordered" note was never actually placed.
+
+**Open follow-ups this creates:**
+- **zvision code:** replace the linear `bbox_to_rel_az` with a **fisheye→azimuth** map and change `--hfov` default 57→**160**, else edge bearings (and the DMX light aim) are wrong on the wide lens.
+- **If the 3 cameras are for a multi-cam 360° surround** (not just spares): a real feature — multiple `detect()` streams merged into a full-circle threat picture + a surround DRIVER HUD (today's HUD is single forward camera). Decide spares-vs-surround before building.
+
 ## 2026-08-01 — Docs sync + test-coverage expansion (two sub-agents) + fleet on latest
 
 Fleet-wide catch-up while device-managing:
