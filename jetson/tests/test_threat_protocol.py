@@ -63,10 +63,20 @@ class ValidationTest(unittest.TestCase):
         self.assertEqual(1.0, parse_frame("ZTHREAT;1:0.0:9.0:0")[0].size)
         self.assertEqual(0.0, parse_frame("ZTHREAT;1:0.0:-4.0:0")[0].size)
 
-    def test_drops_contacts_outside_the_forward_arc(self):
-        # az beyond ±90 isn't in front of the vehicle.
-        self.assertEqual([], parse_frame("ZTHREAT;1:120.0:0.5:0"))
-        self.assertEqual(1, len(parse_frame("ZTHREAT;1:89.0:0.5:0")))
+    def test_accepts_full_circle_bearings(self):
+        # The camera ring reports contacts all the way around the vehicle, so a
+        # rear bearing is a real contact, not an out-of-arc reject.
+        self.assertEqual(120.0, parse_frame("ZTHREAT;1:120.0:0.5:0")[0].rel_az_deg)
+        self.assertEqual(-175.5, parse_frame("ZTHREAT;1:-175.5:0.5:0")[0].rel_az_deg)
+        self.assertEqual(180.0, parse_frame("ZTHREAT;1:180.0:0.5:0")[0].rel_az_deg)
+
+    def test_drops_bearings_off_the_circle(self):
+        self.assertEqual([], parse_frame("ZTHREAT;1:181.0:0.5:0"))
+        self.assertEqual([], parse_frame("ZTHREAT;1:-360.0:0.5:0"))
+
+    def test_round_trips_a_rear_contact(self):
+        rear = [DriverThreat(rel_az_deg=-160.0, size=0.4, collision=False, id=2001)]
+        self.assertEqual(rear, parse_frame(format_frame(rear)))
 
     def test_caps_contact_count(self):
         frame = "ZTHREAT" + "".join(f";{i}:0.0:0.5:0" for i in range(100))

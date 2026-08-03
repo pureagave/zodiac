@@ -55,9 +55,19 @@ class ThreatProtocolTest {
     }
 
     @Test
-    fun drops_contacts_outside_the_forward_arc() {
-        assertEquals(emptyList<DriverThreat>(), ThreatProtocol.parse("ZTHREAT;1:120.0:0.5:0"))
-        assertEquals(1, ThreatProtocol.parse("ZTHREAT;1:89.0:0.5:0")!!.size)
+    fun accepts_full_circle_bearings() {
+        // The edge box's camera ring reports contacts all the way around the
+        // vehicle — rear bearings must survive the parse, not be filtered as
+        // out-of-arc the way a single forward camera's frames were.
+        assertEquals(120f, ThreatProtocol.parse("ZTHREAT;1:120.0:0.5:0")!!.single().relAzDeg, 0.01f)
+        assertEquals(-175.5f, ThreatProtocol.parse("ZTHREAT;1:-175.5:0.5:0")!!.single().relAzDeg, 0.01f)
+        assertEquals(180f, ThreatProtocol.parse("ZTHREAT;1:180.0:0.5:0")!!.single().relAzDeg, 0.01f)
+    }
+
+    @Test
+    fun drops_bearings_off_the_circle() {
+        assertEquals(emptyList<DriverThreat>(), ThreatProtocol.parse("ZTHREAT;1:181.0:0.5:0"))
+        assertEquals(emptyList<DriverThreat>(), ThreatProtocol.parse("ZTHREAT;1:-360.0:0.5:0"))
     }
 
     @Test

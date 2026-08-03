@@ -19,10 +19,12 @@ object ThreatProtocol {
     private const val FIELD_SEP = ':'
     private const val FIELDS_PER_CONTACT = 4
 
-    // Reject contacts past the forward arc; clamp size to its 0..1 range; cap the
-    // count so one hostile/buggy frame can't flood the HUD. Mirrors zvision's
-    // threat_protocol.py — this is the untrusted network boundary.
-    private const val MAX_ABS_AZ_DEG = 90f
+    // Bearings are full-circle: the edge box fuses a ring of cameras into
+    // contacts all the way around the vehicle, so ±180 is the real limit and
+    // anything past it is garbage rather than a rear contact. Clamp size to its
+    // 0..1 range; cap the count so one hostile/buggy frame can't flood the HUD.
+    // Mirrors zvision's threat_protocol.py — the untrusted network boundary.
+    private const val MAX_ABS_AZ_DEG = 180f
     private const val MAX_CONTACTS = 32
 
     fun format(threats: List<DriverThreat>): String =

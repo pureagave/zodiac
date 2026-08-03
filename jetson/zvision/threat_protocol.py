@@ -24,10 +24,12 @@ _FRAME_SEP = ";"
 _FIELD_SEP = ":"
 _FIELDS_PER_CONTACT = 4
 
-# A contact past ±90° isn't in front of the vehicle; drop it. Size is a 0..1
-# range and gets clamped. Cap the contact count so a crowded scene can't build a
-# frame that IP-fragments (fragmented multicast over lossy WiFi ~never arrives).
-MAX_ABS_AZ_DEG = 90.0
+# Bearings are full-circle: the rig fuses cameras all the way around the vehicle
+# (see rig.py), so ±180 is the real limit — anything outside it is garbage, not a
+# rear contact. Size is a 0..1 range and gets clamped. Cap the contact count so a
+# crowded scene can't build a frame that IP-fragments (fragmented multicast over
+# lossy WiFi ~never arrives).
+MAX_ABS_AZ_DEG = 180.0
 MAX_CONTACTS = 32
 
 
@@ -77,7 +79,7 @@ def parse_frame(line: str) -> Optional[List[DriverThreat]]:
         # coordinate. Drop out-of-front contacts; clamp size to its 0..1 range.
         if not (math.isfinite(az) and math.isfinite(size)):
             continue
-        if abs(az) > MAX_ABS_AZ_DEG:
+        if abs(az) > MAX_ABS_AZ_DEG:  # off the circle entirely — garbage
             continue
         out.append(
             DriverThreat(

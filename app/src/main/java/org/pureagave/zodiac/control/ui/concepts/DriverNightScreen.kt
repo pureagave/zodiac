@@ -36,6 +36,7 @@ import org.pureagave.zodiac.control.core.ops.campGuidance
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -55,6 +56,11 @@ private val DeepRed = Color(0xFF9E1224)
 private const val KPH_TO_MPH = 0.621371
 private const val ARCH_HALF_SPAN_DEG = 29f
 private const val THERMAL_HALF_FOV_DEG = 28f
+
+// How much of the (now full-circle) contact list this forward HUD will show.
+// Replaced by a real surround layout later; until then it keeps the display
+// exactly as it was when the wire itself was limited to the forward half.
+private const val HUD_FORWARD_ARC_DEG = 90f
 
 // Level-of-detail swap for the contact figure: distant contacts (small) draw a
 // compact head+shoulders "bust" that stays legible at a few pixels; once close
@@ -81,7 +87,12 @@ fun driverNightScreen(
     val context = LocalContext.current
     val typeface = remember { ResourcesCompat.getFont(context, R.font.orbitron) }
     val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
-    val threats = state.threats
+    // The edge box now fuses a ring of cameras and reports full-circle bearings,
+    // but this HUD is still the single forward view: it places a contact by
+    // az/THERMAL_HALF_FOV_DEG, so a contact astern would be drawn far off-canvas
+    // and — worse — a rear collision would fire "! BRAKE !" at the driver. Show
+    // only the forward half until the surround HUD lands.
+    val threats = state.threats.filter { abs(it.relAzDeg) <= HUD_FORWARD_ARC_DEG }
 
     // Relative bearing to the active target, clamped onto the heading arch.
     val relDeg =
