@@ -6,6 +6,46 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-04 — `grr` boot-hardened for playa (no monitor); validation still pending
+
+`grr` is now load-bearing for **two** things on playa — the camp audio station
+*and* being the only x86 host that can re-flash the Jetson — while having no
+keyboard, mouse or monitor out there. Confirmed it has **no serial console**:
+the 32 `/dev/ttyS*` are 8250 driver stubs, no real UART, no serial connector in
+DMI. So a console means HDMI + USB keyboard, full stop.
+
+Rather than just carry a screen, reduced the *need* for one:
+- **`fsck.repair=yes`** added to the GRUB cmdline (verified in all 3 boot
+  entries). `/`, `/boot`, `/boot/efi` are fstab `pass=1` with `fsck.repair`
+  unset, so an unclean shutdown — i.e. vehicle power — could stop boot at an
+  **interactive repair prompt waiting for a keypress at a console that won't
+  exist**. That was the single most likely "grr won't boot" scenario.
+- **Rescue link:** static `192.168.99.1/24` on the spare NIC `enp2s0`, so a
+  laptop at `192.168.99.2/24` plugs straight in and gets SSH with router, WiFi
+  and Tailscale all dead. Gotcha found: **netplan on this release does not
+  translate `optional: true` into `RequiredForOnline=no`** (it emitted no
+  `[Link]` section at all), so an unplugged rescue port would have *blocked
+  boot* — the opposite of the goal. Forced via a systemd-networkd drop-in.
+
+**Deliberately NOT changed: `systemd-networkd-wait-online`.** Intended to
+disable it, then found **`docker.service` depends on `network-online.target`**
+and docker runs the audio station — weakening it risks Icecast/Liquidsoap
+starting before the network. Worst case as-is is a bounded ~120 s delay, not a
+hang. Left alone; noted for the station manager that netplan generates *two*
+sequential `ExecStart` lines, the second stricter (`--dns -o routable`).
+
+Backups, full rationale and rollback commands live on the box at
+`/root/zodiac-hardening-backup-20260804-221708/CHANGES.md`, since a different
+Claude instance manages that station.
+
+**Unverified, and that matters:** `fsck.repair` only applies on next boot, and
+the rescue port reads `no-carrier` until a cable is in. Rob bought a monitor,
+an HDMI capture dongle and a USB-C→Ethernet adapter; he'll run the three
+validation tests ~2026-08-06. The proof to look for is
+**`cat /proc/cmdline` containing `fsck.repair=yes`** — everything else is
+inference. Best time to break boot config is at home with a screen attached,
+not on playa.
+
 ## 2026-08-04 — zvision field-tunable without a code edit + `--check`; grr travels
 
 Prompted by the right question from Rob: *no keyboard/mouse/monitor on playa,
