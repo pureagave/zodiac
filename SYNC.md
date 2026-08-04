@@ -6,6 +6,72 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-04 — Jetson flash host stood up on `grr`; SDK Manager rejected; camera ring sized
+
+Hardware/bring-up session. No app code changed; `jetson/DEPLOY.md` §1 rewritten
+from the ground up because most of what it said was wrong.
+
+**Flash host = `grr`** (the camp's Galactic Relay NUC, x86 Ubuntu 26.04, on the
+`burbot-haddock` tailnet as `100.82.29.101`). This closes the long-open "what
+will you flash the NVMe from?" question — the Mac can't, because Tegra recovery
+is a **USB protocol spoken by the boot ROM**: at recovery time the board has no
+OS, no bootloader and no network stack, so USB is the only way in. A dedicated
+`zodiac` user + NOPASSWD sudo + a dedicated SSH key. The audio station was left
+untouched (never joined the `docker` group).
+
+**SDK Manager is the wrong tool and we're not using it.** Two independent
+blockers: it's a GUI app (useless over SSH), and its supported hosts are Ubuntu
+20.04/22.04 while `grr` is 26.04. Container workarounds are reported flaky
+*specifically for NVMe*. Instead we use the BSP's own **`l4t_initrd_flash.sh`** —
+which is what SDK Manager wraps anyway: no GUI, no NVIDIA login, headless, and
+the documented path for external NVMe.
+
+**JetPack 7.2 / L4T 39.2, not 6.x.** r39.2 added Orin Nano Dev Kit support, and
+its newer toolchain is *more* tolerant of a new host — the inverted risk that
+made a 26.04 host viable. **Verified end to end with no board attached:**
+`apply_binaries.sh` completed `Success!` with zero errors (that's the arm64 qemu
+chroot, the step most likely to break), and `l4t_initrd_flash.sh` runs on Python
+3.14. The feared 26.04/3.14 incompatibility did not materialise.
+- **26.04 gotcha:** `qemu-user-static` no longer exists — it's `qemu-user`
+  (still static-pie). L4T hard-codes the `-static` name → symlink required. And
+  apt aborts the *entire* transaction on one bad package name, so the first
+  install silently did nothing.
+
+**J14 pinout settled from the authoritative source** (carrier spec SP-11324-001
+Table 3-4, extracted from the PDF) — pins 9/10 = GND/FORCE_RECOVERY, 7/8 =
+GND/RESET, 3/4 = 3.3 V debug UART, 11/12 = GND/power. **No pin carries a supply
+rail**, so a screwdriver slip is at worst a reset or a power-button press, not
+damage. Kit ships no jumpers; ATX front-panel momentary switches fit and are
+better than jumper caps (hold-and-release, 27" lead, and recovery becomes
+repeatable without touching the power cable).
+
+**Two things that will bite later, recorded now:**
+- **The dev kit is rated 0–35 °C ambient.** Playa daytime is 38–40 °C — we are
+  deploying *above* the rated range. Shade/case/venting are load-bearing.
+- **The USB camera-ring constraint is isochronous *reservation*, not throughput.**
+  Cameras over-declare `dwMaxPayloadTransferSize` (one measured case: 195 Mbps
+  requested for a stream needing 46), and USB 2.0 allows only 80% of each
+  microframe for isoc → `-ENOSPC` long before the bus is full. Consequences:
+  **a powered hub adds no bandwidth** (everything behind it shares one upstream
+  link) — only a *separate controller* does; `uvcvideo quirks=128` only helps
+  *uncompressed* formats, so MJPEG and that quirk are partly at odds; the dev
+  kit's 4×Type-A + USB-C-host = 5 ports for 5 cameras, so **direct-connect, no
+  hub**, and put the thermal on the C port for a separate domain. Untestable
+  until the cameras arrive — bench it before sealing anything.
+
+**Camera ring sized: 4 RGB total (3 more ordered) + the UW thermal.** Ran the
+candidate layouts through the new `coverage_gaps()`: 3 RGB closes the ring only
+with a **2.5° seam** (or **0.0°** if the UW's 160° turns out to be diagonal),
+while 4 gives 9–15° in both cases. Bought the **IP65-housed IMX662** variant for
+$10 more, which also solves the un-costed per-camera enclosure problem; the
+95° *diagonal* lens works out to **87° horizontal**, near-identical to the 85°
+the merge math assumed, so no re-plan. Mixing the in-hand IMX462 with IMX662s is
+fine — the rig fuses *bearings*, never pixels, so there's no cross-camera
+registration to break.
+
+**Still open:** the Lepton UW's 160° — horizontal or diagonal? Unresolved, and
+it changes edge bearings by tens of degrees (`--fov-ref`).
+
 ## 2026-08-03 — zvision UW fisheye + multi-camera 360° merge (THE next task — done)
 
 Built the approved next task in `jetson/zvision`, device-independent and green

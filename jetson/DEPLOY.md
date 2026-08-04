@@ -12,7 +12,7 @@ breaks later you know it's the camera/model, not the bus.
 
 Each box is proven before the next; each maps to a section below.
 
-- [ ] **Flash** JetPack 6.x to the NVMe, first-boot Ubuntu, `nvpmodel -m 0` (MAXN Super) — §1
+- [ ] **Flash** JetPack 7.2 / L4T 39.2 to the NVMe from the `grr` Linux host, first boot, confirm MAXN Super — §1
 - [ ] **Network**: Ethernet → travel router; note the Jetson's IP (`--iface-ip`) — §2
 - [ ] **Install**: `sudo jetson/scripts/install.sh` (zvision service + config) — §3
 - [ ] **Prove the bus, no camera**: `python3 -m zvision --source fake -v` → tablet DRIVER HUD shows the moving demo — §4 ✅ this is the big one
@@ -45,10 +45,107 @@ bring it up separately.
 
 ## 1. Flash JetPack
 
-1. Download the **Jetson Orin Nano Super** SD-card image (JetPack 6.x) from
-   NVIDIA, or use the NVMe/USB installer if you fitted an SSD.
-2. Flash with Balena Etcher / `dd`, boot, complete the Ubuntu first-run setup.
-3. Set the **Super** power mode (this is the whole point of the "Super"):
+**Not SDK Manager.** It's a GUI app (useless over SSH) and its supported hosts
+are Ubuntu 20.04/22.04 — our flash host runs 26.04. We use the Jetson Linux
+BSP's own CLI flasher instead, which SDK Manager only wraps: no GUI, no NVIDIA
+login, headless, and it's the documented path for external NVMe.
+
+**Flash host: `grr`** (`ssh grr`, Tailscale) — x86 Ubuntu 26.04. The Mac cannot
+do this; Tegra recovery is a USB protocol and needs an x86 Linux host.
+Staged at `~/jetson/Linux_for_Tegra` (L4T 39.2, `apply_binaries.sh` already run).
+
+**Why JetPack 7.2 / L4T 39.2** (not the 6.x this doc used to say): r39.2 added
+Jetson Orin Nano Dev Kit support, and its newer toolchain is *more* tolerant of
+a new host than 6.x was — which is what made a 26.04 host viable at all.
+
+### Host setup (one time, done on `grr` 2026-08-03)
+
+```bash
+sudo apt-get install -y lbzip2 libxml2-utils sshpass abootimg \
+                        device-tree-compiler qemu-user qemu-user-binfmt
+sudo ln -sf /usr/bin/qemu-aarch64 /usr/bin/qemu-aarch64-static
+```
+
+> **Gotcha:** on 26.04 `qemu-user-static` no longer exists — it's `qemu-user`
+> (still static-pie linked). L4T's scripts hard-code the `-static` name, hence
+> the symlink. Also: apt aborts the *whole* transaction on one bad package name,
+> so a typo silently installs nothing. Verify with `dpkg -s`.
+
+```bash
+# BSP + sample rootfs (~3.3 GB), extract, apply NVIDIA binaries
+tar --use-compress-program=lbzip2 -xf Jetson_Linux_R39.2.0_aarch64.tbz2
+sudo tar --use-compress-program=lbzip2 -xpf \
+     Tegra_Linux_Sample-Root-Filesystem_R39.2.0_aarch64.tbz2 -C Linux_for_Tegra/rootfs/
+cd Linux_for_Tegra && sudo ./apply_binaries.sh      # arm64 qemu chroot; must end "Success!"
+```
+
+### Bake in the login BEFORE flashing (headless!)
+
+A stock image first-boots into `oem-config`, the interactive account wizard —
+with no monitor attached the Jetson just sits there and looks like a failed
+flash. Pre-seed the account instead:
+
+```bash
+sudo ./tools/l4t_create_default_user.sh -u <user> -p <pass> -n <hostname> --accept-license
+```
+
+### Put the board in Force Recovery
+
+J14 button header, on the **board edge under the module**. Authoritative pinout
+(carrier board spec SP-11324-001, Table 3-4) — read the silkscreen, don't count pins:
+
+| pin | signal | | pin | signal |
+|---|---|---|---|---|
+| 1 | PC_LED− | | 7 | GND |
+| 2 | PC_LED+ | | 8 | SYS_RESET* |
+| 3 | UART2_RXD (debug, 3.3V) | | 9 | GND |
+| 4 | UART2_TXD (debug, 3.3V) | | 10 | **FORCE_RECOVERY*** |
+| 5 | AC OK | | 11 | GND |
+| 6 | Auto-Power-On disable | | 12 | SLEEP/WAKE* (power btn) |
+
+No pin carries a supply rail, so a slip onto a neighbouring pair is at worst a
+reset or a power-button press — not damage. The kit ships **no jumpers**; ATX
+front-panel momentary switches fit (2.54 mm, 2-pin female) and are far easier
+than a jumper cap in that cramped spot.
+
+1. Board **unpowered**. NVMe seated in the M.2 Key-M slot (the kit ships with
+   **no storage** — without it the flash has no target).
+2. Bridge **FC_REC ↔ GND** (pins 10 ↔ 9) — hold the button.
+3. **USB-C** from the Jetson's C port (J5, the *only* port that can flash; the
+   Type-A ports are hosts) to `grr`. Any data-capable C cable.
+4. Plug in the 19 V barrel jack (J16) — it powers on **automatically**, no
+   button press, straight into recovery.
+5. Release FC_REC.
+6. Confirm on `grr`: `lsusb | grep 0955` → `0955:7523`.
+
+*Already powered?* Hold FC_REC, tap RESET (pins 8↔7), release FC_REC. With two
+buttons fitted you never touch the power cable — and recovery is repeatable,
+which matters during bring-up.
+
+### Flash
+
+```bash
+cd ~/jetson/Linux_for_Tegra
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
+     --external-device nvme0n1p1 \
+     -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml \
+     --showlogs --network usb0 \
+     jetson-orin-nano-devkit-super internal
+```
+
+- `t234` = Orin (`t264` is Thor — wrong file, don't grab it by mistake).
+- `--network usb0` runs the bulk transfer as ethernet-over-USB, which NVIDIA
+  notes is more reliable than raw USB. Still just the one USB-C cable — no
+  physical Ethernet needed for flashing.
+- `internal` as rootdev writes **QSPI as well as** the NVMe. Going from
+  shipped firmware to r39.2 is a big jump, so the bootloader update matters —
+  **do not interrupt the flash**, a half-written QSPI is the one way to brick it.
+- Add `--no-flash` to build the images with no board attached (de-risks the
+  toolchain before you're standing there holding a button).
+
+Ethernet **is** needed right after the flash — that's how you reach the box.
+
+3. Confirm the **Super** power mode (this is the whole point of the "Super"):
    ```bash
    sudo nvpmodel -m 0        # MAXN SUPER
    sudo jetson_clocks        # lock clocks up (optional, for benchmarking)
@@ -57,6 +154,18 @@ bring it up separately.
 4. `python3 --version` — JetPack ships Python 3; `import cv2` should already
    work (CUDA-enabled). **Do not `pip install opencv-python` on the Jetson** — it
    shadows the system build.
+
+> **Thermal reality check.** The carrier board spec rates the dev kit at
+> **0 °C to 35 °C ambient** (SP-11324-001 §1). Playa daytime runs 38–40 °C —
+> *above* the rated range. The shaded mount, the aluminum KKSB case and a
+> vented (not sealed) Jetson box are therefore load-bearing, not nice-to-have.
+> Watch `tegrastats` under sun load during bring-up.
+
+> **Serial console backstop.** J14 pins 3/4 are a **3.3 V** debug UART. A CP2102
+> USB-TTL cable on `grr` gives console into the Jetson from anywhere — worth
+> wiring for a box that lives headless in a vehicle. Crossover: adapter TXD→pin 3,
+> RXD→pin 4, GND→pin 7/9/11, **5 V lead unused**. 115200 8N1. Receive-only
+> (RXD+GND) gets you the full boot log with zero risk to the board.
 
 ## 2. Get it on the vehicle network
 
