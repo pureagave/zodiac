@@ -317,6 +317,68 @@ ZVISION_ARGS=--source thermal --device /dev/video0 --hz 10 --dmx ola
 
 ---
 
+## 8. Tuning on playa (laptop only — no keyboard, mouse or monitor)
+
+Assume the flashed image is final and the *tuning* is not. Nothing below needs
+a screen on the Jetson.
+
+**Access:** MacBook joins the vehicle's travel-router WiFi → `ssh zodiac@zvision`
+(the Jetson is on Ethernet to the same router as the tablets and beacon; no
+internet required). Backstop if networking dies: the CP2102 serial console on
+J14 pins 3/4 into the laptop, 115200 8N1.
+
+**Your monitor is the tablets.** Change a value, restart, watch contacts appear
+or vanish on the DRIVER HUD. That's a better feedback loop than a display on the
+Jetson, because you're seeing exactly what the driver sees.
+
+### The loop
+
+```bash
+# 1. Try it in the foreground first and watch the contacts scroll by
+sudo systemctl stop zvision
+python3 -m zvision -v --camera thermal:/dev/video0:az=0:fov=160:minarea=0.02
+
+# 2. Happy? Validate the exact line before committing it to the service
+python3 -m zvision --check <the same args>
+
+# 3. Write it in and restart
+sudo nano /etc/default/zvision      # ZVISION_ARGS=...
+sudo systemctl restart zvision && journalctl -u zvision -f
+```
+
+**Always `--check` before writing `/etc/default/zvision`.** The unit is
+`Restart=always`, so a typo'd flag becomes a crash loop — miserable to unpick
+from a laptop in the dust. `--check` validates everything, prints the resolved
+rig and blind arcs, and exits without opening a camera or touching the network.
+
+### What you'll actually be tuning
+
+Set a rig-wide default with the flag; override one camera with the spec key.
+
+| flag | spec key | what it does | reach for it when |
+|---|---|---|---|
+| `--min-area` | `minarea` | min blob area, fraction of frame | dust/shimmer/shade-cloth make phantom contacts (raise) · people missed at range (lower) |
+| `--match-dist` | `match` | track association distance | ids churn as people walk (raise) · two passers swap ids (lower) |
+| `--far-h` / `--near-h` | `farh` / `nearh` | bbox height → the 0..1 range proxy | **expect to change these first** — pure guesswork until real bodies stand at real distances |
+| `--collision-az-rate` | `azrate` | deg/s still counted as constant bearing | "! BRAKE !" too twitchy (lower) · missing real intercepts (raise) |
+| `--collision-min-size` | `minsize` | how near before collision can trip | alarms firing on distant contacts (raise) |
+| `--merge-deg` | — | cross-camera duplicate collapse | one person shows twice in an overlap (raise) · two close people merge (lower) |
+| — | `az` | that camera's mount bearing | **measure against the vehicle nose** — an error here rotates that camera's whole contact set and swings the tracker light |
+| `--fov-ref` | `fovref` | is the quoted FOV width or diagonal | edge bearings consistently off |
+
+```bash
+# rig-wide default, with one noisier camera pulled back
+python3 -m zvision --check --min-area 0.008 \
+  --camera thermal:/dev/video0:az=0:fov=160:lens=fisheye:name=thermal \
+  --camera rgb:/dev/video2:az=105:fov=87:lens=pinhole:name=stbd:minarea=0.02 \
+  --camera rgb:/dev/video4:az=-105:fov=87:lens=pinhole:name=port \
+  --camera rgb:/dev/video6:az=180:fov=87:lens=pinhole:name=aft
+```
+
+> **Re-flashing on playa is possible** — `grr` travels as the camp's audio
+> player, so the full BSP toolchain is on-site. Keep `~/jetson/Linux_for_Tegra`
+> on it. That makes the OS layer recoverable, not one-shot.
+
 ## Troubleshooting
 
 | symptom | cause / fix |

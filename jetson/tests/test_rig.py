@@ -6,7 +6,7 @@ import contextlib
 import io
 import unittest
 
-from zvision.detector import FakeDetector
+from zvision.detector import DetectorTuning, FakeDetector
 from zvision.geometry import FOV_DIAGONAL, LENS_EQUIDISTANT, LENS_RECTILINEAR
 from zvision.rig import (
     DEFAULT_DEDUP_DEG,
@@ -104,6 +104,62 @@ class ParseSpecTest(unittest.TestCase):
     def test_rejects_empty_spec(self):
         with self.assertRaises(ValueError):
             parse_camera_spec("")
+
+
+class TuningSpecTest(unittest.TestCase):
+    """The field-tuning knobs must be reachable without editing code — that's
+    the whole point of them, since none can be got right until the rig is on the
+    vehicle with real people walking around it."""
+
+    def test_defaults_when_unspecified(self):
+        t = parse_camera_spec("rgb").tuning
+        self.assertEqual(DetectorTuning(), t)
+
+    def test_every_tuning_key_parses(self):
+        m = parse_camera_spec(
+            "rgb:minarea=0.02:match=0.3:farh=0.1:nearh=0.8:azrate=5:minsize=0.5"
+        )
+        self.assertEqual(0.02, m.tuning.min_area_frac)
+        self.assertEqual(0.3, m.tuning.match_dist)
+        self.assertEqual(0.1, m.tuning.far_h)
+        self.assertEqual(0.8, m.tuning.near_h)
+        self.assertEqual(5.0, m.tuning.collision_az_rate_dps)
+        self.assertEqual(0.5, m.tuning.collision_min_size)
+
+    def test_defaults_flow_in_from_the_rig(self):
+        rig_default = CameraMount("d", tuning=DetectorTuning(min_area_frac=0.05), fov_deg=87.0)
+        m = parse_camera_spec("rgb:az=90", defaults=rig_default)
+        self.assertEqual(0.05, m.tuning.min_area_frac)  # inherited
+        self.assertEqual(87.0, m.fov_deg)               # optics inherit too
+
+    def test_per_camera_value_overrides_the_rig_default(self):
+        rig_default = CameraMount("d", tuning=DetectorTuning(min_area_frac=0.05))
+        m = parse_camera_spec("rgb:minarea=0.001", defaults=rig_default)
+        self.assertEqual(0.001, m.tuning.min_area_frac)
+
+    def test_inverted_range_calibration_is_rejected(self):
+        # near_h <= far_h makes bbox_height_to_size return 0 for everything, so
+        # every contact would read as maximum range — silently useless.
+        with self.assertRaises(ValueError):
+            parse_camera_spec("rgb:farh=0.9:nearh=0.1")
+
+    def test_typo_in_a_tuning_key_is_loud(self):
+        with self.assertRaises(ValueError):
+            parse_camera_spec("rgb:minarae=0.02")
+
+    def test_non_numeric_tuning_value_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_camera_spec("rgb:minarea=lots")
+
+    def test_tuning_reaches_the_built_camera(self):
+        seen = {}
+
+        def factory(mount):
+            seen["tuning"] = mount.tuning
+            return StubDetector([])
+
+        build_rig([parse_camera_spec("rgb:minarea=0.09")], factory=factory)
+        self.assertEqual(0.09, seen["tuning"].min_area_frac)
 
 
 class ArcTest(unittest.TestCase):

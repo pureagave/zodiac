@@ -27,6 +27,7 @@ from typing import List, Optional
 
 from . import fleet_bus
 from .broadcaster import ThreatBroadcaster
+from .detector import DetectorTuning
 from .geometry import FOV_HORIZONTAL, LENS_EQUIDISTANT, LENS_MODELS
 from .rig import DEFAULT_DEDUP_DEG, CameraMount, build_rig, coverage_gaps, parse_camera_spec
 from .threat_protocol import format_frame
@@ -73,6 +74,46 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
         default=DEFAULT_DEDUP_DEG,
         help="collapse contacts this close in bearing seen by different cameras (0 disables)",
     )
+
+    # Field tuning. These are the numbers you can only get right once the rig is
+    # bolted to the vehicle and real people are walking around it, so they're all
+    # reachable without editing code: set a rig-wide default here, override per
+    # camera in a --camera spec (minarea/match/farh/nearh/azrate/minsize).
+    tune = p.add_argument_group(
+        "field tuning",
+        "rig-wide defaults; override per camera via --camera key=value",
+    )
+    _T = DetectorTuning()
+    tune.add_argument(
+        "--min-area", type=float, default=_T.min_area_frac,
+        help="min blob area as a fraction of frame; raise to reject dust/shimmer, lower to see people further out",
+    )
+    tune.add_argument(
+        "--match-dist", type=float, default=_T.match_dist,
+        help="track association distance (normalised frame widths); raise if ids churn, lower if passers swap ids",
+    )
+    tune.add_argument(
+        "--far-h", type=float, default=_T.far_h,
+        help="bbox height fraction that reads as maximum range (size 0)",
+    )
+    tune.add_argument(
+        "--near-h", type=float, default=_T.near_h,
+        help="bbox height fraction that reads as closest range (size 1)",
+    )
+    tune.add_argument(
+        "--collision-az-rate", type=float, default=_T.collision_az_rate_dps,
+        help="max bearing drift (deg/s) still counted as constant-bearing; lower = stricter/fewer alarms",
+    )
+    tune.add_argument(
+        "--collision-min-size", type=float, default=_T.collision_min_size,
+        help="how near a contact must be (0..1) before it can trip the collision flag",
+    )
+
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="validate the config, print the resolved rig, and exit without opening cameras or the network",
+    )
     p.add_argument("--group", default=fleet_bus.THREAT_GROUP)
     p.add_argument("--port", type=int, default=fleet_bus.THREAT_PORT)
     p.add_argument("--iface-ip", default=None, help="local IP of the vehicle-network NIC")
@@ -103,22 +144,64 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
 
 def _mounts_from_args(args: argparse.Namespace) -> List[CameraMount]:
     """The rig described by the CLI: explicit ``--camera`` specs if given, else
-    the legacy single forward camera built from ``--source``/``--hfov``."""
+    the legacy single forward camera. Either way the global flags supply the
+    defaults, so a ``--camera`` spec only has to state what makes that camera
+    different from the rig."""
+    defaults = CameraMount(
+        name=args.source,
+        source=args.source,
+        device=args.device,
+        mount_az_deg=0.0,
+        fov_deg=args.hfov,
+        fov_ref=args.fov_ref,
+        lens=args.lens,
+        width=args.width,
+        height=args.height,
+        tuning=DetectorTuning(
+            min_area_frac=args.min_area,
+            match_dist=args.match_dist,
+            far_h=args.far_h,
+            near_h=args.near_h,
+            collision_az_rate_dps=args.collision_az_rate,
+            collision_min_size=args.collision_min_size,
+        ),
+    )
     if args.camera:
-        return [parse_camera_spec(spec, index=i) for i, spec in enumerate(args.camera)]
-    return [
-        CameraMount(
-            name=args.source,
-            source=args.source,
-            device=args.device,
-            mount_az_deg=0.0,
-            fov_deg=args.hfov,
-            fov_ref=args.fov_ref,
-            lens=args.lens,
-            width=args.width,
-            height=args.height,
+        return [
+            parse_camera_spec(spec, index=i, defaults=defaults)
+            for i, spec in enumerate(args.camera)
+        ]
+    if defaults.tuning.near_h <= defaults.tuning.far_h:
+        raise ValueError(
+            f"--near-h ({defaults.tuning.near_h}) must exceed --far-h ({defaults.tuning.far_h})"
         )
-    ]
+    return [defaults]
+
+
+def _print_rig(mounts: List[CameraMount], show_tuning: bool = False) -> None:
+    """The resolved rig, as the runner actually understands it — every camera's
+    arc plus any bearing no camera can see."""
+    for m in mounts:
+        left, right = m.arc()
+        print(
+            f"  {m.name:>10}: {m.source} {m.device} az={m.mount_az_deg:+.0f}° "
+            f"fov={m.fov_deg:.0f}°{m.fov_ref} {m.lens} -> covers {left:+.0f}°..{right:+.0f}°",
+            flush=True,
+        )
+        if show_tuning:
+            t = m.tuning
+            print(
+                f"              tuning: minarea={t.min_area_frac:g} match={t.match_dist:g} "
+                f"farh={t.far_h:g} nearh={t.near_h:g} "
+                f"azrate={t.collision_az_rate_dps:g} minsize={t.collision_min_size:g}",
+                flush=True,
+            )
+    gaps = coverage_gaps(mounts)
+    if gaps:
+        arcs = ", ".join(f"{a:+.0f}°..{b:+.0f}°" for a, b in gaps)
+        print(f"  blind: {arcs}", flush=True)
+    else:
+        print("  blind: none — the ring closes", flush=True)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -129,6 +212,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ValueError as exc:
         print(f"zvision: {exc}", file=sys.stderr, flush=True)
         return 2
+
+    if args.check:
+        # Dry-run the config only. The service runs Restart=always, so a bad
+        # arg written into /etc/default/zvision becomes a crash loop — check it
+        # here first, especially when the only terminal is a laptop in the dust.
+        print(f"zvision: config OK — {len(mounts)} camera(s)", flush=True)
+        _print_rig(mounts, show_tuning=True)
+        print(f"  merge: {args.merge_deg:g}°   rate: {args.hz:g} Hz   bus: {args.group}:{args.port}", flush=True)
+        return 0
 
     broadcaster = ThreatBroadcaster(
         group=args.group,
@@ -179,19 +271,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             f"+ subnet broadcast @ {args.hz}Hz",
             flush=True,
         )
-        for m in mounts:
-            left, right = m.arc()
-            print(
-                f"  {m.name:>10}: {m.source} {m.device} az={m.mount_az_deg:+.0f}° "
-                f"fov={m.fov_deg:.0f}°{m.fov_ref} {m.lens} -> covers {left:+.0f}°..{right:+.0f}°",
-                flush=True,
-            )
-        gaps = coverage_gaps(mounts)
-        if gaps:
-            arcs = ", ".join(f"{a:+.0f}°..{b:+.0f}°" for a, b in gaps)
-            print(f"  blind: {arcs}", flush=True)
-        else:
-            print("  blind: none — the ring closes", flush=True)
+        _print_rig(mounts)
     last_t: Optional[float] = None
     try:
         while running["go"]:

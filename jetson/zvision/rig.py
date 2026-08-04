@@ -20,10 +20,10 @@ its imports exactly like ``detector.py`` does.
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from .detector import Detector, FakeDetector, MotionDetector
+from .detector import Detector, DetectorTuning, FakeDetector, MotionDetector
 from .geometry import (
     FOV_DIAGONAL,
     FOV_HORIZONTAL,
@@ -85,6 +85,7 @@ class CameraMount:
     lens: str = LENS_EQUIDISTANT
     width: int = 160
     height: int = 120
+    tuning: DetectorTuning = field(default_factory=DetectorTuning)
 
     def arc(self) -> Tuple[float, float]:
         """The (left, right) global bearings this camera's frame spans — handy
@@ -107,16 +108,29 @@ def _parse_int(key: str, raw: str) -> int:
         raise ValueError(f"camera spec: {key}={raw!r} is not an integer") from None
 
 
-def parse_camera_spec(spec: str, index: int = 0) -> CameraMount:
+def parse_camera_spec(
+    spec: str, index: int = 0, defaults: Optional[CameraMount] = None
+) -> CameraMount:
     """Parse one ``--camera`` argument.
 
         source[:device][:key=value...]
 
     e.g. ``thermal:/dev/video0:az=0:fov=160:lens=fisheye`` or a bare ``fake:az=90``.
-    Keys: ``az`` ``fov`` ``fovref`` (h|d) ``lens`` ``name`` ``width`` ``height``.
+
+    Optics/mount keys: ``az`` ``fov`` ``fovref`` (h|d) ``lens`` ``name``
+    ``width`` ``height``.
+    Field-tuning keys (see :class:`DetectorTuning`): ``minarea`` ``match``
+    ``farh`` ``nearh`` ``azrate`` ``minsize``.
+
+    ``defaults`` supplies the fallback for anything the spec doesn't set, so the
+    global CLI flags act as rig-wide defaults and a spec only states what makes
+    *that* camera different.
+
     Raises ``ValueError`` with a specific message on anything unrecognised — a
-    typo'd mount angle points a real spotlight at the wrong person, so this
-    fails loudly rather than defaulting."""
+    typo'd mount angle points a real spotlight at the wrong person, and a typo'd
+    key silently accepted at 3am on playa is worse, so this fails loudly rather
+    than defaulting."""
+    base = defaults or CameraMount(name="")
     fields = [f for f in spec.split(":") if f != ""]
     if not fields:
         raise ValueError("camera spec is empty")
@@ -125,35 +139,50 @@ def parse_camera_spec(spec: str, index: int = 0) -> CameraMount:
         raise ValueError(f"camera spec: unknown source {source!r} (want one of {', '.join(SOURCES)})")
 
     rest = fields[1:]
-    device = "/dev/video0"
+    device = base.device
     if rest and "=" not in rest[0]:
         device = rest[0].strip()
         rest = rest[1:]
 
     kw: Dict[str, str] = {}
-    for field in rest:
-        if "=" not in field:
-            raise ValueError(f"camera spec: expected key=value, got {field!r}")
-        key, _, value = field.partition("=")
+    for field_ in rest:
+        if "=" not in field_:
+            raise ValueError(f"camera spec: expected key=value, got {field_!r}")
+        key, _, value = field_.partition("=")
         kw[key.strip().lower()] = value.strip()
 
     name = kw.pop("name", f"{source}{index}")
     az = _parse_float("az", kw.pop("az", "0"))
-    fov = _parse_float("fov", kw.pop("fov", "160"))
+    fov = _parse_float("fov", kw.pop("fov", str(base.fov_deg)))
     if not fov > 0:
         raise ValueError(f"camera spec: fov must be positive, got {fov}")
-    width = _parse_int("width", kw.pop("width", "160"))
-    height = _parse_int("height", kw.pop("height", "120"))
+    width = _parse_int("width", kw.pop("width", str(base.width)))
+    height = _parse_int("height", kw.pop("height", str(base.height)))
 
-    lens_raw = kw.pop("lens", LENS_EQUIDISTANT).lower()
+    lens_raw = kw.pop("lens", base.lens).lower()
     lens = _LENS_ALIASES.get(lens_raw, lens_raw)
     if lens not in LENS_MODELS:
         raise ValueError(f"camera spec: unknown lens {lens_raw!r} (want one of {', '.join(LENS_MODELS)})")
 
-    ref_raw = kw.pop("fovref", FOV_HORIZONTAL).lower()
+    ref_raw = kw.pop("fovref", base.fov_ref).lower()
     fov_ref = _FOV_REF_ALIASES.get(ref_raw, ref_raw)
     if fov_ref not in FOV_REFS:
         raise ValueError(f"camera spec: fovref must be h or d, got {ref_raw!r}")
+
+    t = base.tuning
+    tuning = DetectorTuning(
+        min_area_frac=_parse_float("minarea", kw.pop("minarea", str(t.min_area_frac))),
+        match_dist=_parse_float("match", kw.pop("match", str(t.match_dist))),
+        far_h=_parse_float("farh", kw.pop("farh", str(t.far_h))),
+        near_h=_parse_float("nearh", kw.pop("nearh", str(t.near_h))),
+        collision_az_rate_dps=_parse_float("azrate", kw.pop("azrate", str(t.collision_az_rate_dps))),
+        collision_min_size=_parse_float("minsize", kw.pop("minsize", str(t.collision_min_size))),
+    )
+    if tuning.near_h <= tuning.far_h:
+        raise ValueError(
+            f"camera spec: nearh ({tuning.near_h}) must exceed farh ({tuning.far_h}) "
+            "— otherwise every contact reads as maximum range"
+        )
 
     if kw:
         raise ValueError(f"camera spec: unknown key(s) {', '.join(sorted(kw))}")
@@ -168,6 +197,7 @@ def parse_camera_spec(spec: str, index: int = 0) -> CameraMount:
         lens=lens,
         width=width,
         height=height,
+        tuning=tuning,
     )
 
 
@@ -289,7 +319,11 @@ def build_camera(mount: CameraMount) -> Detector:
 
     camera = UvcCamera(mount.device, width=mount.width, height=mount.height)
     return MotionDetector(
-        camera, fov_deg=mount.fov_deg, lens=mount.lens, fov_ref=mount.fov_ref
+        camera,
+        fov_deg=mount.fov_deg,
+        lens=mount.lens,
+        fov_ref=mount.fov_ref,
+        tuning=mount.tuning,
     )
 
 

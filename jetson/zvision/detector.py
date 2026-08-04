@@ -9,6 +9,7 @@ trained thermal/RGB model drops in behind the same ``detect`` signature later.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import List, Optional, Protocol
 
 from .geometry import (
@@ -19,6 +20,40 @@ from .geometry import (
     pixel_to_bearing,
 )
 from .threat import DriverThreat
+
+
+@dataclass(frozen=True)
+class DetectorTuning:
+    """The numbers you can only get right in the field.
+
+    Every one of these depends on how the camera actually ends up mounted and
+    what it's actually looking at — how high off the ground, how far away people
+    walk, how much contrast a body has against 100 °F playa at 2am. None of it
+    is knowable from a bench. They are grouped here, and surfaced all the way out
+    to the ``--camera`` spec, so tuning on-site is one config line and a service
+    restart rather than editing Python by headlamp."""
+
+    # Blob must cover this fraction of the frame to count. Raise it if dust,
+    # heat shimmer or flapping shade-cloth are generating phantom contacts;
+    # lower it if real people are being missed at distance.
+    min_area_frac: float = 0.004
+
+    # Nearest-centroid track association, in normalised frame widths. Raise it
+    # if ids churn as people walk; lower it if two people passing swap ids.
+    match_dist: float = 0.15
+
+    # bbox height (as a fraction of frame height) -> the 0..1 "size" the HUD
+    # draws and the tracker aims by. This is the range proxy, and it is pure
+    # guesswork until real bodies stand at real distances in front of the real
+    # mount. Expect to change these first.
+    far_h: float = 0.05
+    near_h: float = 0.9
+
+    # Constant-bearing collision rule. Lower az-rate = stricter (fewer, more
+    # confident alarms); min_size sets how close a contact must be before it can
+    # trip at all. These decide how twitchy "! BRAKE !" is on the driver's HUD.
+    collision_az_rate_dps: float = 3.0
+    collision_min_size: float = 0.35
 
 
 class Detector(Protocol):
@@ -71,8 +106,7 @@ class MotionDetector:
         fov_deg: float = 160.0,
         lens: str = LENS_EQUIDISTANT,
         fov_ref: str = FOV_HORIZONTAL,
-        min_area_frac: float = 0.004,
-        match_dist: float = 0.15,
+        tuning: Optional[DetectorTuning] = None,
     ) -> None:
         import cv2  # local import: only the real path needs OpenCV
 
@@ -81,10 +115,14 @@ class MotionDetector:
         self._fov = fov_deg
         self._lens = lens
         self._fov_ref = fov_ref
-        self._min_area_frac = min_area_frac
-        self._match_dist = match_dist
+        self._tuning = tuning or DetectorTuning()
+        self._min_area_frac = self._tuning.min_area_frac
+        self._match_dist = self._tuning.match_dist
         self._bg = cv2.createBackgroundSubtractorMOG2(detectShadows=False)
-        self._collision = CollisionEstimator()
+        self._collision = CollisionEstimator(
+            az_rate_thresh_dps=self._tuning.collision_az_rate_dps,
+            min_size=self._tuning.collision_min_size,
+        )
         self._next_id = 1
         # id -> (cx_norm, cy_norm) of last sighting, for nearest-centroid matching
         self._tracks: dict[int, tuple[float, float]] = {}
@@ -117,7 +155,7 @@ class MotionDetector:
             az, _el = pixel_to_bearing(
                 cx_norm, cy_norm, self._fov, aspect, self._lens, self._fov_ref
             )
-            size = bbox_height_to_size(bh / h)
+            size = bbox_height_to_size(bh / h, self._tuning.far_h, self._tuning.near_h)
             collision = self._collision.update(tid, az, size, t)
             out.append(DriverThreat(rel_az_deg=az, size=size, collision=collision, id=tid))
         # Prune collision history for tracks that vanished this frame, so the

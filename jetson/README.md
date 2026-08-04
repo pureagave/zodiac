@@ -79,6 +79,28 @@ A camera that won't open, or starts throwing mid-run, costs you its arc — not
 the run. If *nothing* opens, the runner exits rather than broadcasting a
 confident "all clear" while blind.
 
+## Field tuning
+
+The detection numbers can't be got right on a bench — they depend on how high
+the camera ends up mounted, how far away people actually walk, and how much
+contrast a body has against hot ground at 2am. So they're all reachable from
+the command line: `--min-area` `--match-dist` `--far-h` `--near-h`
+`--collision-az-rate` `--collision-min-size` set rig-wide defaults, and the
+matching `--camera` keys (`minarea` `match` `farh` `nearh` `azrate` `minsize`)
+override one camera. Tuning on-site is a config line and a restart, never a
+code edit.
+
+`--check` validates the whole config, prints the resolved rig and its blind
+arcs, and exits without opening a camera or touching the network:
+
+```bash
+python3 -m zvision --check --min-area 0.008 --camera thermal:/dev/video0:az=0:fov=160
+```
+
+Run it before writing anything into `/etc/default/zvision` — the service is
+`Restart=always`, so an unvalidated typo is a crash loop. Full playa procedure
+in [DEPLOY.md §8](DEPLOY.md#8-tuning-on-playa-laptop-only--no-keyboard-mouse-or-monitor).
+
 ## Layout
 
 | file | role |

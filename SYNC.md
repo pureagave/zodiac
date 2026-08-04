@@ -6,6 +6,40 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-04 — zvision field-tunable without a code edit + `--check`; grr travels
+
+Prompted by the right question from Rob: *no keyboard/mouse/monitor on playa,
+just a MacBook — is expecting the shipped build to be final naive?* Yes, but the
+useful split is **by layer**: the OS/JetPack image is effectively fixed (needs an
+x86 host + recovery jumper), while zvision is fully mutable over SSH. **And `grr`
+travels as the camp's audio player**, so even the OS layer is recoverable in the
+field — re-flashing on playa is possible. Keep `~/jetson/Linux_for_Tegra` on it.
+
+**The gap this exposed:** the parameters most likely to need on-site tuning were
+*hardcoded* — `min_area_frac`/`match_dist` as `MotionDetector` ctor defaults that
+`build_camera` never passed, `far_h`/`near_h` taken from `bbox_height_to_size`'s
+defaults at the call site, and a bare `CollisionEstimator()` freezing the
+collision thresholds. Changing detection sensitivity meant editing Python on the
+box, by headlamp, in dust.
+
+Now: a `DetectorTuning` dataclass carried on `CameraMount`, surfaced as
+rig-wide flags (`--min-area --match-dist --far-h --near-h --collision-az-rate
+--collision-min-size`) **and** per-camera spec keys (`minarea match farh nearh
+azrate minsize`), where a spec only states what makes *that* camera different.
+Global flags now also seed the optics defaults, so `--hfov`/`--lens`/`--fov-ref`
+apply to `--camera` specs instead of being ignored on that path.
+
+**`--check`** validates the config, prints the resolved rig + blind arcs, and
+exits **without opening a camera or touching the network**. This exists because
+the unit is `Restart=always`: an unvalidated typo in `/etc/default/zvision` is a
+crash loop, which is the worst possible thing to debug from a laptop in the
+dust. It catches unknown keys, non-numeric values, and an inverted
+`nearh <= farh` (which would silently make every contact read as maximum range).
+
+Also recorded: **the tablets are the monitor.** Change a value, restart, watch
+contacts on the DRIVER HUD — a better loop than a screen on the Jetson, since
+you see what the driver sees. +15 tests → **167 jetson green**.
+
 ## 2026-08-04 — Jetson flash host stood up on `grr`; SDK Manager rejected; camera ring sized
 
 Hardware/bring-up session. No app code changed; `jetson/DEPLOY.md` §1 rewritten
