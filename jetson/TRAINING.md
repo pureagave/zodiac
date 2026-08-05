@@ -56,9 +56,26 @@ Then **build the TensorRT engine on the Jetson itself**:
 ```
 
 > **Gotcha worth internalising: TensorRT engines are not portable.** They're
-> built against a specific GPU architecture and TensorRT version. An engine
-> built on an A100 will not load on an Orin. Export **ONNX** on the server,
-> convert to `.engine` on the target. This trips up nearly everyone once.
+> built against a specific GPU architecture, TensorRT version and CUDA version.
+> An engine built on an H100 (Hopper, SM 9.0) will not load on an Orin (Ampere,
+> SM 8.7). Export **ONNX** on the server, convert to `.engine` on the target.
+> This trips up nearly everyone once.
+>
+> **To be unambiguous, since this reads as scarier than it is: you never train
+> on the Jetson.** Only the final `trtexec` compile runs there — a few minutes,
+> one command, once per model. ONNX is the source code; `.engine` is the
+> compiled binary, and only the binary has to match the target.
+
+### Where each stage runs
+
+| stage | machine | artifact | portable |
+|---|---|---|---|
+| Collect | Jetson, on the vehicle | frames + `index.jsonl` | ✅ |
+| Label | laptop (+ auto-label on the server) | YOLO `.txt` | ✅ |
+| **Train** | the H100 box | `best.pt` | ✅ |
+| Export | anywhere | `model.onnx` | ✅ |
+| **Build engine** | **the Orin itself** | `model.engine` | ❌ |
+| Infer | Orin | — | — |
 
 This is the highest value-per-hour work in the whole plan and needs no dataset.
 
@@ -116,7 +133,7 @@ place and where no public data resembles our sensor. Get variety: people
 walking past, walking toward, standing still, in groups, on bikes, at 2 m and
 at 30 m, with and without the art car's own lighting on them.
 
-### B3. Label
+### B3. Label — this is the real bottleneck, so spend the GPU here
 
 500–2,000 corrected frames is a realistic target for fine-tuning a pretrained
 model into a narrow domain. This is *not* a tens-of-thousands-of-images job —
@@ -125,6 +142,22 @@ we're adapting a model, not training from scratch.
 Tools: **CVAT** (self-hosted, free), **Label Studio**, or **Roboflow** (free
 tier, easiest). All import YOLO-format boxes, so the weak labels can be loaded
 as a starting layer.
+
+**Auto-label first, then correct.** For the actual training run, a big GPU box
+is wild overkill — a nano fine-tune is one GPU for twenty minutes. Where it
+genuinely pays is running a large open-vocabulary detector (**Grounding DINO**,
+**YOLO-World**, **SAM**) across *every* recorded frame: that's a lot of
+inference over a lot of images, which is exactly what a multi-GPU box is for.
+Prompt it with `person`, `person on bicycle`. Then a human reviews rather than
+draws — the difference between a weekend of labelling and an evening.
+
+RGB auto-labels well out of the box. Thermal is weaker, but two things help:
+the motion boxes we already record give a seed layer, and — if the spare
+IMX462 is **co-mounted with the thermal in the forward pod** — a COCO model's
+confident RGB detections can seed labels on the time-synced thermal frames.
+Same scene, near-identical viewpoint, so the easy modality generates labels for
+the hard one. That's a real argument for doing that co-mount rather than
+treating the spare RGB as merely a spare.
 
 Taxonomy per DETECTOR.md: `person`, `person_on_bike`, and a count bucket
 (`1` vs `2+`) so the HUD can distinguish a lone walker from a group.
