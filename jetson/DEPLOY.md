@@ -379,6 +379,24 @@ python3 -m zvision --check --min-area 0.008 \
 > player, so the full BSP toolchain is on-site. Keep `~/jetson/Linux_for_Tegra`
 > on it. That makes the OS layer recoverable, not one-shot.
 
+### If `grr` itself is down
+
+Everything above depends on it, so know the recovery path before you need it.
+`grr` has **no serial console** (its `/dev/ttyS*` are 8250 driver stubs, no real
+UART) — a console means HDMI + USB keyboard.
+
+| symptom | do this |
+|---|---|
+| router/WiFi dead, grr otherwise fine | **direct cable to the spare NIC `enp2s0`** — set the laptop to `192.168.99.2/24`, then `ssh zodiac@192.168.99.1`. Works with router, WiFi and Tailscale all dead. |
+| won't boot / stuck early | HDMI monitor + USB keyboard. `Ctrl+Alt+F3` for a text TTY (it boots to `graphical.target`). |
+| unclean shutdown (vehicle power) | should self-heal — `fsck.repair=yes` is in the GRUB cmdline so it auto-repairs instead of waiting at an interactive prompt. Confirm with `cat /proc/cmdline`. |
+
+The rescue NIC is the Ethernet port whose MAC ends **`:7a:b5`** (the camp port is
+`:7a:b2`); `sudo ethtool -p enp2s0` blinks its LED. Boot-config changes, backups
+and rollback commands are recorded **on the box** at
+`/root/zodiac-hardening-backup-*/CHANGES.md` — a separate Claude instance
+manages that station, so changes get logged there as well as here.
+
 ## Troubleshooting
 
 | symptom | cause / fix |
