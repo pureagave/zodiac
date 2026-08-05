@@ -114,6 +114,7 @@ in [DEPLOY.md §8](DEPLOY.md#8-tuning-on-playa-laptop-only--no-keyboard-mouse-or
 | `zvision/capture.py` | UVC camera wrapper (cv2) |
 | `zvision/tracker.py` | DMX tracker light — target-select + pan/tilt map + slew + idle sound show |
 | `zvision/dmx.py` | DMX transport — `FakeDmxSink` (stdlib) + `OlaDmxSink` (posts to `olad`) |
+| `zvision/recorder.py` | frame + weak-label dump for model training (`--record`) |
 | `zvision/audio_bus.py` | `$ZAUD` listener — beacon mic levels for the idle sound-reactive show |
 | `zvision/app.py` | CLI runner / broadcast + tracker loop |
 | `systemd/zvision.service` | auto-start unit |
@@ -124,4 +125,18 @@ in [DEPLOY.md §8](DEPLOY.md#8-tuning-on-playa-laptop-only--no-keyboard-mouse-or
 
 - **[DEPLOY.md](DEPLOY.md)** — full hardware bring-up (flash → network → prove-with-fake → camera → permanent → DMX tracker light)
 - **[HARDWARE.md](HARDWARE.md)** — edge-box bill of materials, wiring, power & thermal budget
-- **[DETECTOR.md](DETECTOR.md)** — roadmap from today's motion blobs to the trained thermal model (H100)
+- **[DETECTOR.md](DETECTOR.md)** — roadmap from today's motion blobs to the trained thermal model
+- **[TRAINING.md](TRAINING.md)** — what actually needs training (RGB: nothing), what the big GPU is and isn't for, and the recording workflow that feeds it
+
+## Recording training data
+
+```bash
+python3 -m zvision --record /data/drive-01 --record-hz 1 --camera thermal:/dev/video0:az=0:fov=160
+```
+
+Writes frames per camera plus an `index.jsonl` carrying the **pixel boxes** the
+motion detector found — weak labels, so an annotator corrects rather than draws.
+Thermal goes to lossless PNG, RGB to JPEG, capped at 20 GB by default so a long
+night can't fill the boot disk. Failures are reported once and never interrupt
+detection. Footage can only be captured while the rig is on the vehicle; GPU
+time can be rented any evening — which is why this exists before any model work.

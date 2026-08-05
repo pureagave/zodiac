@@ -19,8 +19,9 @@ its imports exactly like ``detector.py`` does.
 
 from __future__ import annotations
 
+import inspect
 import sys
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from .detector import Detector, DetectorTuning, FakeDetector, MotionDetector
@@ -85,6 +86,12 @@ class CameraMount:
     lens: str = LENS_EQUIDISTANT
     width: int = 160
     height: int = 120
+    # Pixel format asked of the driver. Empty = leave the driver's default
+    # alone, which is right for the thermal (LWIR is raw/greyscale, not MJPEG).
+    # Set MJPG on the RGB ring cameras: uncompressed declares ~a gigabit each
+    # and several of them will not coexist on one USB bus.
+    fourcc: str = ""
+    fps: Optional[float] = None
     tuning: DetectorTuning = field(default_factory=DetectorTuning)
 
     def arc(self) -> Tuple[float, float]:
@@ -159,6 +166,14 @@ def parse_camera_spec(
     width = _parse_int("width", kw.pop("width", str(base.width)))
     height = _parse_int("height", kw.pop("height", str(base.height)))
 
+    fourcc = kw.pop("fourcc", base.fourcc).strip().upper()
+    if fourcc and len(fourcc) != 4:
+        raise ValueError(f"camera spec: fourcc must be 4 characters, got {fourcc!r}")
+    fps_raw = kw.pop("fps", "" if base.fps is None else str(base.fps))
+    fps = _parse_float("fps", fps_raw) if fps_raw else None
+    if fps is not None and fps <= 0:
+        raise ValueError(f"camera spec: fps must be positive, got {fps}")
+
     lens_raw = kw.pop("lens", base.lens).lower()
     lens = _LENS_ALIASES.get(lens_raw, lens_raw)
     if lens not in LENS_MODELS:
@@ -197,6 +212,8 @@ def parse_camera_spec(
         lens=lens,
         width=width,
         height=height,
+        fourcc=fourcc,
+        fps=fps,
         tuning=tuning,
     )
 
@@ -309,7 +326,7 @@ class MultiDetector:
                 print(f"zvision: camera close failed: {exc}", file=sys.stderr, flush=True)
 
 
-def build_camera(mount: CameraMount) -> Detector:
+def build_camera(mount: CameraMount, recorder=None) -> Detector:
     """Factory for one mount: ``fake`` needs nothing; ``thermal``/``rgb`` open a
     UVC device and wrap it in the motion detector with that camera's optics.
     Camera/cv2 imports stay lazy so the fake rig is pure stdlib."""
@@ -317,13 +334,21 @@ def build_camera(mount: CameraMount) -> Detector:
         return FakeDetector()
     from .capture import UvcCamera
 
-    camera = UvcCamera(mount.device, width=mount.width, height=mount.height)
+    camera = UvcCamera(
+        mount.device,
+        width=mount.width,
+        height=mount.height,
+        fourcc=mount.fourcc,
+        fps=mount.fps,
+    )
     return MotionDetector(
         camera,
         fov_deg=mount.fov_deg,
         lens=mount.lens,
         fov_ref=mount.fov_ref,
         tuning=mount.tuning,
+        recorder=recorder,
+        name=mount.name,
     )
 
 
@@ -331,6 +356,7 @@ def build_rig(
     mounts: Iterable[CameraMount],
     dedup_deg: float = DEFAULT_DEDUP_DEG,
     factory=build_camera,
+    recorder=None,
 ) -> MultiDetector:
     """Open every mount in the rig, skipping any camera that won't open.
 
@@ -344,7 +370,13 @@ def build_rig(
     opened: List[Tuple[CameraMount, Detector]] = []
     for mount in mounts:
         try:
-            opened.append((mount, factory(mount)))
+            # Tests inject a plain one-arg factory; the real one also takes the
+            # shared recorder so every camera writes into one byte budget.
+            # Decided by signature, not by catching TypeError — that would
+            # silently swallow a genuine TypeError raised inside the factory.
+            takes_recorder = len(inspect.signature(factory).parameters) >= 2
+            detector = factory(mount, recorder) if takes_recorder else factory(mount)
+            opened.append((mount, detector))
         # Broad by design: OpenCV/V4L2 raise a wide variety of things for a
         # device that isn't there, and none of them should end the run.
         except Exception as exc:  # noqa: BLE001

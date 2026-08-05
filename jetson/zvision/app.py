@@ -29,6 +29,13 @@ from . import fleet_bus
 from .broadcaster import ThreatBroadcaster
 from .detector import DetectorTuning
 from .geometry import FOV_HORIZONTAL, LENS_EQUIDISTANT, LENS_MODELS
+from .recorder import (
+    DEFAULT_MAX_MB,
+    DEFAULT_RECORD_HZ,
+    FrameRecorder,
+    RecorderConfig,
+    summarize,
+)
 from .rig import DEFAULT_DEDUP_DEG, CameraMount, build_rig, coverage_gaps, parse_camera_spec
 from .threat_protocol import format_frame
 
@@ -114,6 +121,27 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
         action="store_true",
         help="validate the config, print the resolved rig, and exit without opening cameras or the network",
     )
+
+    # Recording. Frames can only be captured while the rig is on the vehicle;
+    # GPU time can be rented whenever. That asymmetry makes this the
+    # schedule-critical half of the detector roadmap — see DETECTOR.md.
+    rec = p.add_argument_group("recording", "dump frames + weak labels for model training")
+    rec.add_argument("--record", metavar="DIR", default=None, help="write frames and index.jsonl here")
+    rec.add_argument(
+        "--record-hz", type=float, default=DEFAULT_RECORD_HZ,
+        help="frames per second per camera to keep (default 1; consecutive frames at full rate are near-duplicates)",
+    )
+    rec.add_argument(
+        "--record-max-mb", type=int, default=DEFAULT_MAX_MB,
+        help="stop recording once the dump reaches this size, so a long night can't fill the boot disk",
+    )
+    rec.add_argument("--record-quality", type=int, default=85, help="JPEG quality for RGB frames (thermal is PNG)")
+
+    p.add_argument(
+        "--fourcc", default="", metavar="MJPG",
+        help="pixel format to request from every camera (blank = driver default; MJPG for RGB on a shared USB bus)",
+    )
+    p.add_argument("--fps", type=float, default=None, help="frame rate to request from every camera")
     p.add_argument("--group", default=fleet_bus.THREAT_GROUP)
     p.add_argument("--port", type=int, default=fleet_bus.THREAT_PORT)
     p.add_argument("--iface-ip", default=None, help="local IP of the vehicle-network NIC")
@@ -157,6 +185,8 @@ def _mounts_from_args(args: argparse.Namespace) -> List[CameraMount]:
         lens=args.lens,
         width=args.width,
         height=args.height,
+        fourcc=args.fourcc,
+        fps=args.fps,
         tuning=DetectorTuning(
             min_area_frac=args.min_area,
             match_dist=args.match_dist,
@@ -229,7 +259,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         bind_ip=args.bind_ip,
         broadcast=args.broadcast,
     )
-    detector = build_rig(mounts, dedup_deg=args.merge_deg)
+    recorder = None
+    if args.record:
+        recorder = FrameRecorder(
+            RecorderConfig(
+                directory=args.record,
+                hz=args.record_hz,
+                jpeg_quality=args.record_quality,
+                max_mb=args.record_max_mb,
+            )
+        )
+
+    detector = build_rig(mounts, dedup_deg=args.merge_deg, recorder=recorder)
     if not detector.mounts:
         # Every camera failed to open. Better to exit loudly than to sit there
         # broadcasting a confident "all clear" while completely blind.
@@ -298,6 +339,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 break
             time.sleep(period)
     finally:
+        if recorder is not None:
+            recorder.close()
+            if args.verbose:
+                print(f"zvision: recorded {summarize(recorder)} -> {args.record}", flush=True)
         broadcaster.send(format_frame([]))  # all-clear so the HUD doesn't freeze
         if tracker is not None and dmx_sink is not None:
             dmx_sink.send(tracker.park().channels)  # rest + black out the head

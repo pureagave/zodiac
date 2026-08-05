@@ -107,11 +107,15 @@ class MotionDetector:
         lens: str = LENS_EQUIDISTANT,
         fov_ref: str = FOV_HORIZONTAL,
         tuning: Optional[DetectorTuning] = None,
+        recorder=None,
+        name: str = "cam",
     ) -> None:
         import cv2  # local import: only the real path needs OpenCV
 
         self._cv2 = cv2
         self._camera = camera
+        self._recorder = recorder
+        self._name = name
         self._fov = fov_deg
         self._lens = lens
         self._fov_ref = fov_ref
@@ -142,10 +146,12 @@ class MotionDetector:
         aspect = h / w if w else 1.0
         seen: dict[int, tuple[float, float]] = {}
         out: List[DriverThreat] = []
+        rects: List[tuple] = []
         for c in contours:
             if cv2.contourArea(c) < min_area:
                 continue
             x, y, bw, bh = cv2.boundingRect(c)
+            rects.append((x, y, bw, bh))
             cx_norm = (x + bw / 2.0) / w
             cy_norm = (y + bh / 2.0) / h
             tid = self._assign_id(cx_norm, cy_norm, seen)
@@ -164,6 +170,10 @@ class MotionDetector:
             if gone not in seen:
                 self._collision.forget(gone)
         self._tracks = seen
+        # Frame + its pixel boxes together, which is what an annotator needs.
+        # The recorder swallows its own failures; detection never depends on it.
+        if self._recorder is not None:
+            self._recorder.record(self._name, t, frame, rects)
         return out
 
     def _assign_id(self, cx: float, cy: float, seen: dict) -> int:
