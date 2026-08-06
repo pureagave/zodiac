@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,6 +37,25 @@ class RoutedLocationSource(
         _selected
             .flatMapLatest { type -> registry.sourceFor(type).state }
             .stateIn(scope, SharingStarted.Eagerly, LocationSourceState.Disconnected)
+
+    /**
+     * Whether the *currently selected* source is quietly running on a backup —
+     * today only [FailoverLocationSource] (the beacon backed by this tablet's
+     * own GNSS) can be, and every other source reports false.
+     *
+     * Exposed here rather than as another ViewModel dependency: the ViewModel
+     * already holds this router and is at its constructor-size limit, and
+     * "which source am I really on" is a routing question anyway.
+     */
+    val usingFallback: StateFlow<Boolean> =
+        _selected
+            .flatMapLatest { type ->
+                when (val source = registry.sourceFor(type)) {
+                    is FailoverLocationSource -> source.usingFallback
+                    else -> flowOf(false)
+                }
+            }
+            .stateIn(scope, SharingStarted.Eagerly, false)
 
     suspend fun start() =
         mutex.withLock {

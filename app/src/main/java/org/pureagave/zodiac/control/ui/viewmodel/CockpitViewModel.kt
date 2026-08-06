@@ -169,6 +169,11 @@ class CockpitViewModel(
                 }
             }
             launch {
+                locationSource.usingFallback.collect { onBackup ->
+                    _uiState.update { it.copy(locationFallbackActive = onBackup) }
+                }
+            }
+            viewModelScope.launch {
                 locationSource.selected.collect { type ->
                     _uiState.update { it.copy(selectedLocationSource = type) }
                 }

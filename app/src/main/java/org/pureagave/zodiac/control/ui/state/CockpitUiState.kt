@@ -126,6 +126,12 @@ data class CockpitUiState(
      * alert banner is showing, then cleared on a timer by the ViewModel.
      */
     val shockAlertG: Double? = null,
+    /**
+     * True when the beacon has gone quiet and this tablet has fallen back to its
+     * own GNSS. Shown, never silent — a driver steering off the backup source
+     * needs to know that's what they're looking at.
+     */
+    val locationFallbackActive: Boolean = false,
 ) {
     /**
      * The three beacon readings the ops footer draws, bundled — they arrive on

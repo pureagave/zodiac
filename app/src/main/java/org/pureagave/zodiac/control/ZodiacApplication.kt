@@ -1,6 +1,7 @@
 package org.pureagave.zodiac.control
 
 import android.app.Application
+import android.content.pm.PackageManager
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -27,6 +28,7 @@ import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
 import org.pureagave.zodiac.control.data.prefs.CockpitPreferences
 import org.pureagave.zodiac.control.data.prefs.DataStoreCockpitPreferences
 import org.pureagave.zodiac.control.data.sensor.BleLocationSource
+import org.pureagave.zodiac.control.data.sensor.FailoverLocationSource
 import org.pureagave.zodiac.control.data.sensor.FakeLocationSource
 import org.pureagave.zodiac.control.data.sensor.LocationSourceRegistry
 import org.pureagave.zodiac.control.data.sensor.NetworkLocationSource
@@ -104,6 +106,31 @@ class ZodiacApplication : Application() {
         NetworkLocationSource(applicationContext = this, scope = applicationScope)
     }
 
+    /**
+     * Does this tablet have its own GNSS receiver? The Samsung slates do (the
+     * Tab S9+ carries GPS/GLONASS/BeiDou/Galileo/QZSS); the Fire tablets have
+     * none at all, which is the reason the beacon exists in the first place.
+     * Asked of the hardware rather than assumed per-model, so a new device in
+     * the fleet gets the right behaviour without a code change.
+     */
+    private val hasOwnGnss: Boolean by lazy {
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS)
+    }
+
+    /**
+     * The beacon, wrapped in this tablet's own GNSS as an automatic backup.
+     * Presents as the NET source, so selection and persistence are unaffected —
+     * see [FailoverLocationSource].
+     */
+    val networkWithFailover: FailoverLocationSource by lazy {
+        FailoverLocationSource(
+            primary = networkLocationSource,
+            fallback = SystemLocationSource(applicationContext = this),
+            scope = applicationScope,
+            fallbackArmed = hasOwnGnss,
+        )
+    }
+
     val locationSource: RoutedLocationSource by lazy {
         val registry =
             LocationSourceRegistry(
@@ -119,7 +146,9 @@ class ZodiacApplication : Application() {
                             applicationContext = this,
                             scope = applicationScope,
                         ),
-                        networkLocationSource,
+                        // NET carries its own failover; SYSTEM stays separately
+                        // selectable so it can still be chosen deliberately.
+                        networkWithFailover,
                     ),
             )
         RoutedLocationSource(
