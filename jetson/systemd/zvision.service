@@ -4,6 +4,12 @@ Documentation=https://github.com/pureagave/zodiac/blob/main/jetson/DEPLOY.md
 # Wait for the vehicle network so multicast/broadcast egress has a route.
 After=network-online.target
 Wants=network-online.target
+# The camera may not be enumerated instantly at boot; let it retry forever
+# rather than give up. Startup is cheap.
+#
+# This key is only valid in [Unit] — systemd ignores it under [Service] with a
+# log warning, which silently defeats the retry it was meant to guarantee.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -14,9 +20,6 @@ WorkingDirectory=/opt/zodiac/jetson
 ExecStart=/usr/bin/python3 -m zvision $ZVISION_ARGS
 Restart=always
 RestartSec=2
-# The camera may not be enumerated instantly at boot; let it retry rather than
-# give up. Startup is cheap.
-StartLimitIntervalSec=0
 
 [Install]
 WantedBy=multi-user.target

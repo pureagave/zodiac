@@ -58,13 +58,35 @@ Staged at `~/jetson/Linux_for_Tegra` (L4T 39.2, `apply_binaries.sh` already run)
 Jetson Orin Nano Dev Kit support, and its newer toolchain is *more* tolerant of
 a new host than 6.x was — which is what made a 26.04 host viable at all.
 
-### Host setup (one time, done on `grr` 2026-08-03)
+### Host setup (one time, done on `grr` 2026-08-03/06)
 
 ```bash
 sudo apt-get install -y lbzip2 libxml2-utils sshpass abootimg \
-                        device-tree-compiler qemu-user qemu-user-binfmt
+                        device-tree-compiler qemu-user qemu-user-binfmt \
+                        xmlstarlet nfs-kernel-server
 sudo ln -sf /usr/bin/qemu-aarch64 /usr/bin/qemu-aarch64-static
 ```
+
+> **`nfs-kernel-server` is required, not optional.** `l4t_initrd_flash.sh` boots
+> a small initrd on the Jetson and serves the rootfs to it over the USB link via
+> NFS, so the flash aborts immediately without it. (An earlier note here said it
+> was optional, on the strength of `exportfs` being guarded by `command -v` in
+> one code path — that guard is real and the requirement is still hard.) If the
+> flash host is also doing something else in production, disable the service
+> once you're done: `sudo systemctl disable --now nfs-kernel-server`.
+
+> **Modern OpenSSH breaks the recovery-image build.** L4T's
+> `tools/ota_tools/version_upgrade/ota_make_recovery_img_dtb.sh` calls
+> `ssh-keygen -t dsa`, and OpenSSH ≥ 9.8 removed DSA entirely
+> (`unknown key type dsa`). The failure lands on a bare `check_error`, so all
+> you see is `command is failed` / `Error: failed to generate images` with no
+> hint. Comment that one line out — the initrd's sshd config only ever
+> references rsa/ecdsa/ed25519, so the DSA key it generates is never used:
+> ```bash
+> cd Linux_for_Tegra/tools/ota_tools/version_upgrade
+> sudo cp ota_make_recovery_img_dtb.sh ota_make_recovery_img_dtb.sh.orig
+> sudo sed -i 's|^\(\s*\)ssh-keygen -t dsa |\1# ssh-keygen -t dsa |' ota_make_recovery_img_dtb.sh
+> ```
 
 > **Gotcha:** on 26.04 `qemu-user-static` no longer exists — it's `qemu-user`
 > (still static-pie linked). L4T's scripts hard-code the `-static` name, hence
@@ -145,15 +167,43 @@ sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
 
 Ethernet **is** needed right after the flash — that's how you reach the box.
 
-3. Confirm the **Super** power mode (this is the whole point of the "Super"):
+> **You can also reach it over the flash cable.** The Jetson brings up a USB
+> gadget network on first boot and answers at **`192.168.55.1`** (the host side
+> appears as an `enx…` interface). That works before any DHCP lease exists, and
+> it's the quickest way in if Ethernet isn't ready — `ssh zodiac@192.168.55.1`
+> straight from the flash host. Handy for exactly the moment you most need it.
+
+3. Set the **Super** power mode (this is the whole point of the "Super"):
    ```bash
-   sudo nvpmodel -m 0        # MAXN SUPER
-   sudo jetson_clocks        # lock clocks up (optional, for benchmarking)
-   nvpmodel -q               # confirm
+   sudo nvpmodel -p --verbose | grep POWER_MODEL   # list the IDs first
+   sudo nvpmodel -m 2        # MAXN_SUPER on JetPack 7.2
+   nvpmodel -q               # confirm: "NV Power Mode: MAXN_SUPER"
+   sudo jetson_clocks --show # optional: check the ceilings actually moved
    ```
-4. `python3 --version` — JetPack ships Python 3; `import cv2` should already
-   work (CUDA-enabled). **Do not `pip install opencv-python` on the Jetson** — it
-   shadows the system build.
+   > **The mode ID is not 0.** On JetPack 7.2 / L4T 39.2 the table is
+   > `0=15W · 1=25W · 2=MAXN_SUPER`, and the board ships on **1**. This doc
+   > previously said `-m 0`, which sets the *slowest* mode — following it left
+   > the box **slower than stock** while reporting success. Verified on the real
+   > board 2026-08-06: MAXN_SUPER took GPU max 612 → **1020 MHz** and CPU
+   > 1497 → **1728 MHz**. Always list the modes rather than trusting an ID.
+
+   It reverts on every reboot unless you change the default:
+   ```bash
+   sudo sed -i 's|^< PM_CONFIG DEFAULT=1 >|< PM_CONFIG DEFAULT=2 >|' /etc/nvpmodel.conf
+   ```
+
+4. **OpenCV is not preinstalled** — `import cv2` fails on a fresh JetPack 7.2.
+   (Only the `fake` source is stdlib-only, so the bus can be proven without it;
+   any real camera needs it.)
+   ```bash
+   sudo apt-get install -y nvidia-opencv libopencv-python
+   ```
+   `nvidia-opencv` alone installs the C++ libraries but **not** the Python
+   bindings — `libopencv-python` is the package that provides `cv2`. Still
+   **don't `pip install opencv-python`**: the apt build is the one matched to
+   this JetPack. Note it reports `cv2.cuda.getCudaEnabledDeviceCount() == 0` and
+   carries no CUDA in its build info — fine, since the motion detector is pure
+   CPU work and the trained model will run through TensorRT, not OpenCV CUDA.
 
 > **Thermal reality check.** The carrier board spec rates the dev kit at
 > **0 °C to 35 °C ambient** (SP-11324-001 §1). Playa daytime runs 38–40 °C —
