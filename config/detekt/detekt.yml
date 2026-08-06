@@ -27,6 +27,13 @@ complexity:
     # trailing Modifier; e.g. driveToBar (theme, active, bathActive, onSelect,
     # onSelectBath, modifier). Bumped from the default 6 to 7 for that shape.
     functionThreshold: 7
+    # Optional params with defaults don't create the call-site burden this rule
+    # exists to catch — callers that don't need them never name them, and in
+    # Compose that trailing-optional shape is the standard way to keep a
+    # component flexible (opsReadout's `aim`/`beacon`/`modifier` are all
+    # omitted by callers that have nothing to pass). Count the required
+    # arguments, which is what actually makes a call site unreadable.
+    ignoreDefaultParameters: true
   TooManyFunctions:
     # Default 11 was tight for CockpitViewModel which exposes one method per
     # discrete cockpit operation. Bumped each time a discrete cockpit action

@@ -21,6 +21,7 @@ import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
+import org.pureagave.zodiac.control.core.telemetry.BeaconReadout
 import org.pureagave.zodiac.control.core.telemetry.Odometer
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 
@@ -126,6 +127,13 @@ data class CockpitUiState(
      */
     val shockAlertG: Double? = null,
 ) {
+    /**
+     * The three beacon readings the ops footer draws, bundled — they arrive on
+     * separate sentences but are always rendered as a group.
+     */
+    val beaconReadout: BeaconReadout
+        get() = BeaconReadout(odometer = odometer, health = beaconHealth, shockG = shockAlertG)
+
     companion object {
         const val DEFAULT_TILT_DEG: Int = 40
         const val MIN_TILT_DEG: Int = 0

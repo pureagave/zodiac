@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.pureagave.zodiac.control.core.model.MapMode
+import org.pureagave.zodiac.control.ui.ops.OPS_FOOTER_ONE_LINE
+import org.pureagave.zodiac.control.ui.ops.OPS_FOOTER_TWO_LINE
 import org.pureagave.zodiac.control.ui.ops.driveSelectionOf
 import org.pureagave.zodiac.control.ui.ops.driveToBar
 import org.pureagave.zodiac.control.ui.ops.headingGuidanceBar
@@ -168,10 +170,13 @@ fun instrumentBayScreen(
                 headingDeg = state.headingDeg,
                 target = state.activeDriveTarget,
                 aim = state.nextWaypoint,
+                beacon = state.beaconReadout,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(34.dp)
+                        // Grows for the beacon line rather than flexing, so the
+                        // tile wall's layout stays predictable on the Fire.
+                        .height(if (state.beaconReadout.any) OPS_FOOTER_TWO_LINE else OPS_FOOTER_ONE_LINE)
                         .border(2.dp, theme.primary)
                         .padding(horizontal = 12.dp),
             )

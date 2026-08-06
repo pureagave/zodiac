@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.pureagave.zodiac.control.core.geo.LatLon
+import org.pureagave.zodiac.control.ui.ops.OPS_FOOTER_ONE_LINE
+import org.pureagave.zodiac.control.ui.ops.OPS_FOOTER_TWO_LINE
 import org.pureagave.zodiac.control.ui.ops.driveSelectionOf
 import org.pureagave.zodiac.control.ui.ops.driveToBar
 import org.pureagave.zodiac.control.ui.ops.headingGuidanceBar
@@ -240,10 +242,11 @@ fun motionTrackerScreen(
                 headingDeg = state.headingDeg,
                 target = state.activeDriveTarget,
                 aim = state.nextWaypoint,
+                beacon = state.beaconReadout,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(34.dp)
+                        .height(if (state.beaconReadout.any) OPS_FOOTER_TWO_LINE else OPS_FOOTER_ONE_LINE)
                         .border(1.dp, theme.primary)
                         .padding(horizontal = 14.dp),
             )

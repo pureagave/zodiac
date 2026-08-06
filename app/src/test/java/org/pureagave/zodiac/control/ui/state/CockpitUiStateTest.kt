@@ -1,8 +1,10 @@
 package org.pureagave.zodiac.control.ui.state
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.geo.LatLon
@@ -12,6 +14,8 @@ import org.pureagave.zodiac.control.core.ops.DriveTarget
 import org.pureagave.zodiac.control.core.ops.NavTarget
 import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
+import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
+import org.pureagave.zodiac.control.core.telemetry.Odometer
 
 /**
  * [CockpitUiState.activeDriveTarget] is the single destination every guidance
@@ -98,5 +102,30 @@ class CockpitUiStateTest {
         assertEquals("BATH", target!!.label)
         assertEquals(near.lat, target.location.lat, 1e-4)
         assertEquals(near.lon, target.location.lon, 1e-4)
+    }
+
+    // -- ops footer: does the beacon line get drawn at all? --------------------
+
+    @Test
+    fun no_beacon_on_the_bus_means_no_beacon_line() {
+        // A footer of dashes for readings that will never arrive is worse than
+        // no footer, so the second line stays collapsed until something reports.
+        assertFalse(CockpitUiState().beaconReadout.any)
+    }
+
+    @Test
+    fun any_single_beacon_reading_opens_the_line() {
+        assertTrue(CockpitUiState().copy(odometer = Odometer(1.0, 2.0)).beaconReadout.any)
+        assertTrue(CockpitUiState().copy(beaconHealth = BeaconHealth(90, 1, 8, 60)).beaconReadout.any)
+        assertTrue(CockpitUiState().copy(shockAlertG = 3.2).beaconReadout.any)
+    }
+
+    @Test
+    fun a_shock_alert_alone_opens_the_line_then_closes_it_again() {
+        // The VM clears shockAlertG on a timer; with no other beacon data the
+        // footer must collapse back rather than leaving an empty second row.
+        val jolted = CockpitUiState().copy(shockAlertG = 4.1)
+        assertTrue(jolted.beaconReadout.any)
+        assertFalse(jolted.copy(shockAlertG = null).beaconReadout.any)
     }
 }
