@@ -47,6 +47,7 @@ class NetworkLocationSource(
     private val port: Int = FleetBus.TELEMETRY_PORT,
     private val group: String = FleetBus.TELEMETRY_GROUP,
     private val staleMs: Long = STALE_MS,
+    private val beaconSilentMs: Long = BEACON_SILENT_MS,
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.NET
 
@@ -67,6 +68,14 @@ class NetworkLocationSource(
     // When a POSITION sentence (GGA/RMC) last arrived — tracked separately from
     // heading so a live compass can't keep a dead GPS looking alive.
     @Volatile private var positionRxMs: Long = 0L
+
+    /**
+     * Last time *any* line arrived — i.e. the hub is alive, whether or not it
+     * currently has a fix. Distinct from [positionRxMs]: a beacon indoors keeps
+     * reporting battery and heading with no GPS at all, and its readings are
+     * still valid.
+     */
+    @Volatile private var beaconRxMs: Long = 0L
 
     // Vehicle IMU/motion telemetry from the Sensor Hub's ZTLM sentence, exposed
     // separately from the GPS fix for any consumer that wants tilt/speed.
@@ -92,6 +101,18 @@ class NetworkLocationSource(
                         // guiding forever off a stale position (a live compass alone
                         // must not read as a healthy GPS).
                         _state.value = LocationSourceState.Searching
+                    }
+                    if (beaconRxMs != 0L && nowMs() - beaconRxMs > beaconSilentMs) {
+                        // The hub itself has gone quiet — not just its position.
+                        // Drop its readings rather than let the ops footer keep
+                        // reporting a battery, satellite count and uptime from a
+                        // beacon that died an hour ago. Silence is fine; a stale
+                        // number presented as current is not.
+                        //
+                        // shockCount is monotonic and deliberately preserved: it's
+                        // an event counter the ViewModel diffs against, and
+                        // rewinding it would swallow the next real impact.
+                        _beaconSensors.update { BeaconSensors(shockCount = it.shockCount) }
                     }
                     delay(staleMs / 2)
                 }
@@ -188,6 +209,7 @@ class NetworkLocationSource(
         datagram.split('\n').forEach { raw ->
             val line = raw.trim()
             if (line.isEmpty()) return@forEach
+            beaconRxMs = nowMs()
             NmeaParser.parseHeadingDeg(line)?.let { lastHeadingDeg = it }
             NmeaParser.parseVehicleTelemetry(line)?.let { _telemetry.value = it }
             NmeaParser.parseAmbientLight(line)?.let { al -> _beaconSensors.update { it.copy(ambientLight = al) } }
@@ -215,6 +237,15 @@ class NetworkLocationSource(
         const val BUFFER_BYTES: Int = 2048
         const val READ_TIMEOUT_MS: Int = 1_000
         const val STALE_MS: Long = 5_000L
+
+        /**
+         * How long the hub can be entirely silent before its readings are
+         * dropped. The slowest channel (`$ZBCN` health) arrives every ~5 s, so
+         * this is two missed beats — long enough to ride out a dropped
+         * multicast burst, short enough that nobody reads a dead beacon's
+         * battery as live.
+         */
+        const val BEACON_SILENT_MS: Long = 12_000L
         const val NANOS_PER_MS: Long = 1_000_000L
     }
 }

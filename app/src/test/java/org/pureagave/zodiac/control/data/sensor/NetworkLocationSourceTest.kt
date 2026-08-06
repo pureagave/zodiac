@@ -243,4 +243,70 @@ class NetworkLocationSourceTest {
         }
         return cond()
     }
+
+    @Test
+    fun a_silent_beacon_stops_reporting_its_last_known_readings() =
+        runBlocking {
+            // A dead hub must not keep the ops footer showing its battery,
+            // satellite count and uptime as though they were current. Silence is
+            // fine; a stale number presented as live is not.
+            val port = 10186
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source =
+                NetworkLocationSource(scope = scope, port = port, staleMs = 400, beaconSilentMs = 600)
+            try {
+                source.start()
+                val populated =
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZBCN,87,1,9,3600"), port)
+                        sendUdp(nmea("ZODO,1234.5,987654.0"), port)
+                        source.beaconSensors.value.beaconHealth?.batteryPct == 87
+                    }
+                assertTrue("precondition: the beacon reported once", populated)
+
+                // Now say nothing at all and let the silence window elapse.
+                val cleared =
+                    waitUntil(4_000) {
+                        val s = source.beaconSensors.value
+                        s.beaconHealth == null && s.odometer == null && s.ambientLight == null
+                    }
+                assertTrue("a silent beacon's readings should be dropped, not frozen", cleared)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun going_silent_preserves_the_shock_counter() =
+        runBlocking {
+            // shockCount is a monotonic event counter the ViewModel diffs
+            // against; rewinding it on silence would swallow the next real
+            // impact after the beacon came back.
+            val port = 10187
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source =
+                NetworkLocationSource(scope = scope, port = port, staleMs = 400, beaconSilentMs = 600)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: a shock was recorded",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZSHK,2.35"), port)
+                        source.beaconSensors.value.shockCount >= 1
+                    },
+                )
+                val counted = source.beaconSensors.value.shockCount
+                assertTrue(
+                    "readings clear but the shock counter must not rewind",
+                    waitUntil(4_000) {
+                        val s = source.beaconSensors.value
+                        s.beaconHealth == null && s.shockCount >= counted
+                    },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
 }
