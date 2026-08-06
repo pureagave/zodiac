@@ -6,6 +6,56 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-06 — end-to-end VERIFIED on both tablets; failover proved itself unprompted
+
+Jetson → bus → HUD confirmed on real hardware, plus two pieces of code that had
+never been seen on a device.
+
+**DRIVER HUD from the edge box, on both OLEDs.** A54 and S9+ both updated to the
+current build and rendering the Jetson's contacts. The proof took care: zvision's
+`FakeDetector` is a deliberate mirror of the tablet's own `FakeThreatSource.demo`,
+so both produce three identical contacts and the picture alone proves nothing.
+Reconfigured the Jetson to a 3-camera surround rig (9 contacts, rear bearings,
+`2001`-style namespaced ids) — the tablet's layout changed; stopped zvision — it
+reverted to the local demo. That round trip is the actual proof.
+- The HUD showed **3 CONTACTS** against 9 on the bus, which is correct:
+  `HUD_FORWARD_ARC_DEG` filters the six rear contacts. The forward-arc guard
+  behaving exactly as intended with real surround data on the wire.
+- Caught the full collision state on the A54: `! COLLISION COURSE !`, red
+  striding figure with lock brackets, `! BRAKE !`, green TRACK contacts, purple
+  heading marker. Semantic palette holding.
+
+**Phase 3b ops footer verified** (S9+, RADAR). No beacon exists on this network,
+so it was tested by synthesising one — GGA/HDT plus `$ZENV`/`$ZODO`/`$ZBCN`/
+`$ZSHK` with real XOR checksums, multicast onto the telemetry group. Rendered:
+```
+16:33              RISE 05:57  SET 20:07             ▸ HOME 1.6km ▲
+TRIP 12.4km  ODO 431.3km                       BATT 87%  SATS 9  UP 3h07
+```
+Labels dim-green chrome, TRIP/ODO/BATT purple as live values, SATS/UP blue as
+link state — the palette rules exactly. With no beacon it stays **one line**, so
+`beaconReadout.any` is right too.
+
+**Beacon-staleness fix verified.** Stopped the synthetic beacon; 16 s later the
+line was **gone**, not frozen at `BATT 87%`. That bug would have shipped a dead
+hub's battery and uptime as current readings.
+
+**The failover proved itself without being asked.** When the beacon went silent
+the ops distance jumped `HOME 1.6km` → **`583.3km`** — because
+`FailoverLocationSource` handed over to the S9+'s own GNSS, which had a real fix
+at `40.519458,-112.270875` (**30 satellites, 3.8 m accuracy, indoors**). 583 km
+is the true distance from there to camp (~588 km by hand). Written yesterday,
+never exercised, and it did exactly the job: navigation kept working, silently,
+with no badge — which is what Rob asked for.
+- **This also settles the open hardware question:** the S9+ holds a strong fix,
+  so the fallback is real rather than theoretical. In a *fiberglass* car it
+  should be at least this good.
+
+**Fleet housekeeping:** S9+ `adb tcpip 5555` re-armed after its battery-death
+reboot (back at `192.168.86.112:5555`); both tablets on the current build; both
+returned to brightness 20 and slept per OLED discipline; Jetson restored to
+`--source fake --hz 10`.
+
 ## 2026-08-06 — Jetson FLASHED and broadcasting on the fleet bus
 
 The edge box is real. Flashed from `grr` over USB-C, booted from NVMe, running
