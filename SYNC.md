@@ -6,6 +6,135 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-06 — Jetson FLASHED and broadcasting on the fleet bus
+
+The edge box is real. Flashed from `grr` over USB-C, booted from NVMe, running
+zvision as a systemd service and putting live ZTHREAT frames on the bus —
+verified received by a *different* machine on the LAN, which is the end-to-end
+proof that matters.
+
+**State:** hostname `zvision` @ **192.168.86.235** (also `192.168.55.1` over the
+USB gadget link), Ubuntu 24.04.4 / kernel 6.8.12-1021-tegra, **L4T R39 rev 2.0
+(JetPack 7.2)**, root on `/dev/nvme0n1p1`, MAXN_SUPER, zvision enabled at boot.
+Every pre-seeded thing landed: user, 5 SSH keys, NOPASSWD sudo, sshd — no
+`oem-config` stall, key auth worked from the Mac first try. All **179 zvision
+tests pass on the Jetson itself**. Second account `rob` added (key
+`owner@CF-SV`, NOPASSWD sudo, in `video`/`dialout`/`i2c`/`gpio` for the cameras).
+
+**Four corrections to `DEPLOY.md`, all found the hard way:**
+1. **MAXN_SUPER is mode 2, not 0.** On JetPack 7.2 the table is `0=15W · 1=25W ·
+   2=MAXN_SUPER`, and the board ships on 1. The doc said `-m 0` — following it
+   set the box to the **slowest** mode while looking like success. Real numbers
+   at mode 2: GPU max 612 → **1020 MHz**, CPU 1497 → **1728 MHz**. Also needs
+   `PM_CONFIG DEFAULT=2` in `/etc/nvpmodel.conf` or it reverts every boot.
+2. **`nfs-kernel-server` is mandatory.** I had recorded it optional because
+   `exportfs` is `command -v`-guarded in one path; the flash tool hard-requires
+   it (it serves the rootfs to the booted initrd over USB via NFS). Installed on
+   grr, then **disabled** — nothing exported, won't start at boot.
+3. **OpenSSH ≥ 9.8 breaks the recovery-image build.** L4T calls
+   `ssh-keygen -t dsa`; grr runs OpenSSH 10.2 → `unknown key type dsa` → a bare
+   `check_error` → the whole flash dies with only `command is failed`. Patched
+   the line out; the initrd sshd config references only rsa/ecdsa/ed25519, so
+   that key was never used. `.orig` kept beside it. **This is the Ubuntu 26.04
+   incompatibility predicted for Python, showing up in OpenSSH instead —
+   Python 3.14 was fine throughout.**
+4. **OpenCV is not preinstalled** on JetPack 7.2 (`import cv2` fails). Needs
+   `nvidia-opencv` **and** `libopencv-python` — the first installs only the C++
+   libs. The apt build reports no CUDA, which is fine: the motion detector is
+   CPU work and the trained model goes through TensorRT.
+
+**Also fixed:** `systemd/zvision.service` had `StartLimitIntervalSec` under
+`[Service]`, where systemd ignores it with a log warning — silently defeating
+the infinite retry it existed to guarantee. Moved to `[Unit]`.
+
+**Nice find:** the Jetson answers on **192.168.55.1 over the flash cable** (USB
+gadget network) before any DHCP lease exists — the fastest way in when Ethernet
+isn't ready.
+
+## 2026-08-06 — no "on backup" badge (Rob's call); a silent beacon stops lying instead
+
+Rob's call on the failover indicator: **no badge.** "We just want things to keep
+working." Left undrawn — `locationFallbackActive` stays in UI state for whoever
+wants it later, but nothing renders it. (Also: the car is **fiberglass**, not
+metal, so tablet GNSS reception should be far better than assumed — fiberglass
+is RF-transparent. Still needs testing where mounted.)
+
+That question surfaced a real bug next door. `_beaconSensors` was only ever
+*written* on receipt and **never cleared**, so a dead beacon left the ops footer
+confidently showing `BATT 87% SATS 9 UP 3h07` indefinitely. Not silence — the
+display asserting something false, and the frozen uptime is the worst of it
+because a plausible number reads as live.
+
+`NetworkLocationSource` now tracks **any-line** arrival (`beaconRxMs`, distinct
+from `positionRxMs` — a beacon indoors keeps reporting battery and heading with
+no GPS, and those readings are still good) and drops the bundle after
+`BEACON_SILENT_MS` = 12 s, i.e. two missed `$ZBCN` beats. `shockCount` is
+preserved across the clear: it's a monotonic counter the ViewModel diffs
+against, so rewinding it would swallow the next real impact.
+
+## 2026-08-06 — S9+ has its own GNSS; beacon now auto-fails-over to it
+
+The **Tab S9+ Wi-Fi (SM-X810) carries GPS/GLONASS/BeiDou/Galileo/QZSS**, plus a
+compass and ambient-light sensor. Correcting the record: "Fire tablets have no
+GNSS" is a *Fire* fact that had generalised into "tablets have no GNSS".
+
+**The beacon stays the source of truth** — every tablet agreeing on one position
+beats any single tablet's accuracy, the roof antenna sees more sky, the Fire has
+nothing, and position is one of seven channels. The S9+'s receiver buys a
+*backup*, so a dead beacon degrades the hero display to slightly-worse
+navigation rather than none.
+
+`FailoverLocationSource` + pure `LocationFailoverPolicy`:
+- **Presents as the NET source**, so registry/chip/persisted preference are
+  untouched and the saved choice is never rewritten to SYSTEM.
+- **Both sources run at once** — the crux, because `RoutedLocationSource.select`
+  *stops* what it switches away from, so a routing-based failover could never
+  see the beacon return. Also keeps the backup warm.
+- **Asymmetric hysteresis:** drop 3 s past NET's own 5 s staleness; recover only
+  after **10 s** clean, because a half-alive beacon would otherwise bounce the
+  cockpit between two sources that disagree slightly.
+- **Won't fail over to a backup with no fix**, and **won't arm without GNSS
+  hardware** (`FEATURE_LOCATION_GPS`, asked of the device not assumed per model).
+- Surfaced via `RoutedLocationSource`, not a 10th VM constructor param — that
+  class is at its detekt limit and already flagged a god-object.
+
+**Test lesson:** the first version drove the policy from a manual `t` variable
+while advancing virtual time separately; elapsed time never accumulates and
+every timing assertion passes for the wrong reason. The clock must *be*
+`testScheduler.currentTime`. And `advanceUntilIdle` is unusable against an
+infinite ticker — `advanceTimeBy` + `runCurrent` is the idiom.
+
+## 2026-08-04 (night) — `--record` built, TRAINING.md written, flash pre-flight green
+
+**`--record` (`zvision/recorder.py`) — the schedule-critical piece.**
+`DETECTOR.md` had said all along that the GPU is useless without our own footage
+and that recording must start before the first drive; it was the one roadmap
+item with a real deadline and it didn't exist. The asymmetry is the argument:
+**frames can only be captured while the rig is on the vehicle, GPU time can be
+rented any evening.** Each frame writes the image plus an `index.jsonl` line
+carrying the **pixel boxes** the motion detector found — weak labels, so an
+annotator *corrects* (~2–5 s) instead of *draws* (~10–20 s). Defaults: 1 Hz
+(10 Hz frames are near-duplicates), PNG for thermal (JPEG artefacts on
+low-contrast 120×120 destroy signal), 20 GB cap (a full root filesystem takes
+the box down — worse than a short dataset). **Recording must never break
+detection**: every failure swallowed, counted, reported once.
+
+**Camera format control:** `UvcCamera` gained fourcc/fps (+ `.actual()`), exposed
+as `fourcc=`/`fps=` keys. FOURCC is set *before* frame size because several V4L2
+drivers reset the negotiated size when the pixel format changes underneath them.
+
+**TRAINING.md** — mostly deflationary: **RGB needs no training** (COCO already
+has `person`/`bicycle`), thermal does but the **bottleneck is data, not
+compute**. Records the honest reason for a model at all: **background
+subtraction assumes a stationary camera**, so today's detector degrades badly
+once the vehicle moves. Flags that **TensorRT engines are not portable** — an
+engine built on the H100 will not load on the Orin; export ONNX on the server,
+compile on target. And that the multi-GPU box is best spent **auto-labelling**,
+not the 20-minute fine-tune.
+
+**`scripts/preflight-flash.sh`** — read-only pre-flash check; ran 17 ok / 0 fail
+against grr. Fails in a warm room instead of after the jumper dance.
+
 ## 2026-08-04 — `grr` boot-hardened for playa (no monitor); validation still pending
 
 `grr` is now load-bearing for **two** things on playa — the camp audio station
