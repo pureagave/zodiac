@@ -124,6 +124,32 @@ object SurroundRing {
     val COVERED_ARCS: List<ClosedFloatingPointRange<Float>> = listOf(-80f..80f)
 
     /**
+     * The bearings the rig does **not** watch — the complement of
+     * [COVERED_ARCS] around the full circle.
+     *
+     * This is the decision that keeps an unwatched sector from rendering
+     * identically to a watched-and-clear one, so it lives here with the rest
+     * of the ring's decisions rather than in draw code. The last gap wraps
+     * through ±180 back to the first covered arc, which is exactly the case a
+     * forward-facing rig produces: one covered arc across the nose and one
+     * gap spanning the whole stern.
+     *
+     * Returned in unwrapped terms — a gap may run past +180 (e.g. `80..280`
+     * for a ±80° covered arc) so a renderer can sweep it directly without
+     * splitting it at the seam.
+     */
+    fun uncoveredArcs(covered: List<ClosedFloatingPointRange<Float>> = COVERED_ARCS): List<ClosedFloatingPointRange<Float>> {
+        if (covered.isEmpty()) return listOf(-HALF_TURN..HALF_TURN)
+        val sorted = covered.sortedBy { it.start }
+        val gaps = mutableListOf<ClosedFloatingPointRange<Float>>()
+        for (i in sorted.indices) {
+            val next = if (i + 1 < sorted.size) sorted[i + 1].start else sorted.first().start + FULL_TURN
+            if (next > sorted[i].endInclusive) gaps += sorted[i].endInclusive..next
+        }
+        return gaps
+    }
+
+    /**
      * One contact — or merged group of contacts — positioned on the ring, in
      * polar terms the renderer can use directly: [screenAngleDeg] follows the
      * canvas convention (0° = right, 90° = down) and [radiusFraction] is 0 at

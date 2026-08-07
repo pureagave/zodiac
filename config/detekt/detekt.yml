@@ -47,19 +47,20 @@ complexity:
     # one file. DriverNightScreen.kt then pushed higher: it's a hand-drawn
     # vector HUD, so it carries a stack of small private Canvas/DrawScope
     # helpers (grid, arch, figure, bracket, reticle, text). The surround ring
-    # (design/surround-driver-hud.md Phase 2 — rim/ticks/wedge/hull/blips, each
-    # a small single-purpose DrawScope helper by design so no one function
-    # nests multiple decisions) pushed it to 27; bumped to 32 to leave room for
-    # Phase 3's status-line integration.
-    thresholdInFiles: 32
+    # would have pushed this to 28, so the ring's drawing lives in its own
+    # SurroundRingCanvas.kt instead — splitting the file was the right answer,
+    # not absorbing it here. That left DriverNightScreen +1 (the status-line
+    # text mapping), hence 19 rather than 18.
+    thresholdInFiles: 19
     # NmeaParser is the fleet's one central sentence reader; it grows a parser per
     # proprietary sentence (ZTLM/ZAUD/ZENV/ZSHK/ZBCN/ZODO) alongside standard
     # GGA/RMC/heading. If it keeps growing, split the proprietary Z-sentences into
-    # their own object. SurroundRing (Phase 1.5: bands, clustering, hysteresis,
-    # coverage arcs, speed-gated braking; Phase 3: the hudStatus status-line
-    # decision, all pure + tested) pushed higher still — bumped from 18 to 21
-    # to fit both.
-    thresholdInObjects: 21
+    # their own object. SurroundRing (bands, clustering, hysteresis, coverage arcs
+    # and their complement, speed-gated braking, the hudStatus decision — all
+    # pure and tested) pushed higher still, to 22. It is the one place the
+    # DRIVER HUD's decisions are allowed to live, so growth here is by design;
+    # split it by concern (placement / alerting / coverage) if it goes further.
+    thresholdInObjects: 22
 
 naming:
   FunctionNaming:

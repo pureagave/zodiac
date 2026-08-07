@@ -499,3 +499,78 @@ class SurroundRingTest {
         assertEquals(HudStatus.CLEAR, SurroundRing.hudStatus(boarding, speedKph = 0f, visionFeed = VisionFeed.LIVE))
     }
 }
+
+/**
+ * The complement of the covered arcs — the decision that stops an unwatched
+ * sector rendering identically to a watched-and-clear one. Wrong here and the
+ * ring quietly tells the driver the stern is clear when nothing is looking at
+ * it.
+ */
+class SurroundRingCoverageGapTest {
+    @Test
+    fun a_forward_only_rig_leaves_one_gap_spanning_the_whole_stern() {
+        val gaps = SurroundRing.uncoveredArcs(listOf(-80f..80f))
+        assertEquals(1, gaps.size)
+        assertEquals(80f, gaps.single().start, 1e-4f)
+        assertEquals(280f, gaps.single().endInclusive, 1e-4f)
+    }
+
+    @Test
+    fun the_gap_is_returned_unwrapped_so_a_renderer_can_sweep_it_directly() {
+        // Splitting at the seam would need the caller to draw two arcs and get
+        // the wrap right itself — exactly the bug this avoids.
+        val gap = SurroundRing.uncoveredArcs(listOf(-80f..80f)).single()
+        assertTrue("must run past +180 rather than wrapping", gap.endInclusive > 180f)
+        assertEquals("and must sweep the 200 deg the rig cannot see", 200f, gap.endInclusive - gap.start, 1e-4f)
+    }
+
+    @Test
+    fun the_gaps_and_the_covered_arcs_together_account_for_the_whole_circle() {
+        for (covered in listOf(listOf(-80f..80f), listOf(-30f..30f, 100f..170f), listOf(-179f..179f))) {
+            val spans =
+                covered.sumOf { (it.endInclusive - it.start).toDouble() } +
+                    SurroundRing.uncoveredArcs(covered).sumOf { (it.endInclusive - it.start).toDouble() }
+            assertEquals("covered=$covered", 360.0, spans, 1e-3)
+        }
+    }
+
+    @Test
+    fun several_cameras_leave_a_gap_between_each_pair() {
+        val gaps = SurroundRing.uncoveredArcs(listOf(-30f..30f, 100f..170f))
+        assertEquals(2, gaps.size)
+        assertEquals(30f, gaps[0].start, 1e-4f)
+        assertEquals(100f, gaps[0].endInclusive, 1e-4f)
+        assertEquals(170f, gaps[1].start, 1e-4f)
+        assertEquals(330f, gaps[1].endInclusive, 1e-4f)
+    }
+
+    @Test
+    fun arcs_given_out_of_order_still_produce_the_right_gaps() {
+        assertEquals(
+            SurroundRing.uncoveredArcs(listOf(-30f..30f, 100f..170f)),
+            SurroundRing.uncoveredArcs(listOf(100f..170f, -30f..30f)),
+        )
+    }
+
+    @Test
+    fun a_rig_with_no_cameras_leaves_the_entire_circle_unwatched() {
+        // Not a hypothetical: it is what COVERED_ARCS reduces to if someone
+        // empties it while reconfiguring the rig.
+        val gaps = SurroundRing.uncoveredArcs(emptyList())
+        assertEquals(360f, gaps.single().endInclusive - gaps.single().start, 1e-4f)
+    }
+
+    @Test
+    fun full_coverage_leaves_no_gap_at_all() {
+        assertTrue(SurroundRing.uncoveredArcs(listOf(-180f..180f)).isEmpty())
+    }
+
+    @Test
+    fun the_shipped_rig_leaves_the_stern_unwatched() {
+        // Guards the constant itself: today's rig is one forward 160 deg
+        // thermal, so most of the circle is genuinely blind.
+        val blind = SurroundRing.uncoveredArcs().sumOf { (it.endInclusive - it.start).toDouble() }
+        assertEquals(200.0, blind, 1e-3)
+        assertFalse(SurroundRing.isCovered(180f))
+    }
+}

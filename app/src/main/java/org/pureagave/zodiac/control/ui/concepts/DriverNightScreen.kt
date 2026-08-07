@@ -15,12 +15,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -37,7 +35,6 @@ import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.ops.campGuidance
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.SurroundRing
-import org.pureagave.zodiac.control.core.vision.VisionFeed
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import kotlin.math.abs
@@ -48,10 +45,10 @@ import kotlin.math.sin
 // Night-driver palette: deliberately dim (this display must preserve the
 // driver's dark adaptation), and restricted to green / red / purple — no white,
 // no yellow. Danger red is the one thing allowed to be bright.
-private val NightGreen = Color(0xFF009E4A)
-private val NightGrid = Color(0xFF00421E)
-private val NightPurple = Color(0xFFB874E0)
-private val NightRed = Color(0xFFFF4848)
+internal val NightGreen = Color(0xFF009E4A)
+internal val NightGrid = Color(0xFF00421E)
+internal val NightPurple = Color(0xFFB874E0)
+internal val NightRed = Color(0xFFFF4848)
 
 // Deep red for the locked-target brackets — lower-luminance than the alarm red,
 // so the four brackets read as "locked" without flaring the driver's night eyes.
@@ -67,56 +64,10 @@ private const val THERMAL_HALF_FOV_DEG = 28f
 // figure that reads unmistakably as a person.
 private const val NEAR_SHAPE_THRESHOLD = 0.5f
 
-// -- surround ring geometry (design/surround-driver-hud.md, Phase 2) ----------
-
-// Ring radius as a fraction of screen height. 0.30 (not the perspective grid's
-// own proportions) keeps the rim clear of both the destination name (top) and
-// the MPH/status line (bottom ~0.90h) on the A54's ~2340x1080 landscape frame.
-private const val SURROUND_RING_RADIUS_FRACTION = 0.30f
-
-// Angular spacing of the rim ticks, and how many of the 12 resulting ticks are
-// "cardinal" (0/90/180/270 off the nose) and drawn longer.
-private const val TICK_SPACING_DEG = 30f
-private const val TICKS_PER_CARDINAL = 3
-private const val CARDINAL_TICK_FRACTION = 0.10f
-private const val MINOR_TICK_FRACTION = 0.05f
-
-// Uncovered-rim dashes are sized relative to one tick-spacing arc's length,
-// per the design doc's "~40% of the tick spacing".
-private const val DOTTED_DASH_FRACTION = 0.40f
-
 // Just inside where the forward figure's THERMAL_HALF_FOV_DEG mapping runs off
 // canvas — see drawThreat. Marks the arc the perspective view duplicates as
 // figures, so the ring's wedge doesn't promise a figure that isn't drawn.
-private const val PERSPECTIVE_ARC_DEG = 30f
-
-// Ego hull: a rounded rectangle in the vehicle's footprint proportions
-// (longer than wide, nose up) rather than a point or triangle, so the near
-// band has a "clear of my side" meaning instead of "clear of my centroid".
-private const val HULL_WIDTH_FRACTION = 0.12f
-private const val HULL_LENGTH_TO_WIDTH = 1.8f
-private const val HULL_ALPHA = 0.35f
-private const val HULL_CORNER_FRACTION = 0.3f
-
-// The forward wedge radials are "faint" — dimmer than the already-dim NightGrid.
-private const val WEDGE_ALPHA = 0.5f
-
-// Ring blip geometry, and the extra weight a merged (memberCount > 1) blip
-// draws with instead of a printed count — text is head-down reading.
-private const val BLIP_RADIUS_FRACTION = 0.012f
-private const val BLIP_HEAVY_SCALE = 1.4f
-private const val BLIP_STROKE = 2f
-private const val BLIP_HEAVY_STROKE = 3f
-
-// Collision blips get an outward radial spoke, toward the rim — i.e. pointing
-// back along the bearing the threat is coming FROM. That is deliberately the
-// opposite of a velocity vector: it makes a closing contact findable by shape
-// alone, since this display is dim by design and red-on-black at low
-// brightness isn't a reliable sole channel.
-private const val COLLISION_SPOKE_FRACTION = 0.08f
-
-private const val FULL_CIRCLE_DEG = 360f
-private const val HALF_TURN_DEG = 180f
+internal const val PERSPECTIVE_ARC_DEG = 30f
 
 /**
  * The "DRIVER" cockpit surface: a dim, hollow-vector night HUD (1983-arcade
@@ -263,169 +214,6 @@ private fun DrawScope.drawDriverHud(
     if (SurroundRing.brakeAdvised(state.threats, state.speedKph.toFloat())) {
         hudText("! COLLISION COURSE !", Offset(w * 0.5f, h * 0.15f), NightRed, h * 0.042f, tf, Paint.Align.CENTER)
     }
-}
-
-/** Static ring chrome: rim (solid over covered arcs, dotted otherwise), ticks, forward wedge, ego hull. */
-private fun DrawScope.drawRingFurniture(
-    visionFeed: VisionFeed,
-    center: Offset,
-    radius: Float,
-) {
-    drawRingRim(visionFeed, center, radius)
-    drawRingTicks(center, radius)
-    drawForwardWedge(center, radius)
-    drawHull(center, radius)
-}
-
-/**
- * The rim is the only place sensor health lives on this HUD (2e): solid over
- * a bearing means "watched", dotted means "blind or demo — do not trust an
- * empty ring here". [VisionFeed.ABSENT] dots the whole rim in [NightRed]
- * since nothing is being watched at all; [VisionFeed.DEMO] dots it in
- * [NightGrid] since the coverage is fabricated, not real; [VisionFeed.LIVE]
- * draws [SurroundRing.COVERED_ARCS] solid and everything else dotted.
- */
-private fun DrawScope.drawRingRim(
-    visionFeed: VisionFeed,
-    center: Offset,
-    radius: Float,
-) {
-    when (visionFeed) {
-        VisionFeed.ABSENT -> drawDottedRingArc(center, radius, -HALF_TURN_DEG, HALF_TURN_DEG, NightRed)
-        VisionFeed.DEMO -> drawDottedRingArc(center, radius, -HALF_TURN_DEG, HALF_TURN_DEG, NightGrid)
-        VisionFeed.LIVE -> {
-            SurroundRing.COVERED_ARCS.forEach { arc -> drawSolidRingArc(center, radius, arc.start, arc.endInclusive, NightGrid) }
-            uncoveredArcs(SurroundRing.COVERED_ARCS).forEach { arc ->
-                drawDottedRingArc(center, radius, arc.start, arc.endInclusive, NightGrid)
-            }
-        }
-    }
-}
-
-private fun DrawScope.drawSolidRingArc(
-    center: Offset,
-    radius: Float,
-    fromBearingDeg: Float,
-    toBearingDeg: Float,
-    color: Color,
-) {
-    drawArc(
-        color = color,
-        startAngle = SurroundRing.screenAngleDeg(fromBearingDeg),
-        sweepAngle = toBearingDeg - fromBearingDeg,
-        useCenter = false,
-        topLeft = Offset(center.x - radius, center.y - radius),
-        size = Size(2 * radius, 2 * radius),
-        style = Stroke(1f),
-    )
-}
-
-private fun DrawScope.drawDottedRingArc(
-    center: Offset,
-    radius: Float,
-    fromBearingDeg: Float,
-    toBearingDeg: Float,
-    color: Color,
-) {
-    val tickArcLenPx = radius * Math.toRadians(TICK_SPACING_DEG.toDouble()).toFloat()
-    val dashPx = tickArcLenPx * DOTTED_DASH_FRACTION
-    drawArc(
-        color = color,
-        startAngle = SurroundRing.screenAngleDeg(fromBearingDeg),
-        sweepAngle = toBearingDeg - fromBearingDeg,
-        useCenter = false,
-        topLeft = Offset(center.x - radius, center.y - radius),
-        size = Size(2 * radius, 2 * radius),
-        style = Stroke(width = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashPx, dashPx))),
-    )
-}
-
-/** The gaps between [covered] arcs, wrapping once around the circle — what [drawRingRim] dots. */
-private fun uncoveredArcs(covered: List<ClosedFloatingPointRange<Float>>): List<ClosedFloatingPointRange<Float>> {
-    if (covered.isEmpty()) return listOf(-HALF_TURN_DEG..HALF_TURN_DEG)
-    val sorted = covered.sortedBy { it.start }
-    val gaps = mutableListOf<ClosedFloatingPointRange<Float>>()
-    for (i in sorted.indices) {
-        val cur = sorted[i]
-        val nextStart = if (i + 1 < sorted.size) sorted[i + 1].start else sorted.first().start + FULL_CIRCLE_DEG
-        if (nextStart > cur.endInclusive) gaps += cur.endInclusive..nextStart
-    }
-    return gaps
-}
-
-/** Every 30°, inward from the rim; longer at the four cardinal (0/90/180/270) bearings. */
-private fun DrawScope.drawRingTicks(
-    center: Offset,
-    radius: Float,
-) {
-    val tickCount = (FULL_CIRCLE_DEG / TICK_SPACING_DEG).toInt()
-    for (i in 0 until tickCount) {
-        val bearing = -HALF_TURN_DEG + i * TICK_SPACING_DEG
-        val cardinal = i % TICKS_PER_CARDINAL == 0
-        val tickLen = radius * (if (cardinal) CARDINAL_TICK_FRACTION else MINOR_TICK_FRACTION)
-        val (dirX, dirY) = unitVector(SurroundRing.screenAngleDeg(bearing))
-        val outer = Offset(center.x + radius * dirX, center.y + radius * dirY)
-        val inner = Offset(center.x + (radius - tickLen) * dirX, center.y + (radius - tickLen) * dirY)
-        drawLine(outer, inner, NightGrid, 1f)
-    }
-}
-
-/**
- * Two faint radials at ±PERSPECTIVE_ARC_DEG marking the arc the perspective
- * figures below also draw — so the ring is honest about which contacts are
- * "duplicated" as a figure and which are ring-only.
- */
-private fun DrawScope.drawForwardWedge(
-    center: Offset,
-    radius: Float,
-) {
-    val faintGrid = NightGrid.copy(alpha = WEDGE_ALPHA)
-    for (bearing in listOf(PERSPECTIVE_ARC_DEG, -PERSPECTIVE_ARC_DEG)) {
-        val (dirX, dirY) = unitVector(SurroundRing.screenAngleDeg(bearing))
-        drawLine(center, Offset(center.x + radius * dirX, center.y + radius * dirY), faintGrid, 1f)
-    }
-}
-
-/** Dim, filled, nose-up rounded rectangle standing in for the vehicle's own footprint. */
-private fun DrawScope.drawHull(
-    center: Offset,
-    radius: Float,
-) {
-    val width = radius * HULL_WIDTH_FRACTION
-    val length = width * HULL_LENGTH_TO_WIDTH
-    drawRoundRect(
-        color = NightGreen.copy(alpha = HULL_ALPHA),
-        topLeft = Offset(center.x - width / 2f, center.y - length / 2f),
-        size = Size(width, length),
-        cornerRadius = CornerRadius(width * HULL_CORNER_FRACTION),
-    )
-}
-
-private fun DrawScope.drawRingBlip(
-    blip: SurroundRing.Blip,
-    center: Offset,
-    radius: Float,
-) {
-    val (dirX, dirY) = unitVector(blip.screenAngleDeg)
-    val dist = radius * blip.radiusFraction
-    val pos = Offset(center.x + dist * dirX, center.y + dist * dirY)
-    val heavy = blip.memberCount > 1
-    val blipRadius = size.height * BLIP_RADIUS_FRACTION * (if (heavy) BLIP_HEAVY_SCALE else 1f)
-    val stroke = if (heavy) BLIP_HEAVY_STROKE else BLIP_STROKE
-    val color = if (blip.collision) NightRed else NightGreen
-    drawCircle(color = color, radius = blipRadius, center = pos, style = Stroke(stroke))
-    if (blip.collision) {
-        // Spoke points outward, toward the rim — i.e. back along the bearing
-        // the threat is coming FROM. Deliberately the opposite of a velocity
-        // vector; see COLLISION_SPOKE_FRACTION's doc for why.
-        val spokeLen = radius * COLLISION_SPOKE_FRACTION
-        drawLine(pos, Offset(pos.x + spokeLen * dirX, pos.y + spokeLen * dirY), color, stroke)
-    }
-}
-
-private fun unitVector(screenAngleDeg: Float): Pair<Float, Float> {
-    val a = Math.toRadians(screenAngleDeg.toDouble())
-    return cos(a).toFloat() to sin(a).toFloat()
 }
 
 private fun DrawScope.drawPerspectiveGrid(
@@ -581,7 +369,7 @@ private fun DrawScope.reticle(
     drawLine(Offset(c.x, c.y + g), Offset(c.x, c.y + g + l), color, 2f)
 }
 
-private fun DrawScope.drawLine(
+internal fun DrawScope.drawLine(
     a: Offset,
     b: Offset,
     color: Color,
