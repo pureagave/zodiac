@@ -131,6 +131,19 @@ class ThermalCamera:
     # cannot drag the contrast with them; the centre is never smoothed.
     EMA_ALPHA = 0.05
 
+    # Never amplify beyond this. A thermally uniform scene has almost no spread,
+    # and without a floor the stretch multiplies the sensor's own noise up into
+    # visible structure that background subtraction dutifully reports as
+    # contacts. Measured on this sensor: typical frame-to-frame wobble ~3 counts,
+    # and a flat room gave a p2-p98 spread of only 51 counts — a
+    # contrast-to-noise ratio of 1.4. At that gain, noise became ~7.5 output
+    # levels and produced false contacts in bursts.
+    #
+    # 200 counts keeps typical noise under ~2 output levels, while sitting far
+    # below the ~600 counts a person actually produces — so real contacts are
+    # unaffected and a featureless scene simply renders flat, which is honest.
+    MIN_SPREAD_COUNTS = 200.0
+
     def __init__(
         self,
         device: str = "/dev/video0",
@@ -196,8 +209,11 @@ class ThermalCamera:
         else:
             self._spread_ema += self.EMA_ALPHA * (spread - self._spread_ema)
 
-        lo = centre - self._spread_ema
-        stretched = np.clip((f - lo) / (2.0 * self._spread_ema) * 255.0, 0, 255).astype(np.uint8)
+        # Floor the gain: below this the scene has no real thermal structure and
+        # we would only be magnifying noise.
+        scale = max(self._spread_ema, self.MIN_SPREAD_COUNTS)
+        lo = centre - scale
+        stretched = np.clip((f - lo) / (2.0 * scale) * 255.0, 0, 255).astype(np.uint8)
         return self._cv2.cvtColor(stretched, self._cv2.COLOR_GRAY2BGR)
 
     def close(self) -> None:
