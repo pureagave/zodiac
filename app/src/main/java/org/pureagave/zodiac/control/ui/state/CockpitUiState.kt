@@ -24,6 +24,7 @@ import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
 import org.pureagave.zodiac.control.core.telemetry.BeaconReadout
 import org.pureagave.zodiac.control.core.telemetry.Odometer
 import org.pureagave.zodiac.control.core.vision.DriverThreat
+import org.pureagave.zodiac.control.core.vision.VisionFeed
 
 data class CockpitUiState(
     val headingDeg: Int = 0,
@@ -104,6 +105,14 @@ data class CockpitUiState(
      * Empty = all clear.
      */
     val threats: List<DriverThreat> = emptyList(),
+    /**
+     * Health of the [threats] feed — LIVE (real detections), DEMO (bench
+     * fallback), or ABSENT (no feed and no demo). Defaults to ABSENT: a
+     * ViewModel wired with no vision source genuinely has no vision. The
+     * DRIVER HUD status line may only show "CLEAR" when this is LIVE — an
+     * absent feed must never look like a clear road.
+     */
+    val visionFeed: VisionFeed = VisionFeed.ABSENT,
     /**
      * Short message describing the most recent failed vehicle command send
      * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced

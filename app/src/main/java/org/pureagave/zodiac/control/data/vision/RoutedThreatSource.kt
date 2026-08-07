@@ -4,8 +4,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import org.pureagave.zodiac.control.core.vision.DriverThreat
+import org.pureagave.zodiac.control.core.vision.VisionFeed
 
 /**
  * Prefers the real [network] threat feed (the Jetson edge box), falling back to
@@ -34,6 +36,17 @@ class RoutedThreatSource(
 
     override val feedAlive: StateFlow<Boolean> = network.feedAlive
 
+    /**
+     * Tri-state feed health for the DRIVER HUD status line and ring rim —
+     * distinct from [feedAlive] because "showing demo data" is neither live
+     * nor absent. `demoEnabled=false` (deployed vehicle) means a dead feed
+     * surfaces as [VisionFeed.ABSENT], never silently as [VisionFeed.DEMO].
+     */
+    val feedState: StateFlow<VisionFeed> =
+        network.feedAlive
+            .map { alive -> deriveFeedState(alive, demoEnabled) }
+            .stateIn(scope, SharingStarted.Eagerly, deriveFeedState(network.feedAlive.value, demoEnabled))
+
     override suspend fun start() {
         network.start()
         fake.start()
@@ -44,3 +57,13 @@ class RoutedThreatSource(
         fake.stop()
     }
 }
+
+private fun deriveFeedState(
+    alive: Boolean,
+    demoEnabled: Boolean,
+): VisionFeed =
+    when {
+        alive -> VisionFeed.LIVE
+        demoEnabled -> VisionFeed.DEMO
+        else -> VisionFeed.ABSENT
+    }

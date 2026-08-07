@@ -47,6 +47,7 @@ import org.pureagave.zodiac.control.core.telemetry.AmbientLight
 import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.telemetry.Odometer
+import org.pureagave.zodiac.control.core.vision.VisionFeed
 import org.pureagave.zodiac.control.data.FakeVehicleGateway
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
@@ -989,6 +990,60 @@ class CockpitViewModelTest {
                 advanceTimeBy(SHOCK_ALERT_MS)
                 runCurrent()
                 assertNull(vm.uiState.value.shockAlertG)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun visionFeed_defaultsToAbsent_becauseNoVisionSourceMeansNoVision() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource = FakeLocationSource(scope = this.backgroundScope),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+
+                assertEquals(VisionFeed.ABSENT, vm.uiState.value.visionFeed)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun visionFeed_followsTheRoutedFeedStateFlow() =
+        runTest {
+            val feed = MutableStateFlow(VisionFeed.DEMO)
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource = FakeLocationSource(scope = this.backgroundScope),
+                        visionFeedFlow = feed,
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+                assertEquals(VisionFeed.DEMO, vm.uiState.value.visionFeed)
+
+                // A crashed edge box or dropped WiFi must be observable, not
+                // silently swallowed — this is the exact scenario 1.5e exists
+                // to fix (a dead feed used to render as "0 CONTACTS CLEAR").
+                feed.value = VisionFeed.ABSENT
+                runCurrent()
+                assertEquals(VisionFeed.ABSENT, vm.uiState.value.visionFeed)
             } finally {
                 store.clear()
             }

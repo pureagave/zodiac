@@ -37,6 +37,7 @@ import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.vision.DriverThreat
+import org.pureagave.zodiac.control.core.vision.VisionFeed
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.VehicleConnectionGateway
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
@@ -64,6 +65,12 @@ class CockpitViewModel(
      * tests / pre-wiring.
      */
     private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
+    /**
+     * Health of [threatsFlow] — LIVE / DEMO / ABSENT (see [VisionFeed]).
+     * Defaults to ABSENT: a ViewModel with no vision source wired up
+     * genuinely has no vision, and must not render as an all-clear.
+     */
+    private val visionFeedFlow: StateFlow<VisionFeed> = MutableStateFlow(VisionFeed.ABSENT),
     /**
      * Low-rate Sensor Hub channels (ambient light, health, odometer, shock) from
      * the [NetworkLocationSource]. One bundled flow keeps the ViewModel to a
@@ -221,6 +228,13 @@ class CockpitViewModel(
                 // Thermal contacts for the DRIVER HUD (network feed or fake demo).
                 threatsFlow.collect { threats ->
                     _uiState.update { it.copy(threats = threats) }
+                }
+            }
+            launch {
+                // Tri-state health of the threat feed — see VisionFeed's doc for
+                // why this can't just be folded into "threats is empty".
+                visionFeedFlow.collect { feed ->
+                    _uiState.update { it.copy(visionFeed = feed) }
                 }
             }
             launch {
@@ -602,6 +616,7 @@ class CockpitViewModelFactory(
     private val fakeLocationSource: FakeLocationSource,
     private val poisFlow: StateFlow<List<PlayaPoi>> = MutableStateFlow(emptyList()),
     private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
+    private val visionFeedFlow: StateFlow<VisionFeed> = MutableStateFlow(VisionFeed.ABSENT),
     private val beaconSensors: StateFlow<BeaconSensors> = MutableStateFlow(BeaconSensors()),
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
@@ -616,6 +631,7 @@ class CockpitViewModelFactory(
                 fakeLocationSource = fakeLocationSource,
                 poisFlow = poisFlow,
                 threatsFlow = threatsFlow,
+                visionFeedFlow = visionFeedFlow,
                 beaconSensors = beaconSensors,
             ) as T
         }

@@ -16,13 +16,12 @@ complexity:
   LongParameterList:
     # Manual DI (no Hilt): CockpitViewModel + its factory take one collaborator
     # per dependency, so the constructor grows by one each time the cockpit gains
-    # a real data source (poisFlow for playa-discovery contacts was the latest).
-    # Bumped from the default 7 to keep just above the current count (beaconSensors
-    # — the bundled low-rate Sensor Hub channels — was the latest data source
-    # added; before it, threatsFlow for the DRIVER thermal contacts). NOTE: the VM
-    # is a god-object due for a split (drive-to / map-camera / sensor delegates)
-    # before it grows further.
-    constructorThreshold: 10
+    # a real data source (visionFeedFlow, the tri-state DRIVER HUD feed-health
+    # signal, was the latest; before it, poisFlow for playa-discovery contacts).
+    # Bumped from the default 7 to keep just above the current count (10 params).
+    # NOTE: the VM is a god-object due for a split (drive-to / map-camera / sensor
+    # delegates) before it grows further.
+    constructorThreshold: 11
     # Compose components idiomatically take theme + a few data/callbacks + a
     # trailing Modifier; e.g. driveToBar (theme, active, bathActive, onSelect,
     # onSelectBath, modifier). Bumped from the default 6 to 7 for that shape.
@@ -52,8 +51,10 @@ complexity:
     # NmeaParser is the fleet's one central sentence reader; it grows a parser per
     # proprietary sentence (ZTLM/ZAUD/ZENV/ZSHK/ZBCN/ZODO) alongside standard
     # GGA/RMC/heading. If it keeps growing, split the proprietary Z-sentences into
-    # their own object.
-    thresholdInObjects: 18
+    # their own object. SurroundRing (Phase 1.5: bands, clustering, hysteresis,
+    # coverage arcs, speed-gated braking, all pure + tested) pushed higher still —
+    # bumped from 18 to 20 to fit both.
+    thresholdInObjects: 20
 
 naming:
   FunctionNaming:

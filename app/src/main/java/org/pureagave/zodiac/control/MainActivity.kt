@@ -66,6 +66,7 @@ private fun zodiacApp() {
                     fakeLocationSource = app.fakeLocationSource,
                     poisFlow = app.discoveryRepository.pois,
                     threatsFlow = app.threatSource.threats,
+                    visionFeedFlow = app.threatSource.feedState,
                     beaconSensors = app.networkLocationSource.beaconSensors,
                 ),
         )

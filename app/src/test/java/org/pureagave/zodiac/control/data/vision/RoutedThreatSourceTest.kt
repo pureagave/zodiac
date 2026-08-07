@@ -10,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.vision.DriverThreat
+import org.pureagave.zodiac.control.core.vision.VisionFeed
 
 class RoutedThreatSourceTest {
     private class StubThreatSource(
@@ -72,6 +73,61 @@ class RoutedThreatSourceTest {
             // demoEnabled=false: an absent feed reads as all-clear, never the demo.
             assertTrue(awaitEmpty(routed))
         }
+    }
+
+    // -- feedState (1.5e) --------------------------------------------------------
+
+    @Test
+    fun feed_state_is_live_while_the_network_feed_is_alive() {
+        withScope { scope ->
+            val net = StubThreatSource(emptyList(), alive = true)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            assertEquals(VisionFeed.LIVE, awaitFeedState(routed) { it == VisionFeed.LIVE })
+        }
+    }
+
+    @Test
+    fun feed_state_is_demo_when_the_network_feed_is_absent_and_demo_is_enabled() {
+        withScope { scope ->
+            val net = StubThreatSource(emptyList(), alive = false)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            assertEquals(VisionFeed.DEMO, awaitFeedState(routed) { it == VisionFeed.DEMO })
+        }
+    }
+
+    @Test
+    fun feed_state_is_absent_on_a_deployed_vehicle_with_no_feed_never_demo() {
+        // demoEnabled=false is the deployed-vehicle config. A crashed Jetson
+        // must surface as ABSENT, not silently fall back to DEMO — the status
+        // line and ring rim both key off this to avoid lying to the driver.
+        withScope { scope ->
+            val net = StubThreatSource(emptyList(), alive = false)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = false)
+            assertEquals(VisionFeed.ABSENT, awaitFeedState(routed) { it == VisionFeed.ABSENT })
+        }
+    }
+
+    @Test
+    fun feed_state_flips_to_live_the_moment_the_network_feed_recovers() {
+        withScope { scope ->
+            val net = StubThreatSource(emptyList(), alive = false)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            awaitFeedState(routed) { it == VisionFeed.DEMO }
+            net.aliveFlow.value = true
+            assertEquals(VisionFeed.LIVE, awaitFeedState(routed) { it == VisionFeed.LIVE })
+        }
+    }
+
+    private fun awaitFeedState(
+        source: RoutedThreatSource,
+        predicate: (VisionFeed) -> Boolean,
+    ): VisionFeed {
+        val deadline = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < deadline) {
+            if (predicate(source.feedState.value)) return source.feedState.value
+            Thread.sleep(10)
+        }
+        return source.feedState.value
     }
 
     private fun withScope(block: (CoroutineScope) -> Unit) {
