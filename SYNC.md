@@ -6,6 +6,55 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-07 — DMX dongle live on the Jetson; surround DRIVER HUD shipped
+
+**DMX.** FTDI FT232R dongle (`BG03OCDS`) plugged into the Jetson; OLA installed
+and the whole path proven: `olad` opens the widget, reports **"Granularity for
+FTDI thread is GOOD"** (its DMX timing will hold), and `python3 -m zvision
+--source fake --dmx ola` drives pan/tilt/dimmer with no errors. Fixture not
+attached yet, so nothing has actually lit — everything up to the XLR is done.
+
+Two real bugs found doing it, both fixed in `scripts/install-ola.sh`:
+- **The installer wrote plugin config to the wrong directory.** `olad` on this
+  image runs `--config-dir /etc/ola`; the script hard-coded
+  `/var/lib/ola/conf`, which also exists and looks plausible. It failed
+  *silently* — every plugin kept its default, `ftdidmx` stayed `enabled =
+  false`, and the dongle simply never appeared in `ola_dev_info`. The script
+  now asks the running daemon instead of guessing.
+- **olad could not open the dongle.** ftdidmx uses libftdi (raw USB), not the
+  `/dev/ttyUSB0` node, so `dialout` is irrelevant — it needs a udev rule
+  granting the FT232's USB node to `plugdev`. Symptom was `libusb_open()
+  failed`. libftdi detaches `ftdi_sio` itself once it can open the device, so
+  nothing needs blacklisting. Also disabled `stageprofi`, which grabs
+  `/dev/ttyUSB0` on a timer and fights for the same hardware.
+
+Our FT232R lands on **port 1, not port 0** — `ola_patch -d 2 -p 1 -u 0`.
+
+**Tracker light is 180-degree, not 360.** The head is mounted to cover forward
+and both sides and cannot throw behind the vehicle. Since the multi-camera
+merge the wire carries full-circle bearings, and `select_best`/`_pick` took the
+whole list — so a collision astern won selection, pan clamped at end of travel,
+and the head parked against its limit pointing at nothing while ignoring the
+person in front. The latch made it durable. `reachable()` now filters *before*
+"collision wins", and out-of-reach releases the latch.
+
+**Jetson networking:** reachable directly at `192.168.86.235` over Ethernet
+(no ProxyJump needed), and at `192.168.55.1` over the USB link from `grr`.
+Note `~/zodiac` on the box is a copy, not a git clone — `git pull` there fails.
+
+**Surround DRIVER HUD shipped** (design doc `design/surround-driver-hud.md`
+rev 2, four commits). Rear contacts are drawn for the first time. A rear
+collision no longer fires `! BRAKE !` or the centre banner — braking puts the
+vehicle further into its path — it gets `! CHECK REAR !`. Braking is
+speed-gated, because people deliberately walk up to art cars and every one of
+them is a constant-bearing looming track while parked. The rim is solid over
+the 160 deg the thermal watches and dotted over the 200 deg it does not, red
+when the feed is dead, so `CLEAR` can only appear when something is genuinely
+looking. App **567 tests**, jetson **235**.
+
+**Still not verified on hardware:** nobody has looked at the ring on the A54 at
+night brightness. That is the acceptance gate the design names.
+
 ## 2026-08-07 — Thermal pod shrunk to its own tiny box; last two test-coverage items landed
 
 **Housing.** The aluminum CCTV box is oversized for a camera that is 19.5 x
