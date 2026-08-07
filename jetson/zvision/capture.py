@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from .normalize import stretch_window
+
 
 class UvcCamera:
     """Opens a V4L2 UVC device and yields frames. ``read()`` returns a BGR numpy
@@ -205,17 +207,12 @@ class ThermalCamera:
         spread = float(np.percentile(f, self._high) - np.percentile(f, self._low))
         spread = max(spread, 1.0)  # a flat frame (mid-FFC) must not divide by ~0
 
-        # Centre follows the frame (cancels sensor drift, including FFC
-        # re-baselining, with no lag at all); only the scale is smoothed.
-        if self._spread_ema is None:
-            self._spread_ema = spread
-        else:
-            self._spread_ema += self.EMA_ALPHA * (spread - self._spread_ema)
-
-        # Floor the gain: below this the scene has no real thermal structure and
-        # we would only be magnifying noise.
-        scale = max(self._spread_ema, self.MIN_SPREAD_COUNTS)
-        lo = centre - scale
+        # The decision itself lives in zvision.normalize so it can be unit
+        # tested without numpy — this is where both 2026-08-07 bugs were.
+        lo, scale, self._spread_ema = stretch_window(
+            centre, spread, self._spread_ema,
+            alpha=self.EMA_ALPHA, min_spread=self.MIN_SPREAD_COUNTS,
+        )
         stretched = np.clip((f - lo) / (2.0 * scale) * 255.0, 0, 255).astype(np.uint8)
         return self._cv2.cvtColor(stretched, self._cv2.COLOR_GRAY2BGR)
 

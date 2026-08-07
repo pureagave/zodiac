@@ -19,6 +19,7 @@ from .geometry import (
     bbox_height_to_size,
     pixel_to_bearing,
 )
+from .normalize import assign_track_id
 from .threat import DriverThreat
 
 
@@ -177,17 +178,10 @@ class MotionDetector:
         return out
 
     def _assign_id(self, cx: float, cy: float, seen: dict) -> int:
-        best_id, best_d = None, self._match_dist
-        for tid, (px, py) in self._tracks.items():
-            if tid in seen:
-                continue
-            d = math.hypot(cx - px, cy - py)
-            if d < best_d:
-                best_id, best_d = tid, d
-        if best_id is not None:
-            return best_id
-        tid = self._next_id
-        self._next_id += 1
+        # Logic lives in zvision.normalize so it is testable without cv2.
+        tid, self._next_id = assign_track_id(
+            cx, cy, self._tracks, seen, self._match_dist, self._next_id
+        )
         return tid
 
     def _kernel(self):
