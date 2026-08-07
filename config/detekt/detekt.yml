@@ -56,9 +56,10 @@ complexity:
     # proprietary sentence (ZTLM/ZAUD/ZENV/ZSHK/ZBCN/ZODO) alongside standard
     # GGA/RMC/heading. If it keeps growing, split the proprietary Z-sentences into
     # their own object. SurroundRing (Phase 1.5: bands, clustering, hysteresis,
-    # coverage arcs, speed-gated braking, all pure + tested) pushed higher still —
-    # bumped from 18 to 20 to fit both.
-    thresholdInObjects: 20
+    # coverage arcs, speed-gated braking; Phase 3: the hudStatus status-line
+    # decision, all pure + tested) pushed higher still — bumped from 18 to 21
+    # to fit both.
+    thresholdInObjects: 21
 
 naming:
   FunctionNaming:

@@ -61,11 +61,6 @@ private const val KPH_TO_MPH = 0.621371
 private const val ARCH_HALF_SPAN_DEG = 29f
 private const val THERMAL_HALF_FOV_DEG = 28f
 
-// How much of the (now full-circle) contact list this forward HUD will show.
-// Replaced by a real surround layout later; until then it keeps the display
-// exactly as it was when the wire itself was limited to the forward half.
-private const val HUD_FORWARD_ARC_DEG = 90f
-
 // Level-of-detail swap for the contact figure: distant contacts (small) draw a
 // compact head+shoulders "bust" that stays legible at a few pixels; once close
 // (and there's detail to carry it) they switch to a full striding "walking"
@@ -142,12 +137,14 @@ fun driverNightScreen(
     val context = LocalContext.current
     val typeface = remember { ResourcesCompat.getFont(context, R.font.orbitron) }
     val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
-    // The edge box now fuses a ring of cameras and reports full-circle bearings,
-    // but this HUD is still the single forward view: it places a contact by
-    // az/THERMAL_HALF_FOV_DEG, so a contact astern would be drawn far off-canvas
-    // and — worse — a rear collision would fire "! BRAKE !" at the driver. Show
-    // only the forward half until the surround HUD lands.
-    val threats = state.threats.filter { abs(it.relAzDeg) <= HUD_FORWARD_ARC_DEG }
+    // The edge box fuses a ring of cameras and reports full-circle bearings.
+    // The perspective figures below place a contact by az/THERMAL_HALF_FOV_DEG,
+    // which only means something inside the arc the perspective mapping still
+    // covers on canvas — PERSPECTIVE_ARC_DEG, matching the ring's forward wedge
+    // (drawForwardWedge) so the wedge never promises a figure that isn't drawn.
+    // Everything outside that arc, including the full rear half, is still on
+    // the surround ring below — see ringBlips.
+    val threats = state.threats.filter { abs(SurroundRing.wrapBearing(it.relAzDeg)) <= PERSPECTIVE_ARC_DEG }
 
     // The surround ring carries every contact, full-circle — the whole reason
     // it exists is to show the driver what the forward-only figures above
@@ -170,9 +167,13 @@ fun driverNightScreen(
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawDriverHud(state, threats, ringBlips, relDeg.toFloat(), typeface)
         }
-        // Speed (purple = live data) bottom-right, and the collision / all-clear
-        // status bottom-left — kept as real Compose text for crispness.
-        val collisionAny = threats.any { it.collision }
+        // Speed (purple = live data) bottom-right, and the status line
+        // bottom-left — kept as real Compose text for crispness. The status
+        // is evaluated over ALL threats (not the forward-filtered figure
+        // list) so the count and the alert both stay honest about the whole
+        // picture; SurroundRing.hudStatus decides which of the five states
+        // applies, this only maps that decision to text and colour.
+        val hudStatus = SurroundRing.hudStatus(state.threats, state.speedKph.toFloat(), state.visionFeed)
         Text(
             text = "$mph MPH",
             color = NightPurple,
@@ -181,8 +182,8 @@ fun driverNightScreen(
             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
         )
         Text(
-            text = if (collisionAny) "! BRAKE !" else "${threats.size} CONTACTS   CLEAR",
-            color = if (collisionAny) NightRed else NightGreen,
+            text = statusLineText(hudStatus, state.threats.size),
+            color = if (hudStatus == SurroundRing.HudStatus.DEMO || hudStatus == SurroundRing.HudStatus.CLEAR) NightGreen else NightRed,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.align(Alignment.BottomStart).padding(20.dp),
@@ -212,6 +213,19 @@ fun driverNightScreen(
     }
 }
 
+/** Text for each [SurroundRing.HudStatus] row of the design doc's status-line table; colour is chosen by the caller. */
+private fun statusLineText(
+    status: SurroundRing.HudStatus,
+    contactCount: Int,
+): String =
+    when (status) {
+        SurroundRing.HudStatus.NO_VISION -> "NO VISION"
+        SurroundRing.HudStatus.BRAKE -> "! BRAKE !   $contactCount CONTACTS"
+        SurroundRing.HudStatus.CHECK_REAR -> "! CHECK REAR !   $contactCount CONTACTS"
+        SurroundRing.HudStatus.DEMO -> "$contactCount CONTACTS   DEMO"
+        SurroundRing.HudStatus.CLEAR -> "$contactCount CONTACTS   CLEAR"
+    }
+
 private fun DrawScope.drawDriverHud(
     state: CockpitUiState,
     threats: List<DriverThreat>,
@@ -240,7 +254,13 @@ private fun DrawScope.drawDriverHud(
 
     // Top-left context: open playa vs. in the city grid.
     hudText(if (state.entranceRadial != null) "OPEN PLAYA" else "IN CITY", Offset(w * 0.03f, h * 0.09f), NightGreen, h * 0.033f, tf)
-    if (threats.any { it.collision }) {
+    // The centre banner is the primary, preattentive alert channel, so it
+    // keys off the same brakeAdvised decision as the status line and the
+    // status-line table (3b/3c) — not "any collision at all". A rear-only
+    // collision gets CHECK REAR on the status line and no centre flash: a
+    // centre-screen alert for something astern is the exact mistrust-training
+    // problem brakeAdvised's own doc warns about.
+    if (SurroundRing.brakeAdvised(state.threats, state.speedKph.toFloat())) {
         hudText("! COLLISION COURSE !", Offset(w * 0.5f, h * 0.15f), NightRed, h * 0.042f, tf, Paint.Align.CENTER)
     }
 }

@@ -6,6 +6,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.vision.SurroundRing.Band
+import org.pureagave.zodiac.control.core.vision.SurroundRing.HudStatus
 import org.pureagave.zodiac.control.core.vision.SurroundRing.Sector
 import kotlin.math.cos
 import kotlin.math.sin
@@ -443,5 +444,58 @@ class SurroundRingTest {
         // A challenger that clears the margin still wins.
         val frame3 = listOf(t(az = 0f, size = 0.55f, id = 1), t(az = 90f, size = 0.90f, id = 2))
         assertEquals(2, tracker.blips(frame3, max = 1).single().threat.id)
+    }
+
+    // -- HUD status line precedence (3b) -----------------------------------------
+
+    @Test
+    fun no_vision_overrides_everything_even_with_a_forward_collision() {
+        // A stale "CLEAR" is worse than an honest "no reading at all" — an
+        // absent feed must win regardless of what the (stale) contact list says.
+        val forward = listOf(t(az = 5f, collision = true))
+        assertEquals(HudStatus.NO_VISION, SurroundRing.hudStatus(forward, aboveGate, VisionFeed.ABSENT))
+    }
+
+    @Test
+    fun brake_takes_precedence_over_check_rear_when_both_apply() {
+        // Braking is the more urgent instruction and must not be masked by
+        // the simultaneous rear check.
+        val mixed = listOf(t(az = 178f, collision = true), t(az = 3f, collision = true))
+        assertEquals(HudStatus.BRAKE, SurroundRing.hudStatus(mixed, aboveGate, VisionFeed.LIVE))
+    }
+
+    @Test
+    fun check_rear_when_only_a_rear_collision_is_present() {
+        val rearOnly = listOf(t(az = 178f, collision = true))
+        assertEquals(HudStatus.CHECK_REAR, SurroundRing.hudStatus(rearOnly, aboveGate, VisionFeed.LIVE))
+    }
+
+    @Test
+    fun demo_status_when_the_feed_is_demo_and_the_road_is_quiet() {
+        val quiet = listOf(t(az = 0f, collision = false))
+        assertEquals(HudStatus.DEMO, SurroundRing.hudStatus(quiet, aboveGate, VisionFeed.DEMO))
+    }
+
+    @Test
+    fun a_demo_collision_still_shows_brake_not_the_demo_label() {
+        // The demo is meant to exercise the real alert path — it should not
+        // be silently downgraded to the DEMO label when it fires an alarm.
+        val demoCollision = listOf(t(az = 5f, collision = true))
+        assertEquals(HudStatus.BRAKE, SurroundRing.hudStatus(demoCollision, aboveGate, VisionFeed.DEMO))
+    }
+
+    @Test
+    fun clear_when_the_feed_is_live_and_the_road_is_quiet() {
+        val quiet = listOf(t(az = 0f, collision = false))
+        assertEquals(HudStatus.CLEAR, SurroundRing.hudStatus(quiet, aboveGate, VisionFeed.LIVE))
+    }
+
+    @Test
+    fun hud_status_falls_back_to_clear_when_brake_is_speed_gated_off() {
+        // A forward collision at a dead stop doesn't advise braking (1.5d)
+        // and isn't a rear contact either — the aggregate status must not
+        // invent an alert the two underlying checks both declined to raise.
+        val boarding = listOf(t(az = 5f, collision = true))
+        assertEquals(HudStatus.CLEAR, SurroundRing.hudStatus(boarding, speedKph = 0f, visionFeed = VisionFeed.LIVE))
     }
 }

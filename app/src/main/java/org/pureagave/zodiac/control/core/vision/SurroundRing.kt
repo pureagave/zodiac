@@ -17,6 +17,11 @@ import kotlin.math.sin
  * The ring is **nose-up**: a driver needs "that one is on my left", not a
  * compass. Straight ahead is the top of the ring, dead astern the bottom, and
  * the whole picture rotates with the vehicle rather than with the world.
+ *
+ * Known limitations, documented rather than fixed here: reversing is not
+ * modelled (see [brakeAdvised]'s doc), and a contact that drops out on
+ * occlusion vanishes from the ring instantly rather than fading (see
+ * [blips]'s doc).
  */
 object SurroundRing {
     /**
@@ -224,6 +229,13 @@ object SurroundRing {
      * no stable identity to protect. [BlipTracker] wraps this for a caller
      * that just wants frame-to-frame stability without managing the id set
      * itself.
+     *
+     * **Contact coasting is not modelled.** Thermal tracks drop out on
+     * occlusion, so a person who vanishes behind another contact at 3 m
+     * currently disappears from the ring on the very next frame instead of
+     * fading over a second or two. Graceful fade-on-drop would need the
+     * caller to keep dead tracks alive briefly by [DriverThreat.id]; not this
+     * pass — noted here rather than fixed.
      */
     fun blips(
         threats: List<DriverThreat>,
@@ -263,6 +275,41 @@ object SurroundRing {
 
     /** A closing contact behind the vehicle — worth showing, not worth braking for. */
     fun rearAlert(threats: List<DriverThreat>): Boolean = threats.any { it.collision && sectorOf(it.relAzDeg) == Sector.REAR }
+
+    /**
+     * The DRIVER HUD's status line is one of these five mutually-exclusive
+     * states — see [hudStatus] for the precedence and the design doc's
+     * status-line table for the text/colour each one maps to. Text and
+     * colour are a rendering concern and deliberately not decided here.
+     */
+    enum class HudStatus { NO_VISION, BRAKE, CHECK_REAR, DEMO, CLEAR }
+
+    /**
+     * Which status-line state applies right now, evaluated over **all**
+     * threats — not the forward-filtered figure list — so the contact count
+     * and the alert both stay honest about the whole picture, not just what
+     * the perspective view happens to be drawing.
+     *
+     * Precedence matters: an absent feed overrides everything (a stale
+     * "CLEAR" is worse than no reading at all), and a simultaneous forward
+     * and rear collision shows [HudStatus.BRAKE] — braking is the more
+     * urgent instruction, so it must not be masked by the rear check. The
+     * contact count must never disappear during [HudStatus.BRAKE] or
+     * [HudStatus.CHECK_REAR]; losing it at the busiest moment would be
+     * backwards, and it's what keeps [MAX_BLIPS]/clustering honest.
+     */
+    fun hudStatus(
+        threats: List<DriverThreat>,
+        speedKph: Float,
+        visionFeed: VisionFeed,
+    ): HudStatus =
+        when {
+            visionFeed == VisionFeed.ABSENT -> HudStatus.NO_VISION
+            brakeAdvised(threats, speedKph) -> HudStatus.BRAKE
+            rearAlert(threats) -> HudStatus.CHECK_REAR
+            visionFeed == VisionFeed.DEMO -> HudStatus.DEMO
+            else -> HudStatus.CLEAR
+        }
 
     /**
      * Frame-to-frame convenience wrapper around [blips]: remembers which
