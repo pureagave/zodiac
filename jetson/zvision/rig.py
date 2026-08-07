@@ -124,6 +124,15 @@ def parse_camera_spec(
 
     e.g. ``thermal:/dev/video0:az=0:fov=160:lens=fisheye`` or a bare ``fake:az=90``.
 
+    **Prefer a stable device name.** ``/dev/videoN`` numbering follows USB
+    enumeration order and is *not* stable across reboots — on this rig the
+    thermal and RGB swapped nodes on a cold boot, which silently ran one camera
+    through the other's code path. Use ``/dev/v4l/by-path/...``, which is tied
+    to the physical USB port, so a port keeps its identity and therefore its
+    mount angle. (``by-id`` is not safe for the ring: identical cameras report
+    identical serials — the Arducams all say ``SN0001``.) Such names contain
+    colons, which this parser handles.
+
     Optics/mount keys: ``az`` ``fov`` ``fovref`` (h|d) ``lens`` ``name``
     ``width`` ``height``.
     Field-tuning keys (see :class:`DetectorTuning`): ``minarea`` ``match``
@@ -147,9 +156,17 @@ def parse_camera_spec(
 
     rest = fields[1:]
     device = base.device
-    if rest and "=" not in rest[0]:
-        device = rest[0].strip()
-        rest = rest[1:]
+    # The device may itself contain colons — a stable /dev/v4l/by-path/ name
+    # looks like ".../platform-3610000.usb-usb-0:2.3:1.0-video-index0", and
+    # by-path is the *correct* way to name a camera here (see below). So
+    # consume every leading field until one looks like key=value, and rejoin.
+    # Option keys never contain "=" in their name, and paths never contain "=",
+    # so the split is unambiguous.
+    dev_parts = []
+    while rest and "=" not in rest[0]:
+        dev_parts.append(rest.pop(0))
+    if dev_parts:
+        device = ":".join(dev_parts).strip()
 
     kw: Dict[str, str] = {}
     for field_ in rest:

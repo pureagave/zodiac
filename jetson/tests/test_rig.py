@@ -81,6 +81,21 @@ class ParseSpecTest(unittest.TestCase):
         self.assertEqual("rgb2", parse_camera_spec("rgb", index=2).name)
         self.assertEqual("port", parse_camera_spec("rgb:name=port").name)
 
+
+    def test_device_path_may_contain_colons(self):
+        # Stable /dev/v4l/by-path names contain colons, and they are the
+        # *correct* way to name a camera — /dev/videoN reshuffles across
+        # reboots. The parser must not mistake path colons for field separators.
+        path = "/dev/v4l/by-path/platform-3610000.usb-usb-0:2.3:1.0-video-index0"
+        m = parse_camera_spec(f"thermal:{path}:az=90:fov=160")
+        self.assertEqual(path, m.device)
+        self.assertEqual(90.0, m.mount_az_deg)
+        self.assertEqual(160.0, m.fov_deg)
+
+    def test_colon_path_with_no_options(self):
+        path = "/dev/v4l/by-path/platform-x-usb-0:1.2:1.0-video-index0"
+        self.assertEqual(path, parse_camera_spec(f"rgb:{path}").device)
+
     def test_rejects_unknown_source(self):
         with self.assertRaises(ValueError):
             parse_camera_spec("lidar:az=0")

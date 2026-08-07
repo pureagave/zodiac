@@ -6,6 +6,50 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-07 (later) — /dev/videoN is NOT stable across reboots; three fixes
+
+The cold-boot test earlier looked like a pass — service active, 0 restarts. It
+wasn't. **The thermal and RGB swapped device nodes across that reboot:**
+
+| | before reboot | after |
+|---|---|---|
+| thermal | `/dev/video0` | **`/dev/video4`** |
+| RGB | `/dev/video2` | **`/dev/video0`** |
+
+So the service came up happily running the **RGB camera through the thermal code
+path**, requesting Y16 from an RGB sensor. It didn't crash, which is worse than
+crashing — it looked healthy while being wrong.
+
+`/dev/videoN` follows USB enumeration order, which isn't deterministic. On a
+five-camera ring this is genuinely dangerous: every camera carries a mount
+angle, so a reshuffle silently assigns the wrong bearing to every contact and
+the tracker light points at the wrong person.
+
+**Fix: name cameras by `/dev/v4l/by-path/`,** which is tied to the *physical USB
+port* — so a port keeps its identity, and therefore its mount angle, forever.
+**`by-id` is not safe here:** identical cameras report identical serials (all
+four Arducams will say `SN0001`). Service config updated; the reason is written
+into the config file itself so nobody "tidies" it back to `/dev/video0`.
+
+Three bugs fell out of doing it:
+
+1. **`UvcCamera` couldn't open a camera by index at all.** OpenCV picked its
+   obsensor backend and failed with "Camera index out of range" on a perfectly
+   good node. `ThermalCamera` had already been forced to `CAP_V4L2`; the fix
+   hadn't been carried across. (The rig *correctly* skipped the dead camera and
+   kept running — that robustness earned its keep.)
+2. **`parse_camera_spec` couldn't parse a by-path name.** It splits on `:`, and
+   by-path names contain colons (`usb-0:2.3:1.0`) — so the *correct* way to name
+   a camera was unparseable. Now consumes leading fields until one looks like
+   `key=value`; keys and paths never contain `=`, so it's unambiguous. +2 tests.
+3. **The recorder's lossless cutoff** (fixed earlier the same day) was the same
+   class of bug — an assumption about sensor geometry that quietly changed
+   behaviour rather than failing.
+
+**Cross-camera dedup verified on real hardware:** both cameras reported a
+contact at the same bearing and the merge collapsed 2 → 1. First time `rig.py`'s
+fusion has run against anything but fakes.
+
 ## 2026-08-07 — both cameras on the bench; two detection bugs found and fixed by measurement
 
 The Lepton UW and an Arducam RGB are both on the Jetson, and the service now

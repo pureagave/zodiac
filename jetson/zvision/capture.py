@@ -28,7 +28,10 @@ class UvcCamera:
         index: object = device
         if isinstance(device, str) and device.startswith("/dev/video"):
             index = int(device.rsplit("video", 1)[1])
-        self._cap = cv2.VideoCapture(index)
+        # Force V4L2. Without it OpenCV may pick another backend (obsensor on
+        # this Jetson) which fails outright with "Camera index out of range"
+        # for a perfectly good /dev/videoN.
+        self._cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
         # FOURCC must be set BEFORE the frame size — several V4L2 drivers reset
         # the negotiated size when the pixel format changes underneath them.
         #
