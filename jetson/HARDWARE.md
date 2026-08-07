@@ -134,6 +134,28 @@ germanium, each aligned in front of its own lens.
     M12/M16 gland — the mini-B plug is ~7.5 × 4.5 mm and clears an 8 mm bore,
     whereas the USB-A end (12 × 4.5 mm) never will. Gland on a side wall, Gore
     vent on the back.
+  - **Does someone already sell a Lepton housing? Surveyed 2026-08-07 — no, not
+    one that is sealed.** What exists splits cleanly in two: (a) *indoor shells*
+    — GroupGets' official OpenMV case, the `GG-24` breakout case, and a
+    community **3D-printable hard enclosure built around the PureThermal Mini's
+    exact PCB** (PETG, friction-fit, ~1 hr print, cults3d). Dimensionally ideal,
+    but unsealed and its window module is LDPE grocery-bag film. (b) *sealed
+    germanium housings* — moviTHERM IP67/IP69K and FLIR's own `T912366`, with
+    DLC/AR germanium already installed, but built for A-series/Boson bodies at
+    several hundred to low-thousands. Nobody makes the intersection, which is
+    why we build it. Don't re-survey this.
+  - **Field spare — polyolefin/LDPE shrink film.** The community's outdoor-Lepton
+    testing (hackaday.io/project/159615) found sandwich bag, cling wrap and
+    polyolefin shrink film all quite transparent to LWIR; every objection they
+    raised was **temperature error from film reflections**, which does not apply
+    to us — the UW is non-radiometric and zvision detects by contrast/motion,
+    not absolute °C. A film window also has **essentially zero standoff**, so it
+    sidesteps the 1.7 mm vignetting constraint entirely: no counterbore, no
+    O-ring seat, no brittle optic. It is not the primary because LDPE softens
+    well below what a dark pod reaches in playa sun, and it abrades and
+    punctures. **Cut a spare port ring sized for shrink film and pack it** —
+    germanium is brittle, we will be far from a replacement, and a $1 film
+    window keeps the thermal channel alive if it cracks on the drive out.
   - **Cost of splitting the pod:** two boxes means two independent mount angles.
     `rig.py` already carries a per-camera `mount_az`, so this is a calibration
     entry, not a code change — but bolt both pods to the *same* rigid bracket or
