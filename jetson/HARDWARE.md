@@ -108,7 +108,37 @@ blocks LWIR, so the thermal can't share the glass. Neither material does both
 keep the housing glass for the RGB and cut a second port next to it for the
 germanium, each aligned in front of its own lens.
 
-- **Recommended — one aluminum CCTV "box" housing as the sensor pod** (flat glass
+- **Recommended (revised 2026-08-07) — a separate, tiny box for the thermal.**
+  The CCTV box is far bigger than the thermal camera needs: the PureThermal Mini
+  USB board is **19.5 × 15.32 mm**, and the whole camera with the Lepton in its
+  socket is roughly **20 × 16 × 12 mm** plus the mini-B connector overhang. Give
+  it its own pod and leave the RGB in the small housing it already ships with.
+  - **Why a thick-walled box is fine anyway — nose the lens into the bore.** At
+    160° the D20 window has to sit ~1.7 mm from the lens (below), which reads
+    like "the front wall must be paper-thin". It doesn't: bore the port to the
+    window's own diameter, seat the window in a counterbore on the **outer**
+    face, and push the board forward on standoffs until the **lens sits inside
+    that bore**, ~1–1.5 mm behind the window's rear face. The bore wall is then
+    *beside* the lens, not in front of it, so it never enters the cone and wall
+    thickness stops mattering. The Lepton module (≈11.7 × 12.7 mm) drops into a
+    Ø20 bore with room to spare, and its lens front is ~11.5 mm above the PCB —
+    so the PCB lands 5–10 mm behind the inner face on ordinary M2 standoffs.
+  - **The box: Hammond `1550Z101`** — **50 × 45 × 24 mm**, diecast aluminum,
+    one-piece silicone gasket, IP66/67/68 + NEMA 4X, −40 °C to +150 °C, ~$15–20
+    (Digi-Key / Mouser / Jameco). The **6 mm lid** is the part that matters: it
+    is thick enough to hold a proper counterbored window seat with an O-ring
+    groove, and it is the only face that needs machining. Amazon-tomorrow
+    fallback if the wait is the problem: Fielect `B0CGV3PC7B`, 64 × 58 × 35 mm,
+    IP65 — bigger and a lesser seal, but still a fraction of the CCTV box.
+  - **Cable exit:** feed the **mini-B end first, from outside in**, through an
+    M12/M16 gland — the mini-B plug is ~7.5 × 4.5 mm and clears an 8 mm bore,
+    whereas the USB-A end (12 × 4.5 mm) never will. Gland on a side wall, Gore
+    vent on the back.
+  - **Cost of splitting the pod:** two boxes means two independent mount angles.
+    `rig.py` already carries a per-camera `mount_az`, so this is a calibration
+    entry, not a code change — but bolt both pods to the *same* rigid bracket or
+    the cross-camera dedup has nothing stable to work against.
+- **Alternative — one aluminum CCTV "box" housing as the sensor pod** (flat glass
   front + sun shield, IP66, ~$40–80; e.g. GledeYeTec 14.5" `B0D49FF6GB`, or a
   compact 6" box `B09FQF27GD`). Cheap, buyable, looks the part on a sci-fi art
   car, and the flat front modifies cleanly: keep the glass for the RGB, cut a
@@ -123,9 +153,16 @@ germanium, each aligned in front of its own lens.
   yourself — it's a brittle semiconductor, ground/polished by optics shops.
   **Buy early: germanium supply is tight/pricey (export controls) and stock isn't
   always replenished.**
-- **Mounting the windows:** get a *small* germanium (~25 mm) — and **mount it
-  close to the Lepton lens** so it doesn't clip the ~57° FOV (a small window far
-  forward vignettes the corners). The surround is *out of the optical path*, so
+- **Mounting the windows (numbers, revised 2026-08-07 for the Ultra Wide):** the
+  window is a *stop*, and a flat stop at standoff `s` only passes a half-angle
+  `θ` if its radius `r ≥ s · tan θ`. At the UW's 80° half-angle `tan θ = 5.67`,
+  so the ordered **D20 (r = 10 mm) window must sit within 10 / 5.67 ≈ 1.7 mm of
+  the lens front** — and every ring in front of it (retainer lip, bezel, shroud
+  edge) has to clear the same cone at *its* own standoff. This is the single
+  tightest number in the pod, and it is why the lens goes *into* the port bore
+  rather than behind the wall. The old "~25 mm window, ~57° FOV" note was
+  written for the Lepton 3.5 and is 3× more forgiving than what we now have;
+  ignore it. The surround is *out of the optical path*, so
   it can be any opaque, heat/UV-stable material. Best: a **custom two-port front
   plate** (3D-printed **ASA/ABS**, not PLA — PLA sags in playa heat; or laser-cut
   aluminum) with a counterbored seat + O-ring / high-temp RTV seal + light

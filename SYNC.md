@@ -6,6 +6,37 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-07 — Thermal pod shrunk to its own tiny box; last two test-coverage items landed
+
+**Housing.** The aluminum CCTV box is oversized for a camera that is 19.5 x
+15.32 mm. Splitting the thermal into its own **Hammond 1550Z101 (50 x 45 x 24
+mm, IP66/67/68, 6 mm lid, ~$15-20)** and leaving the RGB in the housing it
+ships with. The apparent blocker — the D20 germanium has to sit ~1.7 mm from
+the lens at 160 deg, which reads like "the front wall must be paper-thin" —
+dissolves once the lens is pushed *into* the port bore instead of sitting
+behind the wall: the bore wall is then beside the lens, not in front of it, and
+wall thickness stops mattering. Mini-B end feeds through the gland first (7.5 x
+4.5 mm clears an 8 mm bore; the USB-A end never would).
+
+Recorded the stop-radius rule explicitly in HARDWARE.md — `r >= s * tan(theta)`,
+so 80 deg half-angle needs the window within `r / 5.67`. The old "~25 mm window,
+~57 deg" note predates the Ultra Wide and is 3x too forgiving; superseded.
+
+Cost: two pods means two independent mount angles. `rig.py` already carries
+per-camera `mount_az`, so it is a calibration entry, not a code change — but
+both pods must bolt to the same rigid bracket or cross-camera dedup has no
+stable reference.
+
+**Tests.** Closed the last two items from the coverage audit. Callouts now go
+through `AnnouncementCooldown` — the street popup and the passing-art callout
+both judged "new" against only the *previous* value, so two pieces at similar
+range (nearest is `max = 1`) re-announced on every flip, and a street label
+flickering at a block edge re-flashed each time it returned. And the map's
+pinch/rotate math is out of the `pointerInput` block into `MapGestureMath`,
+where the atan2 seam is actually testable — dropping the shortest-arc
+correction spins the map 358 deg from 2 deg of twist, and now three tests say
+so. App at **498 tests**, all gates green.
+
 ## 2026-08-07 (later) — /dev/videoN is NOT stable across reboots; three fixes
 
 The cold-boot test earlier looked like a pass — service active, 0 restarts. It
