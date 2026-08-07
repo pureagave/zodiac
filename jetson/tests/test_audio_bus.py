@@ -1,8 +1,10 @@
 import socket
 import time
+import threading
 import unittest
 
-from zvision.audio_bus import ZaudListener, parse_zaud
+from zvision.tracker import Tracker, TrackerConfig
+from zvision.audio_bus import AudioLevel, ZaudListener, parse_zaud
 
 
 def zaud(rms: float, peak: float, beat: bool) -> str:
@@ -68,6 +70,76 @@ class ZaudListenerTest(unittest.TestCase):
             self.assertAlmostEqual(0.5, got.rms, places=3)
         finally:
             listener.close()
+
+
+class StaleAudioTest(unittest.TestCase):
+    """The consumer is a light. A latched stale frame doesn't just show old
+    data — it pins the idle head at whatever brightness the last frame implied,
+    all night, while looking like a working sound show."""
+
+    def _listener(self, clock):
+        lis = ZaudListener.__new__(ZaudListener)
+        lis._latest = None
+        lis._latest_at = 0.0
+        lis._lock = threading.Lock()
+        lis._now = clock
+        return lis
+
+    def test_a_fresh_level_is_returned(self):
+        t = [100.0]
+        lis = self._listener(lambda: t[0])
+        with lis._lock:
+            lis._latest = AudioLevel(rms=0.4, peak=0.6, beat=False)
+            lis._latest_at = t[0]
+        self.assertIsNotNone(lis.latest(max_age_s=2.0))
+
+    def test_a_stale_level_is_withheld(self):
+        t = [100.0]
+        lis = self._listener(lambda: t[0])
+        with lis._lock:
+            lis._latest = AudioLevel(rms=0.9, peak=1.0, beat=True)
+            lis._latest_at = t[0]
+        t[0] = 105.0  # feed died five seconds ago
+        self.assertIsNone(lis.latest(max_age_s=2.0), "a dead feed must not keep driving the light")
+
+    def test_a_latched_beat_cannot_pin_the_head_on_forever(self):
+        # The specific failure: last frame carried beat=1, so _sound_dimmer
+        # would return beat_dimmer (full brightness) for the rest of the night.
+        t = [0.0]
+        lis = self._listener(lambda: t[0])
+        with lis._lock:
+            lis._latest = AudioLevel(rms=0.1, peak=0.2, beat=True)
+            lis._latest_at = 0.0
+        t[0] = 3600.0
+        self.assertIsNone(lis.latest(max_age_s=2.0))
+
+    def test_age_check_can_be_disabled(self):
+        t = [0.0]
+        lis = self._listener(lambda: t[0])
+        with lis._lock:
+            lis._latest = AudioLevel(rms=0.4, peak=0.6, beat=False)
+            lis._latest_at = 0.0
+        t[0] = 9999.0
+        self.assertIsNotNone(lis.latest(max_age_s=0.0))
+
+    def test_nothing_received_yet_is_still_none(self):
+        self.assertIsNone(self._listener(lambda: 0.0).latest())
+
+
+class IdleLightFallbackTest(unittest.TestCase):
+    """What the tracker does with the withheld level: fall back to the idle
+    dimmer, which reads honestly as 'no music'."""
+
+    def test_no_audio_means_the_head_blacks_out_when_idle(self):
+        cfg = TrackerConfig(dimmer_idle=0)
+        t = Tracker(cfg)
+        self.assertEqual(0, t.update([], 0.1, None).dimmer)
+
+    def test_a_live_beat_still_flashes(self):
+        cfg = TrackerConfig(beat_dimmer=255)
+        t = Tracker(cfg)
+        got = t.update([], 0.1, AudioLevel(rms=0.2, peak=0.4, beat=True)).dimmer
+        self.assertEqual(255, got)
 
 
 if __name__ == "__main__":

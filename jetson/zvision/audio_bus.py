@@ -14,6 +14,7 @@ import math
 import socket
 import struct
 import threading
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -60,11 +61,19 @@ def parse_zaud(line: str) -> Optional[AudioLevel]:
     return AudioLevel(rms=rms, peak=peak, beat=beat != 0)
 
 
+#: How long a $ZAUD frame stays usable. The beacon sends at ~15 Hz, so this is
+#: generous — it is catching a dead feed, not a dropped packet.
+DEFAULT_MAX_AGE_S = 2.0
+
+
 class ZaudListener:
     """Background thread that receives ``$ZAUD`` off the fleet bus and holds the
     latest :class:`AudioLevel`. Non-blocking to the caller: the DMX loop just
     calls :meth:`latest` each frame. Joins the telemetry multicast group and also
     receives the beacon's subnet-broadcast copy (bound to the port on all NICs)."""
+
+    #: Overridable for tests; monotonic so it cannot go backwards.
+    _now = staticmethod(time.monotonic)
 
     def __init__(
         self,
@@ -74,6 +83,7 @@ class ZaudListener:
         self._group = group
         self._port = port
         self._latest: Optional[AudioLevel] = None
+        self._latest_at: float = 0.0
         self._lock = threading.Lock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -114,10 +124,28 @@ class ZaudListener:
                 if level is not None:
                     with self._lock:
                         self._latest = level
+                        self._latest_at = self._now()
 
-    def latest(self) -> Optional[AudioLevel]:
+    def latest(self, max_age_s: float = DEFAULT_MAX_AGE_S) -> Optional[AudioLevel]:
+        """The most recent level, or ``None`` if it has gone stale.
+
+        Age matters because the consumer is a light. Without it, a beacon that
+        stops broadcasting mid-set leaves the last frame latched forever — and
+        if that frame happened to carry ``beat=1``, the idle head pins at full
+        brightness all night, looking like a working sound show while actually
+        masking a dead audio feed. Falling back to ``None`` lets the tracker
+        drop to its idle dimmer, which reads honestly as "no music".
+
+        ``max_age_s <= 0`` disables the check.
+        """
         with self._lock:
-            return self._latest
+            level = self._latest
+            at = self._latest_at
+        if level is None:
+            return None
+        if max_age_s > 0 and (self._now() - at) > max_age_s:
+            return None
+        return level
 
     def close(self) -> None:
         self._running = False
