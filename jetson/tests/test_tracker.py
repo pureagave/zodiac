@@ -1,7 +1,7 @@
 import unittest
 
 from zvision.threat import DriverThreat
-from zvision.tracker import Tracker, TrackerConfig, deg_to_dmx16, select_best
+from zvision.tracker import nearest_equivalent_pan, Tracker, TrackerConfig, deg_to_dmx16, select_best
 
 
 class SelectBestTest(unittest.TestCase):
@@ -166,6 +166,74 @@ class TrackerSoundReactiveTest(unittest.TestCase):
         trk = Tracker(TrackerConfig(sound_reactive=False))
         f = trk.update([], dt=1.0e9, audio=self._audio(0.9, 1.0, True))
         self.assertEqual(0, f.dimmer) # sound ignored entirely
+
+
+class SternSeamTest(unittest.TestCase):
+    """A fixture with more than 360 degrees of travel can reach one physical
+    direction at several pan values, which makes dead astern a trap: a contact
+    crossing it moves two degrees while the naive pan mapping jumps by 358."""
+
+    def test_equivalent_pan_takes_the_short_way(self):
+        # Head sits at 449 (az +179 on a 540 fixture). The contact steps across
+        # the seam to az -179, whose naive pan is 91 — the same direction, 358
+        # degrees away.
+        self.assertAlmostEqual(451.0, nearest_equivalent_pan(91.0, 449.0, 540.0), places=6)
+
+    def test_it_will_not_leave_the_fixtures_travel(self):
+        # +360 would be mechanically unreachable, so the in-range value stands
+        # even though it is further.
+        self.assertAlmostEqual(10.0, nearest_equivalent_pan(10.0, 350.0, 360.0), places=6)
+
+    def test_an_unambiguous_aim_is_unchanged(self):
+        self.assertAlmostEqual(270.0, nearest_equivalent_pan(270.0, 265.0, 540.0), places=6)
+
+    def test_the_head_does_not_sweep_the_vehicle_when_a_contact_crosses_astern(self):
+        # The behaviour that matters is *cumulative travel*, not step size: the
+        # slew limiter caps every individual step, so a single-step assertion
+        # passes even while the head is three seconds into sweeping the wrong
+        # way round the vehicle. Measure the whole journey.
+        cfg = TrackerConfig(pan_center_deg=270.0, pan_slew_dps=120.0)
+        t = Tracker(cfg)
+        for _ in range(200):  # settle onto the contact just before the seam
+            f = t.update([DriverThreat(rel_az_deg=179.0, size=0.6, id=1)], 0.1)
+        before = f.pan_deg
+
+        travelled = 0.0
+        prev = before
+        for _ in range(200):  # let it converge on the far side of the seam
+            f = t.update([DriverThreat(rel_az_deg=-179.0, size=0.6, id=1)], 0.1)
+            travelled += abs(f.pan_deg - prev)
+            prev = f.pan_deg
+
+        # Two degrees of real motion. Anything approaching 358 means it went
+        # the long way round, sweeping across the driver on the way.
+        self.assertLess(travelled, 30.0, f"head travelled {travelled:.0f} deg for a 2 deg move")
+
+
+class ParkOnExitTest(unittest.TestCase):
+    """The shutdown contract: rest and black out, so the head does not freeze
+    mid-sky pointing at whoever it last tracked after the service stops."""
+
+    def test_park_blacks_out_and_drops_the_target(self):
+        t = Tracker(TrackerConfig())
+        t.update([DriverThreat(rel_az_deg=40.0, size=0.9, id=1)], 1.0e9)
+        parked = t.park()
+        self.assertEqual(0, parked.dimmer)
+        self.assertIsNone(parked.target_id)
+
+    def test_park_is_idempotent(self):
+        t = Tracker(TrackerConfig())
+        t.update([DriverThreat(rel_az_deg=40.0, size=0.9, id=1)], 1.0e9)
+        first = t.park()
+        second = t.park()
+        self.assertEqual(first.pan_deg, second.pan_deg)
+        self.assertEqual(0, second.dimmer)
+
+    def test_park_writes_a_blackout_on_the_dimmer_channel(self):
+        cfg = TrackerConfig()
+        t = Tracker(cfg)
+        t.update([DriverThreat(rel_az_deg=40.0, size=0.9, id=1)], 1.0e9)
+        self.assertEqual(0, t.park().channels[cfg.dimmer_channel])
 
 
 if __name__ == "__main__":

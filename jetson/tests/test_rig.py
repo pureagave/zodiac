@@ -214,6 +214,29 @@ class ToGlobalTest(unittest.TestCase):
         self.assertEqual(ID_STRIDE + 1, to_global(contact(0.0, tid=1), mount, 1).id)
         self.assertEqual(2 * ID_STRIDE + 1, to_global(contact(0.0, tid=1), mount, 2).id)
 
+
+    def test_a_real_track_is_never_folded_onto_the_adhoc_sentinel(self):
+        # id 0 means "not a stable track, never latch onto it". A detector that
+        # ignores the id contract and hands over exactly ID_STRIDE must not have
+        # that contact silently marked un-latchable — the DMX light would refuse
+        # to hold a real person.
+        mount = CameraMount("c")
+        for bad in (ID_STRIDE, 2 * ID_STRIDE, 5 * ID_STRIDE):
+            self.assertNotEqual(0, to_global(contact(0.0, tid=bad), mount, 0).id, f"id {bad}")
+
+    def test_ids_from_different_cameras_stay_in_their_own_blocks(self):
+        # Even for out-of-contract ids, a camera must not reach into another
+        # camera's id block.
+        for cam in range(3):
+            for tid in (1, ID_STRIDE - 1, ID_STRIDE, ID_STRIDE + 1):
+                gid = to_global(contact(0.0, tid=tid), CameraMount("c"), cam).id
+                self.assertEqual(cam, gid // ID_STRIDE, f"cam {cam} tid {tid} -> {gid}")
+
+    def test_the_detector_id_wrap_matches_the_rig_stride(self):
+        # These two constants encode one contract; if they drift, ids alias.
+        from zvision.normalize import TRACK_ID_LIMIT
+        self.assertEqual(TRACK_ID_LIMIT, ID_STRIDE)
+
     def test_adhoc_id_zero_stays_zero_on_every_camera(self):
         # id 0 means "not a stable track"; the tracker light must keep refusing
         # to latch onto it no matter which camera saw it.

@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from .detector import Detector, DetectorTuning, FakeDetector, MotionDetector
+from .normalize import TRACK_ID_LIMIT
 from .geometry import (
     FOV_DIAGONAL,
     FOV_HORIZONTAL,
@@ -42,7 +43,9 @@ SOURCES = ("fake", "thermal", "rgb")
 # the merged list leaves the rig — otherwise the tracker light would latch onto
 # "id 1" and get handed a different person every frame as cameras take turns.
 # Camera k owns the id block [k*ID_STRIDE, (k+1)*ID_STRIDE).
-ID_STRIDE = 1000
+# Must equal the detector's id wrap point, or the composition below aliases —
+# see normalize.TRACK_ID_LIMIT for what that costs.
+ID_STRIDE = TRACK_ID_LIMIT
 
 # Two cameras seeing the same person in their overlap must not become two
 # contacts. Anything closer than this in bearing, seen by *different* cameras,
@@ -239,9 +242,18 @@ def to_global(threat: DriverThreat, mount: CameraMount, cam_index: int) -> Drive
     """Rotate one camera-local contact into vehicle-global terms: bearing
     measured off the nose, and a track id namespaced to this camera so ids from
     different cameras can never collide."""
+    # Detectors are contracted to mint local ids in [1, ID_STRIDE) — see
+    # normalize.TRACK_ID_LIMIT, which wraps them so a long run cannot escape the
+    # block. The modulo here is belt-and-braces for a future detector (a trained
+    # model, ByteTrack) with its own id scheme.
+    #
+    # No finite mapping can keep unbounded ids distinct, so this cannot promise
+    # uniqueness. What it must never do is fold a *real* track onto 0: that is
+    # the "ad-hoc, never latch" sentinel, and a contact silently marked
+    # un-latchable is one the DMX light refuses to hold.
     local_id = threat.id % ID_STRIDE
-    # id 0 means "ad-hoc contact, not a stable track" — the tracker light
-    # deliberately never latches onto it, so it must stay 0 on every camera.
+    if threat.id != 0 and local_id == 0:
+        local_id = ID_STRIDE - 1
     global_id = 0 if local_id == 0 else cam_index * ID_STRIDE + local_id
     return DriverThreat(
         rel_az_deg=wrap180(threat.rel_az_deg + mount.mount_az_deg),

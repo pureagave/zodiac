@@ -9,6 +9,7 @@ import unittest
 
 from zvision.normalize import (
     DEFAULT_MIN_SPREAD,
+    TRACK_ID_LIMIT,
     assign_track_id,
     stretch_window,
 )
@@ -175,6 +176,30 @@ class TrackAssignmentTest(unittest.TestCase):
             tid, nxt = assign_track_id(float(i), 0.0, {}, {}, 0.15, nxt)
             ids.append(tid)
         self.assertEqual([1, 2, 3, 4, 5], ids)
+
+
+class TrackIdWrapTest(unittest.TestCase):
+    """Ids are namespaced into per-camera blocks by the rig, so a local id must
+    never leave its block — see TRACK_ID_LIMIT."""
+
+    def test_ids_wrap_instead_of_growing_without_bound(self):
+        tid, nxt = assign_track_id(0.0, 0.0, {}, {}, 0.15, TRACK_ID_LIMIT - 1)
+        self.assertEqual(TRACK_ID_LIMIT - 1, tid)
+        self.assertEqual(1, nxt, "must wrap back into the block, not reach the limit")
+
+    def test_the_wrap_never_yields_the_adhoc_sentinel(self):
+        nxt = 1
+        seen = set()
+        for _ in range(TRACK_ID_LIMIT * 2):
+            tid, nxt = assign_track_id(0.0, 0.0, {}, {}, 0.15, nxt)
+            seen.add(tid)
+        self.assertNotIn(0, seen, "0 is reserved for ad-hoc contacts")
+        self.assertTrue(all(0 < i < TRACK_ID_LIMIT for i in seen))
+
+    def test_a_custom_limit_is_honoured(self):
+        tid, nxt = assign_track_id(0.0, 0.0, {}, {}, 0.15, 4, id_limit=5)
+        self.assertEqual(4, tid)
+        self.assertEqual(1, nxt)
 
 
 if __name__ == "__main__":

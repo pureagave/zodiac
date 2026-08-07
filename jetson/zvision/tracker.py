@@ -23,6 +23,7 @@ if TYPE_CHECKING:  # runtime-free: keep the socket-backed audio_bus out of this 
     from .audio_bus import AudioLevel
 
 DMX_MAX = 255
+FULL_TURN_DEG = 360.0
 DMX16_MAX = 65535
 
 
@@ -57,6 +58,33 @@ def deg_to_dmx16(deg: float, range_deg: float) -> tuple:
         return 0, 0
     v = round(_clamp(deg / range_deg, 0.0, 1.0) * DMX16_MAX)
     return (v >> 8) & 0xFF, v & 0xFF
+
+
+
+def nearest_equivalent_pan(
+    target_deg: float,
+    current_deg: float,
+    pan_range_deg: float,
+) -> float:
+    """Pick the mechanically-equivalent pan angle closest to where the head is.
+
+    A fixture with more than 360 degrees of travel can reach the same physical
+    direction at more than one pan value — on a 540 head, 89 and 449 point the
+    same way. Naively mapping bearing to pan therefore makes the *stern seam*
+    catastrophic: a contact walking across dead astern goes +179 to -179, two
+    degrees of real motion, but pan jumps 449 to 91 and the slew limiter drags
+    the beam 358 degrees the wrong way round the vehicle — several seconds
+    sweeping across everyone (and the driver) to arrive two degrees from where
+    it started, with the light pointing anywhere but at the contact.
+
+    So consider the +/-360 equivalents too and take whichever is nearest the
+    current position, provided it is inside the fixture's travel.
+    """
+    best = target_deg
+    for candidate in (target_deg - FULL_TURN_DEG, target_deg, target_deg + FULL_TURN_DEG):
+        if 0.0 <= candidate <= pan_range_deg and abs(candidate - current_deg) < abs(best - current_deg):
+            best = candidate
+    return best
 
 
 def select_best(threats: List[DriverThreat]) -> Optional[DriverThreat]:
@@ -183,6 +211,8 @@ class Tracker:
                 0.0,
                 self.cfg.pan_range_deg,
             )
+            # Take the short way round the stern seam — see nearest_equivalent_pan.
+            tgt_pan = nearest_equivalent_pan(tgt_pan, self._pan_deg, self.cfg.pan_range_deg)
             tgt_tilt = _clamp(
                 _lerp(self.cfg.tilt_far_deg, self.cfg.tilt_near_deg, _clamp(target.size, 0.0, 1.0)),
                 0.0,
