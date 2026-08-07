@@ -239,14 +239,69 @@ ip -4 addr show | grep -E 'inet .*(eth|wlan)'
 
 ## 3. Install zvision
 
+**Clone directly into `/opt/zodiac`** — the same path the service runs from, so
+there is exactly one copy of the code on the box and `git log` always answers
+"what is actually running". Set up 2026-08-07; before that the box carried two
+untracked copies (`/opt/zodiac` and `~/zodiac`) that had silently drifted four
+days behind `main`, and nothing on the box could tell you that.
+
 ```bash
-git clone https://github.com/pureagave/zodiac.git
-cd zodiac
-sudo jetson/scripts/install.sh          # copies to /opt/zodiac/jetson, installs service
+sudo mkdir -p /opt/zodiac && sudo chown "$USER:$USER" /opt/zodiac
+git clone https://github.com/pureagave/zodiac.git /opt/zodiac
+cd /opt/zodiac
+sudo jetson/scripts/install.sh          # installs the systemd service
 ```
 
 This installs a systemd service (disabled-to-fake by default) and a config file
-at `/etc/default/zvision`.
+at `/etc/default/zvision` — **outside** the repo, so a `git pull` never clobbers
+the rig's configuration.
+
+### Credentials: none live on this box
+
+**The repo is public, so pulling needs no key at all** — the HTTPS clone above
+is anonymous. Do not put a deploy key on the Jetson for read access; it would
+protect nothing that isn't already public.
+
+For **pushing** from the Jetson, use SSH agent forwarding rather than a resident
+key. The push remote is already set to SSH:
+
+```bash
+git -C /opt/zodiac remote -v
+# origin  https://github.com/pureagave/zodiac.git (fetch)
+# origin  git@github.com:pureagave/zodiac.git     (push)
+```
+
+One-time on the **Mac**, so the agent actually holds an identity to forward:
+
+```bash
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519   # prompts once, then Keychain remembers
+ssh-add -l                                        # should list the key
+```
+
+Then connect with `-A` and the Jetson can push as you, for that session only:
+
+```bash
+ssh -A zodiac@192.168.86.235
+cd /opt/zodiac && git push
+```
+
+**Why not a read-write deploy key:** this box lives unattended in a vehicle at
+Burning Man. A push credential stored on it is a push credential to `main` for
+anyone who walks off with the box or gets a shell on it. Agent forwarding
+grants that power only while you are logged in, and leaves nothing behind. The
+trade-off is that unattended pushes are impossible — which is the correct
+answer for an art car.
+
+### Updating the box
+
+```bash
+ssh zodiac@192.168.86.235
+cd /opt/zodiac && git pull
+sudo systemctl restart zvision
+python3 -c "import sys; sys.path.insert(0,'/opt/zodiac/jetson')"   # sanity
+```
+
+Check what is deployed before trusting it — `git -C /opt/zodiac log --oneline -1`.
 
 ## 4. Prove the bus with NO camera
 
