@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.sensor.NmeaLineAssembler
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
 
 /**
@@ -102,38 +103,21 @@ class UsbLocationSource(
         connectionScope: CoroutineScope,
     ) {
         val buf = ByteArray(BUFFER_BYTES)
-        val line = StringBuilder(LINE_PREALLOC)
+        val assembler = NmeaLineAssembler()
         while (connectionScope.isActive) {
             val n = sp.read(buf, READ_TIMEOUT_MS)
-            if (n > 0) ingestBytes(buf, n, line)
+            if (n > 0) assembler.append(buf, n).forEach(::ingestLine)
         }
     }
 
-    private fun ingestBytes(
-        buf: ByteArray,
-        count: Int,
-        line: StringBuilder,
-    ) {
-        for (i in 0 until count) {
-            val ch = buf[i].toInt().toChar()
-            when (ch) {
-                '\n' -> emitLine(line)
-                '\r' -> Unit
-                else -> line.append(ch)
-            }
-        }
-    }
-
-    private fun emitLine(line: StringBuilder) {
-        NmeaParser.parse(line.toString())?.let { _state.value = LocationSourceState.Active(it) }
-        line.clear()
+    private fun ingestLine(line: String) {
+        NmeaParser.parse(line)?.let { _state.value = LocationSourceState.Active(it) }
     }
 
     companion object {
         const val DEFAULT_BAUD: Int = 9600
         private const val DATA_BITS: Int = 8
         private const val BUFFER_BYTES: Int = 256
-        private const val LINE_PREALLOC: Int = 96
         private const val READ_TIMEOUT_MS: Int = 1_000
         private const val NO_DEVICE_MSG: String = "No USB serial device found"
         private const val NO_PERMISSION_MSG: String = "USB device permission not granted"
