@@ -9,8 +9,6 @@ import kotlin.math.atan2
 import kotlin.math.hypot
 
 private const val PINCH_FINGERS: Int = 2
-private const val DEG_PER_RAD: Double = 180.0 / Math.PI
-private const val ROT_DEADZONE_DEG: Double = 0.05
 const val MAP_MIN_ZOOM: Double = 0.05
 const val MAP_MAX_ZOOM: Double = 5.0
 
@@ -85,25 +83,10 @@ fun Modifier.cockpitTouchInput(
                             lastRotAngleRad = angleRad
                             hadTwoFingers = true
                         } else {
-                            zoomCb((pinchStartZoom * distance / pinchStartDist).coerceIn(MAP_MIN_ZOOM, MAP_MAX_ZOOM))
+                            zoomCb(mapPinchZoom(pinchStartZoom, pinchStartDist, distance))
                             if (hadTwoFingers) {
-                                // Shortest-arc delta in degrees, then sign-flip so
-                                // a CW twist on screen (positive atan2-delta with
-                                // y-down screen coords) increases the user's idea
-                                // of "what's at the top" CCW — i.e. the compass
-                                // direction at the top of the viewport rotates by
-                                // the opposite of the finger twist, which is the
-                                // standard map-app feel.
-                                val raw = (angleRad - lastRotAngleRad) * DEG_PER_RAD
-                                val wrapped =
-                                    when {
-                                        raw > 180.0 -> raw - 360.0
-                                        raw < -180.0 -> raw + 360.0
-                                        else -> raw
-                                    }
-                                if (kotlin.math.abs(wrapped) > ROT_DEADZONE_DEG) {
-                                    rotateCb(-wrapped.toFloat())
-                                }
+                                val step = mapRotationStepDeg(lastRotAngleRad, angleRad)
+                                if (step != 0f) rotateCb(step)
                             }
                             lastRotAngleRad = angleRad
                         }
