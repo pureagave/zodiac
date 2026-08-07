@@ -1,7 +1,14 @@
 import unittest
 
 from zvision.threat import DriverThreat
-from zvision.tracker import nearest_equivalent_pan, Tracker, TrackerConfig, deg_to_dmx16, select_best
+from zvision.tracker import (
+    nearest_equivalent_pan,
+    reachable,
+    Tracker,
+    TrackerConfig,
+    deg_to_dmx16,
+    select_best,
+)
 
 
 class SelectBestTest(unittest.TestCase):
@@ -238,3 +245,95 @@ class ParkOnExitTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReachableArcTest(unittest.TestCase):
+    """The camera ring sees the whole circle; the moving head does not. It is
+    mounted to light forward and both sides and cannot throw behind the vehicle
+    (2026-08-07, from the real fixture). Aiming at something astern is worse
+    than ignoring it — pan clamps at the end of travel, so the head parks
+    against its limit pointing at nothing and stops following what it could
+    actually light."""
+
+    def t(self, az, size=0.5, collision=False, tid=0):
+        return DriverThreat(rel_az_deg=az, size=size, collision=collision, id=tid)
+
+    def test_forward_and_beam_contacts_are_reachable(self):
+        for az in (0.0, 45.0, -45.0, 89.9, -89.9):
+            self.assertEqual(1, len(reachable([self.t(az)])), f"{az} should be reachable")
+
+    def test_contacts_astern_are_not(self):
+        for az in (91.0, 150.0, 180.0, -150.0, -91.0):
+            self.assertEqual([], reachable([self.t(az)]), f"{az} should be out of reach")
+
+    def test_the_boundary_is_inclusive(self):
+        self.assertEqual(1, len(reachable([self.t(90.0)])))
+        self.assertEqual(1, len(reachable([self.t(-90.0)])))
+
+    def test_bearings_are_wrapped_before_the_test(self):
+        # The wire may report 350 for a contact 10 deg to port.
+        self.assertEqual(1, len(reachable([self.t(350.0)])))
+        self.assertEqual([], reachable([self.t(200.0)]))
+
+    def test_the_arc_is_configurable(self):
+        self.assertEqual([], reachable([self.t(80.0)], reach_half_deg=60.0))
+        self.assertEqual(1, len(reachable([self.t(80.0)], reach_half_deg=100.0)))
+
+    def test_a_rear_contact_is_never_selected(self):
+        self.assertIsNone(select_best([self.t(170.0, size=0.9)]))
+
+    def test_an_unreachable_collision_does_not_starve_a_reachable_contact(self):
+        # The ordering that matters: filter first, THEN "collision wins".
+        # Otherwise a collision astern takes the light and the head slews away
+        # from the person actually in front of the vehicle.
+        rear = self.t(170.0, size=0.9, collision=True, tid=1)
+        front = self.t(10.0, size=0.3, tid=2)
+        self.assertEqual(2, select_best([rear, front]).id)
+
+    def test_a_reachable_collision_still_wins_over_a_nearer_bystander(self):
+        coll = self.t(30.0, size=0.2, collision=True, tid=1)
+        near = self.t(-20.0, size=0.95, tid=2)
+        self.assertEqual(1, select_best([coll, near]).id)
+
+    def test_an_all_rear_scene_reads_as_empty(self):
+        crowd = [self.t(az, size=0.8, tid=i) for i, az in enumerate((120.0, 150.0, 180.0, -140.0), 1)]
+        self.assertIsNone(select_best(crowd))
+
+
+class ReachableArcTrackerTest(unittest.TestCase):
+    """Same rule, but through the stateful tracker — where the latch lives."""
+
+    def t(self, az, size=0.5, collision=False, tid=0):
+        return DriverThreat(rel_az_deg=az, size=size, collision=collision, id=tid)
+
+    def test_a_target_walking_behind_the_vehicle_releases_the_latch(self):
+        # Otherwise the head stays latched to an id it can never illuminate and
+        # ignores everyone in front for as long as that contact persists.
+        trk = Tracker(TrackerConfig())
+        trk.update([self.t(40.0, size=0.6, tid=7)], dt=0.1)
+        self.assertEqual(7, trk.update([self.t(40.0, size=0.6, tid=7)], dt=0.1).target_id)
+        gone_astern = trk.update([self.t(160.0, size=0.6, tid=7)], dt=0.1)
+        self.assertIsNone(gone_astern.target_id)
+
+    def test_the_head_holds_aim_rather_than_slewing_to_its_limit(self):
+        # The failure this prevents: pan clamps at the pan_range end, so the
+        # head swings away and parks. Holding aim keeps it where it last saw
+        # something real.
+        trk = Tracker(TrackerConfig())
+        for _ in range(30):
+            trk.update([self.t(45.0, size=0.6, tid=7)], dt=0.1)
+        aimed = trk._pan_deg
+        for _ in range(30):
+            trk.update([self.t(175.0, size=0.9, collision=True, tid=8)], dt=0.1)
+        self.assertAlmostEqual(aimed, trk._pan_deg, places=6)
+
+    def test_the_head_goes_dark_when_everything_is_astern(self):
+        trk = Tracker(TrackerConfig())
+        frame = trk.update([self.t(175.0, size=0.9, collision=True, tid=8)], dt=0.1)
+        self.assertEqual(TrackerConfig().dimmer_idle, frame.dimmer)
+
+    def test_it_switches_to_a_reachable_contact_instead_of_holding_a_rear_one(self):
+        trk = Tracker(TrackerConfig())
+        trk.update([self.t(30.0, size=0.7, tid=7)], dt=0.1)
+        frame = trk.update([self.t(160.0, size=0.9, tid=7), self.t(-25.0, size=0.4, tid=9)], dt=0.1)
+        self.assertEqual(9, frame.target_id)

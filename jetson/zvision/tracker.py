@@ -17,6 +17,7 @@ import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional
 
+from .geometry import wrap180
 from .threat import DriverThreat
 
 if TYPE_CHECKING:  # runtime-free: keep the socket-backed audio_bus out of this pure module
@@ -87,15 +88,41 @@ def nearest_equivalent_pan(
     return best
 
 
-def select_best(threats: List[DriverThreat]) -> Optional[DriverThreat]:
+# Default fixture coverage: the head lights forward and to both sides — a 180°
+# span — and cannot throw behind the vehicle. Measured/decided 2026-08-07 from
+# the real fixture and its intended mount.
+DEFAULT_REACH_HALF_DEG = 90.0
+
+
+def reachable(
+    threats: List[DriverThreat], reach_half_deg: float = DEFAULT_REACH_HALF_DEG
+) -> List[DriverThreat]:
+    """The contacts the fixture can actually put light on.
+
+    The camera ring sees the whole circle; the moving head does not. Aiming at
+    a contact astern is worse than ignoring it — ``pan`` clamps at the end of
+    travel, so the head parks against its limit pointing at nothing and stops
+    following the contacts it *could* light. Filtering here rather than at the
+    clamp keeps that from happening, and keeps an unreachable collision from
+    starving a reachable one of the light (see :func:`select_best`)."""
+    return [t for t in threats if abs(wrap180(t.rel_az_deg)) <= reach_half_deg]
+
+
+def select_best(
+    threats: List[DriverThreat], reach_half_deg: float = DEFAULT_REACH_HALF_DEG
+) -> Optional[DriverThreat]:
     """Stateless pick: a collision contact always wins (that's the one the driver
     most needs lit), otherwise the nearest by ``size``. ``None`` when the scene is
-    empty. The stateful :class:`Tracker` adds hysteresis on top of this."""
-    if not threats:
+    empty. The stateful :class:`Tracker` adds hysteresis on top of this.
+
+    Contacts outside the fixture's reach are dropped *first*, so "collision wins"
+    means the nearest reachable collision — not a collision astern that the head
+    would slew toward and never illuminate."""
+    pool = reachable(threats, reach_half_deg)
+    if not pool:
         return None
-    collisions = [t for t in threats if t.collision]
-    pool = collisions or threats
-    return max(pool, key=lambda t: t.size)
+    collisions = [t for t in pool if t.collision]
+    return max(collisions or pool, key=lambda t: t.size)
 
 
 @dataclass(frozen=True)
@@ -129,6 +156,14 @@ class TrackerConfig:
     # vertical from the detector. Equal far/near = a fixed tilt.
     tilt_far_deg: float = 135.0
     tilt_near_deg: float = 160.0
+
+    # How far off the nose the fixture can actually throw light, as a half-angle.
+    # The head is mounted to cover forward and both sides; it cannot light the
+    # rear (the vehicle body is in the way, and the yoke does not reach). This
+    # is a *physical* limit, distinct from ``pan_range_deg`` — the fixture has
+    # 540° of pan travel it cannot usefully spend behind the vehicle. Contacts
+    # outside this arc are not selectable at all; see ``reachable``.
+    reach_half_deg: float = DEFAULT_REACH_HALF_DEG
 
     # Slew ceilings (fixture deg/s) — the head never moves faster than these.
     pan_slew_dps: float = 120.0
@@ -246,6 +281,10 @@ class Tracker:
         return int(_clamp(level, 0.0, 1.0) * DMX_MAX)
 
     def _pick(self, threats: List[DriverThreat]) -> Optional[DriverThreat]:
+        # Drop what the head cannot light before anything else — including the
+        # held target, so a contact walking behind the vehicle releases the
+        # latch instead of pinning the head at its pan limit.
+        threats = reachable(threats, self.cfg.reach_half_deg)
         if not threats:
             self._current_id = None
             return None
