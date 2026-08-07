@@ -309,4 +309,95 @@ class NetworkLocationSourceTest {
                 scope.cancel()
             }
         }
+
+    @Test
+    fun a_dead_compass_stops_overriding_the_live_gps_course() =
+        runBlocking {
+            // The compass is preferred over GPS course because it is valid when
+            // stopped. But if that channel dies, the last heading was frozen and
+            // then written over every subsequent fix forever — the map rotation,
+            // turn cues and guidance chevron all steering off a value that
+            // stopped updating, while the source stayed Active.
+            val port = 10188
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source =
+                NetworkLocationSource(scope = scope, port = port, staleMs = 4_000, headingStaleMs = 500)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: the compass heading is adopted",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("GPHDT,90.0,T"), port)
+                        sendUdp(nmea("GPRMC,123519,A,4807.038,N,01131.000,E,0.0,180.0,230394,,"), port)
+                        (source.state.value as? LocationSourceState.Active)?.fix?.headingDeg?.let { it in 89.0..91.0 } == true
+                    },
+                )
+                // Compass silent from here; only position keeps arriving.
+                assertTrue(
+                    "a stale compass must fall back to GPS course, not steer forever",
+                    waitUntil(6_000) {
+                        sendUdp(nmea("GPRMC,123519,A,4807.038,N,01131.000,E,12.0,180.0,230394,,"), port)
+                        (source.state.value as? LocationSourceState.Active)?.fix?.headingDeg?.let { it in 179.0..181.0 } == true
+                    },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun a_fresh_compass_still_wins_over_gps_course() =
+        runBlocking {
+            val port = 10189
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port, headingStaleMs = 10_000)
+            try {
+                source.start()
+                assertTrue(
+                    "compass is valid when stopped; GPS course is not",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("GPHDT,45.0,T"), port)
+                        sendUdp(nmea("GPRMC,123519,A,4807.038,N,01131.000,E,0.0,200.0,230394,,"), port)
+                        (source.state.value as? LocationSourceState.Active)?.fix?.headingDeg?.let { it in 44.0..46.0 } == true
+                    },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun foreign_nmea_traffic_does_not_keep_a_dead_hub_alive() =
+        runBlocking {
+            // The beacon-silence watchdog exists so a dead hub's battery and
+            // uptime stop being shown as current. Stamping liveness on *any*
+            // line defeats it: a second GPS or a bring-up forwarder sharing this
+            // port would refresh it forever.
+            val port = 10190
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source =
+                NetworkLocationSource(scope = scope, port = port, staleMs = 400, beaconSilentMs = 600)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: the hub reported",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZBCN,87,1,9,3600"), port)
+                        source.beaconSensors.value.beaconHealth?.batteryPct == 87
+                    },
+                )
+                assertTrue(
+                    "unrelated GPS traffic must not stand in for the hub",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("GPRMC,123519,A,4807.038,N,01131.000,E,0.0,180.0,230394,,"), port)
+                        source.beaconSensors.value.beaconHealth == null
+                    },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
 }

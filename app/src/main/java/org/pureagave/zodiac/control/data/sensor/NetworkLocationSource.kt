@@ -48,6 +48,7 @@ class NetworkLocationSource(
     private val group: String = FleetBus.TELEMETRY_GROUP,
     private val staleMs: Long = STALE_MS,
     private val beaconSilentMs: Long = BEACON_SILENT_MS,
+    private val headingStaleMs: Long = HEADING_STALE_MS,
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.NET
 
@@ -76,6 +77,15 @@ class NetworkLocationSource(
      * still valid.
      */
     @Volatile private var beaconRxMs: Long = 0L
+
+    /**
+     * Last time a *compass* sentence arrived. Position had a staleness
+     * watchdog; heading did not, so a dead compass channel froze
+     * [lastHeadingDeg] and every subsequent fix overwrote its live GPS course
+     * with that frozen value — while the source stayed cheerfully `Active`.
+     * Map rotation, turn cues and the guidance chevron all steer off it.
+     */
+    @Volatile private var headingRxMs: Long = 0L
 
     // Vehicle IMU/motion telemetry from the Sensor Hub's ZTLM sentence, exposed
     // separately from the GPS fix for any consumer that wants tilt/speed.
@@ -209,8 +219,15 @@ class NetworkLocationSource(
         datagram.split('\n').forEach { raw ->
             val line = raw.trim()
             if (line.isEmpty()) return@forEach
-            beaconRxMs = nowMs()
-            NmeaParser.parseHeadingDeg(line)?.let { lastHeadingDeg = it }
+            NmeaParser.parseHeadingDeg(line)?.let {
+                lastHeadingDeg = it
+                headingRxMs = nowMs()
+            }
+            // Liveness is stamped only by sentences the hub itself emits. Any
+            // NMEA sender sharing this port (a second GPS, a bring-up
+            // forwarder) would otherwise keep a dead hub's battery, satellite
+            // count and uptime on the ops footer indefinitely.
+            if (line.startsWith(HUB_SENTENCE_PREFIX)) beaconRxMs = nowMs()
             NmeaParser.parseVehicleTelemetry(line)?.let { _telemetry.value = it }
             NmeaParser.parseAmbientLight(line)?.let { al -> _beaconSensors.update { it.copy(ambientLight = al) } }
             NmeaParser.parseBeaconHealth(line)?.let { h -> _beaconSensors.update { it.copy(beaconHealth = h) } }
@@ -226,7 +243,11 @@ class NetworkLocationSource(
             // Only report Active while the POSITION itself is fresh; a heading- or
             // telemetry-only line must not re-assert Active on a stale position.
             if (nowMs() - positionRxMs <= staleMs) {
-                _state.value = LocationSourceState.Active(fix.copy(headingDeg = lastHeadingDeg ?: fix.headingDeg))
+                // Prefer the compass (valid when stopped, unlike GPS course) —
+                // but only while it is still arriving. A frozen compass must
+                // fall back to course rather than steer the cockpit forever.
+                val compass = lastHeadingDeg?.takeIf { nowMs() - headingRxMs <= headingStaleMs }
+                _state.value = LocationSourceState.Active(fix.copy(headingDeg = compass ?: fix.headingDeg))
             }
         }
     }
@@ -246,6 +267,16 @@ class NetworkLocationSource(
          * battery as live.
          */
         const val BEACON_SILENT_MS: Long = 12_000L
+
+        /**
+         * How long a compass reading stays usable. Generous next to the 250 ms
+         * broadcast cadence — this is catching a dead channel, not a dropped
+         * packet — but far short of steering off a heading frozen minutes ago.
+         */
+        const val HEADING_STALE_MS: Long = 8_000L
+
+        /** Proprietary prefix the Sensor Hub's own channels share (`$Z…`). */
+        const val HUB_SENTENCE_PREFIX: String = "\u0024Z"
         const val NANOS_PER_MS: Long = 1_000_000L
     }
 }
