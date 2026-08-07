@@ -7,12 +7,14 @@ import com.hoho.android.usbserial.driver.UsbSerialProber
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.pureagave.zodiac.control.core.sensor.FixFreshness
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.sensor.NmeaLineAssembler
@@ -40,21 +42,38 @@ class UsbLocationSource(
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.USB
 
+    private val freshness = FixFreshness()
+
     private val _state = MutableStateFlow<LocationSourceState>(LocationSourceState.Disconnected)
     override val state: StateFlow<LocationSourceState> = _state.asStateFlow()
 
     private var job: Job? = null
+    private var watchdog: Job? = null
     private var port: UsbSerialPort? = null
 
     override suspend fun start() {
         job?.cancel()
         _state.value = LocationSourceState.Searching
+        freshness.reset()
+        watchdog?.cancel()
+        watchdog =
+            scope.launch {
+                // A receiver that loses sky goes quiet or reports "no fix"; either
+                // way this source stops publishing and would otherwise hold its
+                // last Active forever. See FixFreshness.
+                while (isActive) {
+                    _state.value = freshness.demoteIfStale(_state.value)
+                    delay(FixFreshness.STALE_MS / 2)
+                }
+            }
         job = scope.launch(Dispatchers.IO) { runConnection(this) }
     }
 
     override suspend fun stop() {
         job?.cancel()
+        watchdog?.cancel()
         job = null
+        watchdog = null
         withContext(Dispatchers.IO) {
             runCatching { port?.close() }
             port = null
@@ -111,7 +130,10 @@ class UsbLocationSource(
     }
 
     private fun ingestLine(line: String) {
-        NmeaParser.parse(line)?.let { _state.value = LocationSourceState.Active(it) }
+        NmeaParser.parse(line)?.let {
+            freshness.onFix()
+            _state.value = LocationSourceState.Active(it)
+        }
     }
 
     companion object {
