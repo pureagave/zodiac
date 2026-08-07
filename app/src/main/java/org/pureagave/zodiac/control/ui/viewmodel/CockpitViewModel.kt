@@ -27,6 +27,7 @@ import org.pureagave.zodiac.control.core.navigation.nextWaypoint
 import org.pureagave.zodiac.control.core.navigation.routeTo
 import org.pureagave.zodiac.control.core.navigation.streetLabel
 import org.pureagave.zodiac.control.core.navigation.toCityModel
+import org.pureagave.zodiac.control.core.ops.AnnouncementCooldown
 import org.pureagave.zodiac.control.core.ops.NavTarget
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.ops.PoiKind
@@ -92,6 +93,9 @@ class CockpitViewModel(
     private var autoRecenterJob: Job? = null
 
     /** Last street the ego was on, and the timer that clears its flash popup. */
+    private val streetCooldown = AnnouncementCooldown(STREET_COOLDOWN_MS)
+    private val passingCooldown = AnnouncementCooldown(PASSING_COOLDOWN_MS)
+
     private var lastStreetLabel: String? = null
     private var streetPopupJob: Job? = null
 
@@ -506,7 +510,9 @@ class CockpitViewModel(
         // a radial, crosses into a new ring). Inlined here rather than a new VM
         // method to keep the god-object's function count in check.
         val street = cue.streetLabel()
-        if (street != null && street != lastStreetLabel) {
+        // Cooldown rather than "differs from last": a label flickering to null
+        // and back at a block edge would otherwise re-flash every time.
+        if (street != null && street != lastStreetLabel && streetCooldown.shouldAnnounce(street)) {
             _uiState.update { it.copy(streetPopup = street) }
             streetPopupJob?.cancel()
             streetPopupJob =
@@ -524,7 +530,10 @@ class CockpitViewModel(
                 contactsWithinRange(state.pois.filter { it.kind == PoiKind.ART }, ego, PASS_RADIUS_M, max = 1)
                     .firstOrNull()
             val uid = nearest?.poi?.uid
-            if (uid != null && uid != lastPassingUid) {
+            // Cooldown rather than "differs from last": two pieces at similar
+            // range take turns being nearest as the ego jitters, and the pair
+            // would otherwise re-announce on every flip.
+            if (uid != null && uid != lastPassingUid && passingCooldown.shouldAnnounce(uid)) {
                 _uiState.update { it.copy(passingCallout = nearest.poi.name) }
                 passingJob?.cancel()
                 passingJob =
@@ -564,6 +573,15 @@ class CockpitViewModel(
 
 /** Degrees in a full revolution — used to normalize accumulated view rotation. */
 private const val FULL_CIRCLE_DEG: Double = 360.0
+
+/**
+ * How long the same street or art piece is suppressed from re-announcing.
+ * Long enough that a flapping nearest-contact, or a street label flickering at
+ * a block edge, cannot spam the display; short enough that a genuine second
+ * pass later in the night still calls out.
+ */
+private const val STREET_COOLDOWN_MS = 60_000L
+private const val PASSING_COOLDOWN_MS = 120_000L
 
 /** How long a street-crossing name stays flashed before it clears. */
 private const val STREET_POPUP_MS: Long = 2_500L
