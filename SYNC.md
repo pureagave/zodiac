@@ -6,6 +6,65 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-07 — thermal camera on the bench: four assumptions wrong, detection working
+
+The Lepton Ultra Wide + PureThermal Mini is plugged into the Jetson and driving
+the full zvision pipeline. Enumerates clean as `GroupGets PureThermal
+(fw:v1.3.0)` → `/dev/video0`, `uvcvideo`, no drivers. Several things we'd
+recorded from datasheets turned out to be wrong.
+
+**1. It's 160×120 (4:3), not 120×120.** Every FOV argument we'd made assumed a
+square sensor — including the "160° horizontal implies an impossible 226°
+diagonal" reasoning, which was built on that wrong shape. For 4:3 the two
+hypotheses are: 160° horizontal → ~200° diagonal, or 160° diagonal → ~128°
+horizontal. **Still open**, but now it's measurable rather than arguable.
+
+**2. The connector is not USB-C.** HARDWARE.md said "Mini USB = compact +
+standard USB-C". It takes a small USB-B-family cable — GroupGets' page says
+micro-B, the board in hand took a mini-B. The **PureThermal 3** is the USB-C
+board. A cable ships in the box.
+
+**3. Native 9 fps, no MJPEG** (UYVY/Y16/GREY/RGBP/BGR3 only). Sounds bad after
+all the bandwidth worry, but 160×120×2×9 ≈ **2.8 Mbps** — the thermal is
+irrelevant to the USB budget. The RGB ring is the only real contention.
+
+**4. The 8-bit output is unusable — the big one.** A real indoor frame through
+the 8-bit path came back with **std 0.12 counts**: flat. The Lepton's AGC is
+reachable only through vendor UVC extension units; `v4l2-ctl --list-ctrls` shows
+a *read-only* brightness and nothing else. Background subtraction on that
+detects nothing, ever, and presents exactly as "camera works, nothing to see".
+The same scene in **Y16 raw** carries hundreds of counts of structure, and a
+hand reads **+100 to +360** above background.
+
+So `capture.ThermalCamera` now reads Y16 and does its own percentile stretch.
+Two traps found in the doing:
+- **Force `cv2.CAP_V4L2`.** OpenCV otherwise picks GStreamer, which silently
+  ignores `CAP_PROP_CONVERT_RGB` (`unhandled property`) and returns an
+  already-converted 8-bit frame — std ~86 vs ~176 for true `uint16` raw.
+- **Crop telemetry rows only when present.** The 122-row Y16 mode appends 2
+  Lepton telemetry rows (a permanent false-motion band along the bottom), but
+  asking for 120 returns 120 — my unconditional crop ate two real image rows.
+
+**Verified working:** live hand-tracking across the frame via baseline
+subtraction, and the full `--source thermal` pipeline emitting ZTHREAT frames
+(settling correctly to 0 contacts with nothing moving).
+
+**A correction to my own reading:** an early frame showed a dark circle with
+bright corners and I called it the fisheye image circle. A flat-field capture
+(hand over the lens) is **uniform edge to edge** — no vignette, no circle. The
+lens fills the sensor; that "circle" was scene, not optics (a 160° lens indoors
+sees near warm surfaces at the periphery and a cool distant centre). Good news:
+the ordinary frame-referenced FOV model applies, so `--fov-ref h|d` is the right
+knob after all.
+
+**FFC is normal** — every few minutes the shutter closes, the frame goes uniform
+for an instant, spread collapses and recovers. Not a fault, and the reason the
+stretch is per-frame: absolute counts drift, only relative structure is real.
+
+**Still open:** whether the 160° is horizontal or diagonal. Settled by one
+measurement — a hot object at a known 45° off-axis lands at column ~125 if
+horizontal, ~136 if diagonal.
+
 ## 2026-08-06 — end-to-end VERIFIED on both tablets; failover proved itself unprompted
 
 Jetson → bus → HUD confirmed on real hardware, plus two pieces of code that had

@@ -332,15 +332,23 @@ def build_camera(mount: CameraMount, recorder=None) -> Detector:
     Camera/cv2 imports stay lazy so the fake rig is pure stdlib."""
     if mount.source == "fake":
         return FakeDetector()
-    from .capture import UvcCamera
 
-    camera = UvcCamera(
-        mount.device,
-        width=mount.width,
-        height=mount.height,
-        fourcc=mount.fourcc,
-        fps=mount.fps,
-    )
+    if mount.source == "thermal":
+        # The Lepton needs raw Y16 + our own stretch; its 8-bit output is flat
+        # enough to detect nothing at all. See capture.ThermalCamera.
+        from .capture import ThermalCamera
+
+        camera = ThermalCamera(mount.device, width=mount.width, height=mount.height)
+    else:
+        from .capture import UvcCamera
+
+        camera = UvcCamera(
+            mount.device,
+            width=mount.width,
+            height=mount.height,
+            fourcc=mount.fourcc,
+            fps=mount.fps,
+        )
     return MotionDetector(
         camera,
         fov_deg=mount.fov_deg,

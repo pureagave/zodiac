@@ -367,6 +367,45 @@ ZVISION_ARGS=--source thermal --device /dev/video0 --hz 10 --dmx ola
 
 ---
 
+## 7b. The thermal camera — what the real board actually does
+
+Measured 2026-08-07 on the Lepton Ultra Wide + PureThermal Mini. Several of
+these contradict what the datasheets and this document previously said.
+
+| | |
+|---|---|
+| enumerates as | `GroupGets PureThermal (fw:v1.3.0)` → `/dev/video0` + `/dev/video1`, `uvcvideo`, no drivers |
+| resolution | **160×120 (4:3)** — *not* 120×120 |
+| rate | **9 fps** native. `--hz 10` asks for more than it makes. |
+| formats | UYVY, **Y16**, GREY, RGBP, BGR3 — **no MJPEG** |
+| bandwidth | 160×120×2×9 ≈ **2.8 Mbps**. Irrelevant to the USB budget; the RGB ring is the contention. |
+| connector | small USB-B family (**not** USB-C — that's the PureThermal 3) |
+
+**The 8-bit output is unusable, and this is the important one.** A real indoor
+frame through the 8-bit path came back with a standard deviation of **0.12
+counts** — flat. The Lepton's AGC is reachable only via vendor UVC extension
+units; `v4l2-ctl --list-ctrls` shows a *read-only* brightness and nothing else.
+Background subtraction on that detects nothing, forever, and looks exactly like
+"the camera works but there's nothing to see".
+
+The same scene in **Y16 raw** has hundreds of counts of structure, and a hand
+reads **+100 to +360** above background. So `zvision` opens the thermal through
+`capture.ThermalCamera`, which takes Y16 and does its own percentile stretch.
+Two traps found doing it:
+
+* **Force the V4L2 backend.** OpenCV otherwise picks GStreamer, which silently
+  ignores `CAP_PROP_CONVERT_RGB` (`unhandled property`) and hands back an
+  already-converted 8-bit frame — std ~86 versus ~176 for true `uint16` raw.
+* **Only crop telemetry rows when they exist.** The Y16 *122-row* mode appends 2
+  Lepton telemetry rows, which read as a permanent band of false motion along
+  the bottom edge. But asking for 120 returns 120 — an unconditional crop ate
+  two real image rows.
+
+**FFC is normal.** Every few minutes the internal shutter closes and the whole
+frame goes uniform for an instant (spread collapses, then recovers). Don't read
+it as a fault. It also means absolute counts drift, which is why the stretch is
+per-frame and only *relative* structure is trusted.
+
 ## 8. Tuning on playa (laptop only — no keyboard, mouse or monitor)
 
 Assume the flashed image is final and the *tuning* is not. Nothing below needs
