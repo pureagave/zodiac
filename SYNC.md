@@ -6,6 +6,87 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-07 — both cameras on the bench; two detection bugs found and fixed by measurement
+
+The Lepton UW and an Arducam RGB are both on the Jetson, and the service now
+runs the **real thermal camera**, surviving a cold reboot with **zero restarts**
+— it opened the camera first try, so the `Restart=always` net was never needed.
+
+**RGB camera:** `Arducam / 0c45:6366` → `/dev/video2`. **MJPG up to 1920x1080@30**,
+YUYV only at 640x480 and below — which is the shape that makes a four-camera
+ring feasible, since the uncompressed path is capped precisely because it can't
+fit. **Both cameras streamed concurrently on the same USB 2.0 hub** (thermal
+`1-2.3`, RGB `1-2.1`) with no starvation. Two isn't five, but it's the first
+real evidence rather than reasoning.
+
+### Bug 1 — the naive stretch made detection impossible
+
+Per-frame percentile normalisation reads beautifully as a single image and is
+fatal downstream: a hot object raises the 99th percentile, so the mapping
+darkens *everything else*, and background subtraction sees a global shift rather
+than a local blob. **37.8 of 255 levels** of frame-to-frame background movement
+on a static scene; one weak blob in 22 seconds of waving.
+
+**My first fix made it 3x worse** (117 levels) by smoothing the centre as well
+as the scale — wrong lesson from a right observation. The centre *must* track
+per-frame, because it is cancelling real sensor drift. Measured four strategies
+against live static-scene frames, where every output level is by definition
+noise:
+
+| strategy | background swing |
+|---|---|
+| per-frame percentile endpoints | 10.9 |
+| smoothed centre **and** scale | 128.7 |
+| **per-frame median centre + smoothed scale** | **6.0** ✓ |
+| per-frame median + per-frame scale | 5.8 |
+
+The last two tie on a static scene and diverge exactly where it matters — a
+per-frame scale lets a hot object inflate the range, the original bug. Median
+because a hand barely moves it, whereas it *defines* a percentile endpoint.
+Shipped: **4.5 levels**, an 8x improvement.
+
+### Bug 2 — a flat scene was being amplified into contacts
+
+Three minutes unattended, nothing moving: **77 spurious contacts across 6.2% of
+frames**, in bursts. Looked like FFC. Wasn't. Logging the normalisation beside
+the detections showed the spread falling 58 → 40 counts with the false positives
+starting exactly as it bottomed out.
+
+The stretch had **no gain limit**, so the flatter the scene the harder it
+amplified — magnifying the sensor's own noise into structure the detector
+correctly reported as movement. Measured: temporal noise **37.4 counts**,
+typical frame delta ~3, room contrast only **51 counts** — a contrast-to-noise
+ratio of **1.4**. Three counts of noise became ~7.5 output levels.
+
+Floor derived, not picked: to keep noise under ~2 output levels the gain must
+stay below 0.67 levels/count, so spread must not fall below ~190 → **200**. Far
+under the ~600 counts a person makes, so real contacts are untouched and a
+featureless scene renders flat, which is the honest answer.
+**Re-run: 1 spurious contact in 915 frames, down from 77 in 904.**
+
+### Also found
+
+* **The recorder was saving thermal as JPEG.** Its lossless cutoff was 128x128,
+  which a 120x120 sensor passed — but the Lepton is 160x120, so the one format
+  that most needs lossless was silently getting lossy. Fixed to a pixel-count
+  threshold; the gap between thermal (19k px) and the smallest RGB mode (307k)
+  is enormous, so the split is safe. Verified: 33/33 PNG, ~40 KB/frame ≈ under
+  900 MB for a six-hour night.
+* **DMX tracker driven by real camera contacts** — aims, then blacks out and
+  holds aim when the scene empties. First time that path saw real bearings.
+* **Cost measured:** 4.9% CPU for one camera at 8 Hz, so five ≈ 25% with room
+  for a model. SoC 51 °C at ~22 °C ambient (a ~29 °C rise — extrapolates to
+  ~69 °C at playa ambient, under throttle but against a carrier rated 0–35 °C).
+* **RGB was pointed at the ceiling** the whole time, which is why it detected
+  nothing while the thermal did — a neat illustration of 160° vs 87°.
+
+**Service is on the real thermal now.** For a visual demo on the tablets, set
+`ZVISION_ARGS=--source fake --hz 10` in `/etc/default/zvision` and restart.
+
+**Still open:** the horizontal-vs-diagonal FOV measurement, detector tuning
+against real bodies at real distances, and the cross-camera dedup test (needs
+both cameras aimed at the same moving thing).
+
 ## 2026-08-07 — thermal camera on the bench: four assumptions wrong, detection working
 
 The Lepton Ultra Wide + PureThermal Mini is plugged into the Jetson and driving

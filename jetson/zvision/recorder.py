@@ -2,7 +2,7 @@
 
 ``DETECTOR.md`` is blunt about the bottleneck: the big GPU is useless without
 *our own* footage. A COCO-pretrained model already finds people in RGB, but
-nothing off the shelf has seen 120x120 ultra-wide LWIR from a mutant vehicle at
+nothing off the shelf has seen 160x120 ultra-wide LWIR from a mutant vehicle at
 2am, and no amount of compute substitutes for never having recorded it. Frames
 can only be captured while the rig is on the car — compute can be rented any
 time. So recording is the schedule-critical half, and it has to exist *before*
@@ -57,6 +57,10 @@ class FrameRecorder:
     """Subsampled frame + weak-label writer. One instance is shared by every
     camera in the rig so the byte budget is enforced across all of them."""
 
+    #: Frames at or below this many pixels are saved lossless (thermal); larger
+    #: frames get JPEG (RGB). See :meth:`_encode` for why the gap is safe.
+    LOSSLESS_MAX_PIXELS = 100_000
+
     def __init__(self, cfg: RecorderConfig) -> None:
         self.cfg = cfg
         self._next_due: Dict[str, float] = {}
@@ -92,10 +96,19 @@ class FrameRecorder:
     def _encode(self, frame, path_stem: str) -> Optional[Tuple[str, bytes]]:
         cv2 = self._cv2
         # Thermal is small and low-contrast — JPEG artefacts there cost real
-        # signal, and PNG of a 120x120 frame is tiny anyway. RGB is big and
+        # signal, and a lossless thermal frame is tiny anyway. RGB is big and
         # tolerant, so it gets JPEG.
+        #
+        # The split is by pixel count because there is an enormous gap: thermal
+        # sensors top out around 320x256 (~82k px, and this Lepton is 160x120 =
+        # 19k), while the smallest RGB mode in use is 640x480 = 307k. Anything
+        # in between does not exist on this rig.
+        #
+        # Was 128x128, which a 120x120 sensor passed — but the Lepton turned out
+        # to be 160x120, so the one format that most needs lossless was silently
+        # getting JPEG.
         h, w = frame.shape[:2]
-        if w * h <= 128 * 128:
+        if w * h <= self.LOSSLESS_MAX_PIXELS:
             ok, buf = cv2.imencode(".png", frame)
             return (path_stem + ".png", buf.tobytes()) if ok else None
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, self.cfg.jpeg_quality])
