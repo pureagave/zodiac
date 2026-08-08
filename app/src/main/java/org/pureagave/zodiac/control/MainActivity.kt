@@ -1,6 +1,6 @@
 package org.pureagave.zodiac.control
 
-import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -12,11 +12,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.pureagave.zodiac.control.core.permission.grantedAnythingNew
+import org.pureagave.zodiac.control.core.permission.permissionsToRequest
+import org.pureagave.zodiac.control.core.permission.requiredCockpitPermissions
 import org.pureagave.zodiac.control.ui.state.luxToBrightness
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModelFactory
@@ -71,6 +75,7 @@ private fun zodiacApp() {
                 ),
         )
 
+    val context = LocalContext.current
     val permissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -78,15 +83,18 @@ private fun zodiacApp() {
             // If anything was just granted, kick the active location source so
             // a previously-Error state (from "permission not granted") flips to
             // Searching/Active without needing the user to toggle a chip.
-            if (results.values.any { it }) viewModel.restartLocationSource()
+            if (grantedAnythingNew(results)) viewModel.restartLocationSource()
         }
     LaunchedEffect(Unit) {
-        val perms = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            perms += Manifest.permission.BLUETOOTH_CONNECT
-            perms += Manifest.permission.BLUETOOTH_SCAN
-        }
-        permissionLauncher.launch(perms.toTypedArray())
+        // Only ask for what's missing. Re-requesting a held permission returns
+        // `true` from the launcher, which is indistinguishable from a fresh
+        // grant — that was restarting the location source on every cold launch
+        // (harmless on FAKE, a multicast rebind on NET).
+        val missing =
+            permissionsToRequest(requiredCockpitPermissions(Build.VERSION.SDK_INT)) { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            }
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
     }
 
     autoDim(viewModel)
