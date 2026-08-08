@@ -6,6 +6,65 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — M10 shipped: the tablets can now be postmortem'd
+
+The longest-standing operational gap is closed. Two phased commits.
+
+**`core/log/RollingFileLog`** — pure `java.io`, JVM-testable. Three properties,
+each asserted: it **never throws** (a logger that can kill the cockpit is worse
+than no logger), total size is **bounded** at `maxBytes × (keep + 1)` (tablets
+fill up), and rotation drops the **oldest** lines — you want the frames around
+the failure you just saw, not the ones from boot three days ago. Mutation-
+verified: disabling `rotate()` fails three tests.
+
+**`data/log/FileLogTree`** on Timber. Writes drain on IO through a bounded
+channel, so a log call from a render or sensor coroutine costs an offer and can
+never block a frame on a slow flash write. Files live under
+`getExternalFilesDir("logs")` — deliberately, so a fleet tablet's log comes off
+with a plain `adb pull`, no root and no debug build, which is the whole point
+when the tablet has been in the dust for two days.
+
+**Two things the first device run taught us immediately**, which is the best
+argument for the feature:
+- Every line read `I/-:`. A bare `Timber.Tree` gets a **null tag** unless every
+  call site says `Timber.tag(...)`; only `DebugTree` infers one. Now extends
+  `DebugTree` (never calling `super.log`, so nothing reaches logcat from it).
+- The map line logged a street count but not the **tagged** count — the exact
+  number that would have caught this morning's schema bug at a glance. Fixed,
+  and it now reads on both the cache and the parse path.
+
+Uncaught exceptions are written **synchronously** before handing back to the
+platform handler; the async drain would lose precisely the entry worth having.
+
+Tagged the events a playa postmortem actually asks about: GPS select/start/stop,
+**NET→SYSTEM failover** (deliberately invisible on screen — Rob: "we just want
+things to keep working" — so the log is its only record), vision feed
+LIVE/DEMO/ABSENT transitions, transport connect/disconnect, and which path
+served the map.
+
+Verified on the S9+ — and it caught a live fact in passing, that the tablet
+picked up the Jetson (`vision: feed DEMO` → `feed LIVE` in 250 ms):
+
+```
+I/ZodiacApplication: boot: ... api 36, samsung SM-X810
+I/RoutedThreatSource$feedState: vision: feed DEMO
+I/RoutedThreatSource$feedState: vision: feed LIVE
+I/RoutedLocationSource: gps: start FAKE
+I/AssetsPlayaMapRepository$runLoadAttempt: map: 2026 loaded from binary cache
+  (573 streets, 561 tagged, 12 plazas)
+```
+
+**One thing the log surfaced, noted not chased:** the GPS source is stopped and
+restarted once during startup. That's `restartLocationSource()` on the
+permission-result path doing what it says. Harmless on FAKE; worth a look
+before the playa, because on **NET** it drops and rebinds the multicast socket
+on every cold start.
+
+Next for logging: a debug screen over `RollingFileLog.tail(n)` (the method is
+there and tested), and surfacing `droppedLines`.
+
+app **617** tests.
+
 ## 2026-08-08 — the 2026 map migration silently disabled the whole nav stack
 
 **The on-device address check was the right gate to be worried about, and it

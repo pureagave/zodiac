@@ -63,9 +63,18 @@ Ranked by consequence on the playa.
       `~/nightwatch/listen.py`; start it with `setsid`, and remember
       `pkill -f listen.py` over ssh **kills your own session** — use
       `"[l]isten.py"`.
-- [ ] **M10 — rolling file logs** (Timber + `getExternalFilesDir`). Still the
-      biggest operational gap: without logs we cannot postmortem a tablet that
-      misbehaves on the playa.
+- [x] **M10 — rolling file logs — SHIPPED 2026-08-08.** `core/log/RollingFileLog`
+      (bounded, never throws, drops oldest) + `data/log/FileLogTree` on Timber,
+      writing to `getExternalFilesDir("logs")` so a tablet's log comes off with
+      a plain `adb pull`. Lifecycle tagged: GPS select/failover, vision feed
+      state, transport, map load path, uncaught exceptions. Verified on the
+      S9+. Remaining: a debug screen over `RollingFileLog.tail(n)` (the method
+      exists and is tested), and surfacing `droppedLines`.
+- [ ] **GPS source restarts once at startup.** The new logs show
+      `gps: start FAKE` → `stop` → `start` on every cold launch — that's
+      `restartLocationSource()` on the permission-result path. Harmless on
+      FAKE; on **NET** it drops and rebinds the multicast socket every launch.
+      Worth making conditional on an actual permission *change*.
 - [ ] The older M6/M8/M9/M14/M16 UI items below.
 
 
