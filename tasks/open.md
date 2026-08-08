@@ -83,15 +83,29 @@ Ranked by consequence on the playa.
       L11 is unverifiable until a dongle is plugged in.
 - [x] ~~**M14**~~ — stale: the label is already `RECENTER`, not `RECENTER MAP`.
       Still unconfirmed on the Fire (offline).
-- [ ] **M8** — permission rationale before the cold request. The real stake is
-      that two denials on Android 11+ latch to "don't ask again", which costs a
-      Settings trip on a tablet that then can't locate itself. The permission
-      path was just reworked and verified, so this is the natural next edit.
-- [ ] The older M6/M16 UI items, L1, the L3/L4/L6/L13 docs items, L7/L8 file
-      shape, and the A1/A2/A3/A5 architectural calls — all keyboard-only, none
-      with playa consequence.
-- [ ] **L13 needs Rob's decision, not a keyboard:** LICENSE at the repo root —
-      Apache-2.0, MIT, or explicitly closed-source?
+- [x] **M8 — SHIPPED 2026-08-08.** Rationale panel shown only when Android
+      reports a prior decline, because the *second* decline latches to "don't
+      ask again". Caught on device: the gate was declared before `cockpitScreen`
+      and root siblings stack in declaration order, so the panel rendered
+      underneath the whole UI. Verified end to end after the fix.
+- [x] **M6 / M16 / L1 / L3 / L4 / L6 / L7 / L10 / L13 — DONE 2026-08-08.**
+      See SYNC. Notable: M6's colour literals turned out to be the RADAR sweep
+      palette, not theme colours — porting them would have been a visual
+      regression dressed as cleanup, so only the four genuine palette
+      duplicates moved, plus `LocalCockpitTheme`. L1 produced `PinchSession`
+      (12 tests, mutation-verified). L13 is Apache-2.0, with a `NOTICE` carving
+      out the Innovate-ToS GIS data.
+- [x] **Burn-in stress ledger — DONE 2026-08-08.** `BurnInLedger` accumulates
+      on-time per `<concept>/<phase>` and reports to the rolling log. That
+      granularity is the honest limit — finer would invent data the app never
+      measures.
+- [x] ~~**L8**~~ — stale: `CRTVectorScreen.kt` no longer exists. Largest file is
+      now `CockpitViewModel.kt` (674) then `PlayaMapPanel.kt` (598), both under
+      detekt's thresholds. Nothing to split; revisit if detekt fires.
+- [ ] **L10 remainder — needs hardware.** The matching logic and its diagnostic
+      are extracted and tested (`BleDeviceMatch`), and a failed match now names
+      the paired devices instead of dead-ending on "no device matched". The
+      *picker UI* still wants a paired BLE GPS to build against.
 
 
 ## 2026 map migration — DONE in code 2026-07-30 (commit `ca74867`), pending on-device verify
@@ -181,11 +195,53 @@ Rounds 2/3 + label TextLayout cache shipped 2026-05-03. A behavior-preserving pa
 - [ ] **L10** — make `BleLocationSource.DEFAULT_NAME_PATTERN` configurable via DataStore + add a "pick device" picker.
 - [ ] **L11** — extend `usb_gps_device_filter.xml` to cover FTDI FT232H, WCH CH343, SiLabs CP2104, MediaTek MT3329-based receivers.
 
-## Architectural follow-ups (decide before adding more features)
+## Architectural follow-ups — RESOLVED 2026-08-08
 
-These aren't bugs — they're shape calls worth making once before the codebase calcifies around the current layout.
+Worked through with the code in front of me rather than from the descriptions,
+which had drifted. Two were done, two are decided **not** to do, with reasons.
 
-- [ ] **A1** — collapse the three `Routed<T>` shapes (vehicle gateway, location source, future command source) into a single generic over `Map<Type, T>` plus serial Mutex.
-- [ ] **A2** — promote camera state into a `MapCameraState` data class held in `CockpitUiState` (today: heading + pixelsPerMeter + panEastM/NorthM + tiltDeg + mapMode are five floating fields).
-- [ ] **A3** — extract a `PlayaScene` (`map + projection + viewport + ego + panOffset`) provided via `CompositionLocal`, before adding the second consumer (night display, friend tracker, recorded-track replay).
-- [ ] **A5** — split `CockpitUiState` into smaller per-concern StateFlows (`mapState`, `connectionState`, `egoState`) so per-frame state mutations don't structurally copy 14 fields.
+- [x] **A2 — DONE.** `MapCameraState` groups mapMode / tiltDeg /
+      pixelsPerMeter / cameraOverride / followMode / viewRotationDeg. Writers
+      go through `camera`; the flat names survive as read-only accessors, so
+      ~90 render-path call sites are untouched and a renderer *can't* write the
+      camera. The compiler confirmed the containment — every error was a write,
+      all fifteen in `CockpitViewModel`. (The task said five fields including
+      panEastM/NorthM; those had already been replaced by cameraOverride +
+      followMode. It's six.)
+- [x] **A3 — DONE, in the part that was real.** `MapUiInputs` already *was* the
+      "PlayaScene" (map + ego + camera + POIs + route, with `from(state)`).
+      The remaining delta was delivery mechanism, and a CompositionLocal would
+      make scene state **implicit** in the one file with a documented
+      recomposition-storm history — where knowing exactly what invalidates the
+      viewport is the whole game. What was worth doing: `MapUiInputs` now holds
+      the grouped camera, so the viewport `remember` takes **one key instead of
+      five**. Five keys were five chances to add a camera field and forget to
+      invalidate on it, which presents as a map that silently stops following.
+- [x] **A1 — WON'T DO; the premise doesn't hold.** "Collapse the three
+      `Routed<T>` shapes into a single generic over `Map<Type, T>`" assumes
+      three routers. There are two. `RoutedThreatSource` is not a router at
+      all — it's a fixed two-source `combine` with a demo-fallback policy and
+      no selection. And the two real routers have **deliberately opposite**
+      switch semantics: `RoutedLocationSource.select()` stops the old source,
+      `RoutedVehicleGateway.selectTransport()` deliberately does not (adapter
+      lifecycle is owned elsewhere) — documented in both files and pinned by
+      `RoutedVehicleGatewayTest`. A generic would need a policy parameter to
+      preserve that, which is more machinery than the ~20 lines of duplication
+      it removes across two 70-90 line files. Revisit only if a third real
+      router appears.
+- [x] **A5 — WON'T DO NOW; it trades a guarantee for an unmeasurable win.**
+      The stated goal is avoiding a structural copy of (now 35) fields on
+      per-frame mutation. Two things changed the calculus:
+      1. **The recomposition half is already solved.** `MapUiInputs` exists
+         precisely so the map subtree smart-skips when unrelated state changes;
+         its KDoc says so. What A5 would still buy is one shallow 35-reference
+         copy per update — sub-microsecond, and only at touch rate *during an
+         active gesture*. That is a **performance** claim, and this project's
+         standing rule is that performance changes get validated on the Fire
+         HD 10, which is offline. Changing it blind would be guessing.
+      2. **It would cost a real property.** One StateFlow is why all three
+         concepts always render the same world and a concept switch can never
+         show a different one. Three flows can be observed mid-update in
+         inconsistent states — on a display that carries collision alerts.
+      If profiling ever justifies it, the targeted move is *more input slices*
+      like `MapUiInputs`, which keeps the single source of truth intact.

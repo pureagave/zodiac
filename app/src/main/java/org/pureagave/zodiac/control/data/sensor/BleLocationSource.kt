@@ -23,7 +23,10 @@ import org.pureagave.zodiac.control.core.sensor.FixFreshness
 import org.pureagave.zodiac.control.core.sensor.LocationSourceError
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.sensor.matchGpsDeviceName
+import org.pureagave.zodiac.control.core.sensor.noGpsDeviceMessage
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
+import timber.log.Timber
 import java.util.UUID
 
 /**
@@ -101,11 +104,21 @@ class BleLocationSource(
                 _state.value = LocationSourceState.Error(ADAPTER_OFF_MSG, LocationSourceError.ADAPTER_UNAVAILABLE)
                 return
             }
-            val device = adapter.bondedDevices.firstOrNull { deviceNamePattern.matches(it.name.orEmpty()) }
+            val paired = adapter.bondedDevices.orEmpty().toList()
+            val match = matchGpsDeviceName(paired.map { it.name.orEmpty() }, deviceNamePattern)
+            val device = paired.firstOrNull { it.name.orEmpty() == match }
             if (device == null) {
-                _state.value = LocationSourceState.Error(NO_DEVICE_MSG, LocationSourceError.NO_DEVICE_FOUND)
+                // Say what IS paired — "no device matched" alone leaves the
+                // operator unable to tell an unpaired receiver from one named
+                // something we didn't anticipate. See noGpsDeviceMessage.
+                _state.value =
+                    LocationSourceState.Error(
+                        noGpsDeviceMessage(paired.map { it.name.orEmpty() }),
+                        LocationSourceError.NO_DEVICE_FOUND,
+                    )
                 return
             }
+            Timber.i("gps: BLE selected '%s' of %d paired", device.name, paired.size)
             val sppSocket = device.createRfcommSocketToServiceRecord(SPP_UUID)
             socket = sppSocket
             sppSocket.connect()
@@ -155,6 +168,5 @@ class BleLocationSource(
             Regex(".*(?i:GPS|Garmin|Bad ?Elf|XGPS|Holux|Qstarz|GNSS).*")
         private const val MISSING_PERMISSION_MSG: String = "BLUETOOTH_CONNECT not granted"
         private const val ADAPTER_OFF_MSG: String = "Bluetooth adapter unavailable or off"
-        private const val NO_DEVICE_MSG: String = "No paired Bluetooth GPS device matched"
     }
 }

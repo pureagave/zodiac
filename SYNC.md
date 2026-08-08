@@ -6,6 +6,76 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — the keyboard-only backlog is empty, and three of its entries were fiction
+
+Rob's call on the one open question: **Apache-2.0**. `LICENSE` added, plus a
+`NOTICE` that carves out what it does *not* cover — the bundled BRC GIS is
+Innovate-ToS data and the 2025 art layer is MIT from iBurn-Data. A blanket
+license over third-party data would have been the easy wrong answer.
+
+Everything else on the list is now done, **app 668 tests**, main green.
+
+**Three backlog entries described code that no longer exists.** M14's chip was
+already shortened to `RECENTER`. L8 wanted `CRTVectorScreen.kt` split — that
+file is gone, and the two largest files left are comfortably under detekt's
+thresholds. And A2's "five floating fields incl. panEastM/NorthM" had already
+become six, with pan replaced by `cameraOverride` + `followMode`. Together with
+the shock banner earlier today, that's **four stale entries in one day**:
+treat `tasks/open.md` as a lead, not a fact.
+
+**M6, done honestly rather than mechanically.** The colour literals it names
+are not theme colours awaiting extraction — they're the RADAR concept's dim and
+lit map palettes, and *the difference between those greens is the sweep
+effect*. Porting them to `ConceptTheme` would have been a visual regression
+dressed as cleanup. Only four literals were genuinely duplicating the palette's
+hex; those now reference it, and zero pixels changed. The structural half is
+`LocalCockpitTheme`, provided once at the root.
+
+**M8** — rationale before the second decline (which latches to "don't ask
+again" and takes the system dialog with it). **Caught on device, not in
+review:** the gate was declared before `cockpitScreen`, and root-level siblings
+stack in declaration order, so the panel rendered *underneath the entire UI*
+and was invisible. A unit test would never have found that.
+
+**L1** — `PinchSession` lifts the gesture state machine out of the Compose
+modifier. All the behaviour that matters is about *when not to emit* — no pan
+on the first frame of a drag, none on the first frame after dropping from a
+pinch, no rotation on a fresh grip. Twelve tests, mutation-verified.
+
+**Burn-in stress ledger** — on-time per `<concept>/<phase>` to the rolling log.
+That granularity is the honest limit and it's deliberate: finer (per-widget
+rectangles) would invent data the app never measures, and a fabricated
+burn-risk number is worse than none.
+
+**A1 and A5 are decided NOT to do, with reasons**, because both were "decide"
+items and both premises failed on inspection:
+
+- **A1** assumes three `Routed<T>` shapes. There are two. `RoutedThreatSource`
+  isn't a router at all — a fixed two-source `combine` with a demo-fallback
+  policy and no selection. And the two real routers have **deliberately
+  opposite** switch semantics, documented in both files and pinned by a test.
+  A generic would need a policy parameter to preserve that: more machinery than
+  the duplication it removes.
+- **A5**'s recomposition half is already solved by `MapUiInputs`. What's left
+  is one shallow 35-reference copy per update at touch rate during a gesture —
+  a *performance* claim, and this project validates those on the Fire HD 10,
+  which is offline. Against that it would cost a real property: one StateFlow
+  is why all three concepts always render the same world, on a display that
+  carries collision alerts. If profiling ever justifies it, the move is *more*
+  input slices, not three flows.
+
+**Two of my own tests were wrong before the code was.** A "jitter" of 0.057°
+against a 0.05° deadzone, and a ledger assertion that the code could know an
+interval spanning a backwards clock jump had really happened. Both now pin the
+real invariant. Worth noting because "the test failed, so fix the code" is the
+reflex that would have broken both.
+
+Also: **L10's real failure mode is fixed even though its picker isn't.** A
+failed BLE match now names the paired devices ("paired: Bose QC35, GT-02
+Tracker") instead of dead-ending on "no device matched" — the difference
+between a rename and an evening with no GPS. The picker UI still wants a paired
+BLE GPS to build against.
+
 ## 2026-08-08 — clearing the keyboard-only backlog, and M10 immediately paying for itself
 
 Five items, all verified on the S9+ rather than reasoned about. app **637**
