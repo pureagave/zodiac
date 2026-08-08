@@ -11,16 +11,24 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.pureagave.zodiac.control.core.permission.PermissionPrompt
 import org.pureagave.zodiac.control.core.permission.grantedAnythingNew
+import org.pureagave.zodiac.control.core.permission.permissionPromptFor
 import org.pureagave.zodiac.control.core.permission.permissionsToRequest
 import org.pureagave.zodiac.control.core.permission.requiredCockpitPermissions
+import org.pureagave.zodiac.control.ui.concepts.ThemeTracker
+import org.pureagave.zodiac.control.ui.ops.permissionRationalePanel
 import org.pureagave.zodiac.control.ui.state.luxToBrightness
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModelFactory
@@ -57,48 +65,91 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun zodiacApp() {
     val app = LocalContext.current.applicationContext as ZodiacApplication
+    val viewModel = rememberCockpitViewModel(app)
 
-    val viewModel: CockpitViewModel =
-        viewModel(
-            factory =
-                CockpitViewModelFactory(
-                    telemetryRepository = app.telemetryRepository,
-                    vehicleGateway = app.vehicleGateway,
-                    playaMapRepository = app.playaMapRepository,
-                    locationSource = app.locationSource,
-                    preferences = app.preferences,
-                    fakeLocationSource = app.fakeLocationSource,
-                    poisFlow = app.discoveryRepository.pois,
-                    threatsFlow = app.threatSource.threats,
-                    visionFeedFlow = app.threatSource.feedState,
-                    beaconSensors = app.networkLocationSource.beaconSensors,
-                ),
-        )
+    autoDim(viewModel)
+    cockpitScreen(viewModel = viewModel, burnInManager = app.burnInManager, fileLog = app.fileLog)
+    // Emitted *after* the cockpit deliberately: siblings at the root stack in
+    // declaration order, so a gate declared first draws underneath the whole
+    // UI and its panel is invisible. (It was — caught on device, not in review.)
+    cockpitPermissionGate(onNewGrant = viewModel::restartLocationSource)
+}
 
+/**
+ * Bind the ViewModel to the process-lifetime dependency graph. Extracted from
+ * [zodiacApp] (L7) so the wiring — which grows every time a source is added —
+ * doesn't crowd out what the composable actually does.
+ */
+@Composable
+private fun rememberCockpitViewModel(app: ZodiacApplication): CockpitViewModel =
+    viewModel(
+        factory =
+            CockpitViewModelFactory(
+                telemetryRepository = app.telemetryRepository,
+                vehicleGateway = app.vehicleGateway,
+                playaMapRepository = app.playaMapRepository,
+                locationSource = app.locationSource,
+                preferences = app.preferences,
+                fakeLocationSource = app.fakeLocationSource,
+                poisFlow = app.discoveryRepository.pois,
+                threatsFlow = app.threatSource.threats,
+                visionFeedFlow = app.threatSource.feedState,
+                beaconSensors = app.networkLocationSource.beaconSensors,
+            ),
+    )
+
+/**
+ * The runtime-permission flow, start to finish: work out what's missing, ask
+ * for exactly that, and explain first when Android says the user has already
+ * declined once (because the next decline latches to "don't ask again" and
+ * takes the system dialog with it).
+ *
+ * [onNewGrant] fires only on a genuine transition to granted, so a source that
+ * was sitting in Error because of a missing permission re-attempts its start
+ * path — and a fully-granted tablet restarts nothing on launch.
+ */
+@Composable
+private fun cockpitPermissionGate(onNewGrant: () -> Unit) {
     val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    var showRationale by remember { mutableStateOf(false) }
+    var missing by remember { mutableStateOf<List<String>>(emptyList()) }
+
     val permissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestMultiplePermissions(),
         ) { results ->
-            // If anything was just granted, kick the active location source so
-            // a previously-Error state (from "permission not granted") flips to
-            // Searching/Active without needing the user to toggle a chip.
-            if (grantedAnythingNew(results)) viewModel.restartLocationSource()
+            if (grantedAnythingNew(results)) onNewGrant()
         }
+
     LaunchedEffect(Unit) {
-        // Only ask for what's missing. Re-requesting a held permission returns
-        // `true` from the launcher, which is indistinguishable from a fresh
-        // grant — that was restarting the location source on every cold launch
-        // (harmless on FAKE, a multicast rebind on NET).
-        val missing =
+        missing =
             permissionsToRequest(requiredCockpitPermissions(Build.VERSION.SDK_INT)) { permission ->
                 ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
             }
-        if (missing.isNotEmpty()) permissionLauncher.launch(missing.toTypedArray())
+        when (
+            permissionPromptFor(missing) { permission ->
+                activity?.let { ActivityCompat.shouldShowRequestPermissionRationale(it, permission) } ?: false
+            }
+        ) {
+            PermissionPrompt.NONE -> Unit
+            PermissionPrompt.REQUEST -> permissionLauncher.launch(missing.toTypedArray())
+            PermissionPrompt.RATIONALE -> showRationale = true
+        }
     }
 
-    autoDim(viewModel)
-    cockpitScreen(viewModel = viewModel, burnInManager = app.burnInManager, fileLog = app.fileLog)
+    if (showRationale) {
+        permissionRationalePanel(
+            theme = ThemeTracker,
+            onContinue = {
+                showRationale = false
+                permissionLauncher.launch(missing.toTypedArray())
+            },
+            // NOT NOW is a real option: the cockpit is fully usable on the
+            // synthetic and network GPS sources without this permission.
+            onDismiss = { showRationale = false },
+        )
+    }
 }
 
 /**

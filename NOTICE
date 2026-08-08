@@ -1,0 +1,24 @@
+Zodiac Control
+Copyright 2026 pureagave.org
+
+This product includes software developed at pureagave.org.
+
+--------------------------------------------------------------------------
+Bundled third-party data
+--------------------------------------------------------------------------
+
+Black Rock City GIS (app/src/main/assets/brc/**)
+  Streets, plazas, city blocks, trash fence, toilets and CPNs from the
+  Burning Man Innovate GIS dataset:
+    https://github.com/burningmantech/innovate-GIS-data
+  Used under the Terms of Service for Burning Man APIs and Datasets:
+    https://innovate.burningman.org/terms-of-service-for-burning-man-apis-and-datasets/
+  This data is NOT covered by the Apache License above.
+
+Art placements, 2025 only (app/src/main/assets/brc/2025/art.geojson)
+  Derived from iBurn-Data (MIT License):
+    https://github.com/iBurnApp/iBurn-Data
+
+Art and theme-camp locations are otherwise fetched at runtime from the
+Burning Man API (api.burningman.org) and are subject to the same Innovate
+Terms of Service.

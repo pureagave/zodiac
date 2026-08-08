@@ -8,6 +8,12 @@ import kotlin.math.sqrt
  * Distortion stays sub-meter within the 3 km city radius at BRC's latitude,
  * which is more than adequate for cockpit overlay rendering — no map library
  * required.
+ *
+ * **That guarantee is local, not general.** The east scale is frozen at
+ * `cos(lat0)` for the origin, so error grows with distance from it and the
+ * whole construction degenerates as `cos(lat0)` approaches 0 at the poles.
+ * Fine for a city 3 km across at 40.8 deg N; do not reuse this as a
+ * general-purpose projection.
  */
 class PlayaProjection(val origin: LatLon) {
     private val lat0Rad = Math.toRadians(origin.lat)
@@ -33,6 +39,12 @@ class PlayaProjection(val origin: LatLon) {
         )
     }
 
+    /**
+     * Planar distance between two points, both projected through this origin.
+     * Exact enough anywhere on the playa; for distances of tens of km or more
+     * (or any pair far from [origin]) this wants Haversine instead — the flat
+     * approximation is what buys the speed, and it's only honest close in.
+     */
     fun distanceMeters(
         a: LatLon,
         b: LatLon,

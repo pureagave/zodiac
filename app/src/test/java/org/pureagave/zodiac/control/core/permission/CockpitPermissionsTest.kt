@@ -81,6 +81,44 @@ class CockpitPermissionsTest {
         assertFalse(grantedAnythingNew(emptyMap()))
     }
 
+    @Test
+    fun a_fully_granted_tablet_is_prompted_with_nothing() {
+        assertEquals(PermissionPrompt.NONE, permissionPromptFor(emptyList()) { true })
+    }
+
+    @Test
+    fun a_first_run_goes_straight_to_the_system_dialog() {
+        // No prior decline: an explanation before the very first ask is just
+        // an extra tap between the operator and a working tablet.
+        val missing = requiredCockpitPermissions(API_S)
+
+        assertEquals(PermissionPrompt.REQUEST, permissionPromptFor(missing) { false })
+    }
+
+    @Test
+    fun a_prior_decline_earns_an_explanation_first() {
+        // This is the case that matters: from Android 11 the *second* decline
+        // latches to "don't ask again" and the system dialog never returns.
+        val missing = requiredCockpitPermissions(API_S)
+
+        assertEquals(
+            PermissionPrompt.RATIONALE,
+            permissionPromptFor(missing) { it == Manifest.permission.ACCESS_FINE_LOCATION },
+        )
+    }
+
+    @Test
+    fun one_permission_wanting_a_rationale_is_enough_to_explain() {
+        // The panel covers the whole request, so any single flagged
+        // permission should raise it rather than being outvoted.
+        val missing = requiredCockpitPermissions(API_S)
+
+        assertEquals(
+            PermissionPrompt.RATIONALE,
+            permissionPromptFor(missing) { it == Manifest.permission.BLUETOOTH_SCAN },
+        )
+    }
+
     private companion object {
         const val API_R = 30
         const val API_S = 31

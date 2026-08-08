@@ -43,3 +43,31 @@ fun permissionsToRequest(
  * this stays explicit rather than inlined so the intent survives a refactor.
  */
 fun grantedAnythingNew(results: Map<String, Boolean>): Boolean = results.values.any { it }
+
+/** What the cockpit should put in front of the user about permissions, if anything. */
+enum class PermissionPrompt {
+    /** Everything needed is held — say nothing. */
+    NONE,
+
+    /** Ask the system straight away; the user hasn't declined before. */
+    REQUEST,
+
+    /** Explain first: Android reports a prior decline, so the next one latches. */
+    RATIONALE,
+}
+
+/**
+ * Decide between silence, a bare request, and an explanation. Split out as a
+ * pure function because the interesting case — "the user has declined once, so
+ * the next decline is permanent" — is exactly the one that's painful to
+ * reproduce on a device.
+ */
+fun permissionPromptFor(
+    missing: List<String>,
+    shouldShowRationale: (String) -> Boolean,
+): PermissionPrompt =
+    when {
+        missing.isEmpty() -> PermissionPrompt.NONE
+        missing.any(shouldShowRationale) -> PermissionPrompt.RATIONALE
+        else -> PermissionPrompt.REQUEST
+    }

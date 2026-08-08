@@ -105,3 +105,11 @@ Release builds (`:app:assembleRelease`) run R8 minify + resource shrink and are 
 - Operational logging (Timber + rolling file) so a misbehaving tablet can be postmortem'd on the playa (`tasks/open.md` M10).
 - Compose UI / instrumented tests for the map touch interaction (drag-pan / pinch / twist), which has no automated coverage.
 - Validate the R8-shrunk release APK on a real Fire tablet before fleet distribution.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
+
+Bundled Black Rock City GIS data is **not** covered by that license; it is used
+under the [Innovate Terms of Service](https://innovate.burningman.org/terms-of-service-for-burning-man-apis-and-datasets/).
+See [NOTICE](NOTICE) for the full third-party data attribution.

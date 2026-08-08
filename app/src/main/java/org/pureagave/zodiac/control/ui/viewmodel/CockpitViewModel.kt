@@ -47,6 +47,26 @@ import org.pureagave.zodiac.control.data.sensor.FakeLocationSource
 import org.pureagave.zodiac.control.data.sensor.RoutedLocationSource
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
 
+/**
+ * The cockpit's single state orchestrator: it subscribes to every source the
+ * vehicle has (telemetry, the routed GPS source, the playa map, discovery
+ * POIs, the Jetson threat feed, the beacon's low-rate sensor channels), folds
+ * them into one immutable [CockpitUiState], and dispatches commands back out
+ * through the gateway.
+ *
+ * **One StateFlow, not many.** All three concepts render from the same value,
+ * so a concept switch is purely presentational and can never show a different
+ * world than its neighbour. The cost is that a per-frame field change copies
+ * the whole state — see A5 in `tasks/open.md` for the split that would fix it.
+ *
+ * Input validation lives here rather than in the UI (heading 0–359, speed
+ * 0–160), so every entry point — chip, gesture, synthetic GPS — is bounded by
+ * the same rules.
+ *
+ * Dependencies arrive as plain flows wherever possible rather than whole
+ * repositories: the ViewModel then depends only on what it renders and stays
+ * constructible in a test without any of the real sources.
+ */
 class CockpitViewModel(
     private val telemetryRepository: TelemetryRepository,
     private val vehicleGateway: VehicleConnectionGateway,

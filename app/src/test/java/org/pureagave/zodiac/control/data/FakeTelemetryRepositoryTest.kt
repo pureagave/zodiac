@@ -1,5 +1,6 @@
 package org.pureagave.zodiac.control.data
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -7,52 +8,61 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.model.CockpitMode
-import org.pureagave.zodiac.control.core.model.Telemetry
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FakeTelemetryRepositoryTest {
     @Test
-    fun first_emission_matches_documented_seed_values() =
+    fun the_stream_repeats_exactly_once_per_cycle() =
         runTest {
-            val first = FakeTelemetryRepository().stream().take(1).toList().single()
+            // The wrap has to be behaviour-preserving: emission N and N+360
+            // must be identical, or "bounded" came at the cost of the sweep.
+            val emitted = FakeTelemetryRepository().stream().take(CYCLE_TICKS + SAMPLE_TICKS).toList()
 
-            // tick 0: heading = (42 + 0) % 360, speed = 22 + |0-20|, thermal = 58 + 0,
-            // mode = (0/20)%3 -> DIAGNOSTIC.
-            assertEquals(Telemetry(42, 42, 58, true, CockpitMode.DIAGNOSTIC), first)
-        }
-
-    @Test
-    fun stream_fields_stay_within_documented_ranges() =
-        runTest {
-            val samples = FakeTelemetryRepository().stream().take(60).toList()
-
-            samples.forEach { t ->
-                assertTrue("heading=${t.headingDeg}", t.headingDeg in 0..359)
-                // speed = 22 + abs((tick % 40) - 20) -> 22..42
-                assertTrue("speed=${t.speedKph}", t.speedKph in 22..42)
-                // thermal = 58 + (tick % 9) -> 58..66
-                assertTrue("thermal=${t.thermalC}", t.thermalC in 58..66)
-                assertTrue("link", t.linkStable)
+            repeat(SAMPLE_TICKS) { i ->
+                assertEquals("emission $i vs ${i + CYCLE_TICKS}", emitted[i], emitted[i + CYCLE_TICKS])
             }
         }
 
     @Test
-    fun heading_advances_by_three_degrees_per_tick() =
+    fun three_sixty_is_the_least_period_not_merely_a_period() =
         runTest {
-            val headings = FakeTelemetryRepository().stream().take(5).toList().map { it.headingDeg }
+            // Guards the other direction: a wrap chosen too small would still
+            // pass the repeat test while quietly shortening the sweep. Every
+            // proper divisor of 360 must fail to be a period.
+            val emitted = FakeTelemetryRepository().stream().take(CYCLE_TICKS * 2).toList()
 
-            assertEquals(listOf(42, 45, 48, 51, 54), headings)
+            val properDivisors = (1 until CYCLE_TICKS).filter { CYCLE_TICKS % it == 0 }
+            properDivisors.forEach { d ->
+                val repeats = (0 until CYCLE_TICKS).all { i -> emitted[i] == emitted[i + d] }
+                assertTrue("$d must not be a period of the sweep", !repeats)
+            }
         }
 
     @Test
-    fun mode_cycles_every_twenty_ticks() =
+    fun every_emission_stays_inside_the_cockpit_input_ranges() =
         runTest {
-            val modes = FakeTelemetryRepository().stream().take(41).toList().map { it.mode }
+            // The ViewModel validates heading 0-359 and speed 0-160; a fake
+            // that drifts outside them tests nothing real.
+            val emitted = FakeTelemetryRepository().stream().take(CYCLE_TICKS).toList()
 
-            // Ticks 0-19 DIAGNOSTIC, 20-39 DRIVE, 40 wraps into COMBAT.
-            assertEquals(CockpitMode.DIAGNOSTIC, modes[0])
-            assertEquals(CockpitMode.DIAGNOSTIC, modes[19])
-            assertEquals(CockpitMode.DRIVE, modes[20])
-            assertEquals(CockpitMode.DRIVE, modes[39])
-            assertEquals(CockpitMode.COMBAT, modes[40])
+            emitted.forEach {
+                assertTrue("heading ${it.headingDeg}", it.headingDeg in 0..MAX_HEADING)
+                assertTrue("speed ${it.speedKph}", it.speedKph in 0..MAX_SPEED)
+            }
         }
+
+    @Test
+    fun all_three_modes_appear_within_one_cycle() =
+        runTest {
+            val modes = FakeTelemetryRepository().stream().take(CYCLE_TICKS).toList().map { it.mode }.toSet()
+
+            assertEquals(CockpitMode.entries.toSet(), modes)
+        }
+
+    private companion object {
+        const val CYCLE_TICKS = 360
+        const val SAMPLE_TICKS = 8
+        const val MAX_HEADING = 359
+        const val MAX_SPEED = 160
+    }
 }

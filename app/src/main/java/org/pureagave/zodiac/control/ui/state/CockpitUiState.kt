@@ -26,6 +26,20 @@ import org.pureagave.zodiac.control.core.telemetry.Odometer
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.VisionFeed
 
+/**
+ * Everything the cockpit draws, in one immutable value.
+ *
+ * Updated exclusively via `.copy()` from [CockpitViewModel]; nothing else
+ * writes it, and no composable holds a mutable slice of it. That's what lets
+ * all three concepts render the same world with no risk of drift between them.
+ *
+ * Fields are deliberately flat and primitive where the renderer wants them
+ * flat — the map camera in particular is five loose fields ([headingDeg],
+ * [pixelsPerMeter], [panEastM]/[panNorthM], [tiltDeg], [mapMode]) rather than
+ * a nested object, which keeps the per-frame draw path free of unwrapping.
+ * The derived read-only helpers at the bottom (e.g. [egoFix]) exist so the UI
+ * never re-derives the same thing two different ways.
+ */
 data class CockpitUiState(
     val headingDeg: Int = 0,
     val speedKph: Int = 0,
