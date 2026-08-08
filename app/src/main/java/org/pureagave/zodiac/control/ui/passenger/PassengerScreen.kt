@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,18 +72,10 @@ fun passengerScreen(
     sunset: LocalTime?,
 ) {
     val rotation = remember { CardRotation() }
+    var view by remember { mutableStateOf<PassengerView?>(null) }
     var tickMs by remember { mutableLongStateOf(0L) }
     var lastShockCount by remember { mutableStateOf<Double?>(null) }
     var lastStreet by remember { mutableStateOf<String?>(null) }
-
-    // One coarse ticker drives the rotation; the animations below run on their
-    // own transitions so this never has to tick at frame rate.
-    LaunchedEffect(Unit) {
-        while (true) {
-            tickMs += TICK_MS
-            delay(TICK_MS)
-        }
-    }
 
     val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
     val egoPoint = state.egoFix?.location?.let(projection::project)
@@ -119,8 +112,21 @@ fun passengerScreen(
     // the art card while the vehicle is stopped. Only art — holding the trip
     // counter or the sun clock at a standstill would just be a stuck screen.
     val stopped = (state.egoFix?.speedKph ?: state.speedKph.toDouble()) < STOPPED_KPH
-    val holding = stopped && nearbyArt.isNotEmpty() && rotation.view(tickMs, available)?.card == PassengerCard.ART
-    val view = rotation.view(tickMs, available, hold = holding)
+
+    // CardRotation.view() *mutates* — it advances the rotation. It must
+    // therefore be called exactly once per tick, never from a composable body,
+    // where recomposition would step it several times a second and skip cards.
+    // The ticker owns the state machine; composition only renders its output.
+    val latest = rememberUpdatedState(Triple(available, stopped, nearbyArt.isNotEmpty()))
+    LaunchedEffect(Unit) {
+        while (true) {
+            val (cards, isStopped, hasArt) = latest.value
+            val hold = isStopped && hasArt && view?.card == PassengerCard.ART
+            view = rotation.view(tickMs, cards, hold = hold)
+            tickMs += TICK_MS
+            delay(TICK_MS)
+        }
+    }
 
     // Continuous phase for the scope trace and the souls sweep. Driven by a
     // Compose transition rather than the rotation ticker so the animation is
@@ -140,7 +146,8 @@ fun passengerScreen(
     )
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-        if (view == null) {
+        val current = view
+        if (current == null) {
             // Never a blank screen, and never a fake reading either.
             Text(
                 text = "ZODIAC\nSTANDING BY",
@@ -153,7 +160,7 @@ fun passengerScreen(
         }
 
         passengerCard(
-            view = view,
+            view = current,
             theme = theme,
             ctx =
                 PassengerContext(
