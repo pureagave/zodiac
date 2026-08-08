@@ -6,6 +6,57 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — a passenger display, and the BM 2026 art feed has started moving
+
+Built the passenger display Rob asked for: six cards on a self-running
+carousel — WHERE / AUDIO / SOULS / BUMP / TRIP / SUN / ART. No Dredd card (his
+call). **app 694 tests**, main green, verified on the Fire HD 10.
+
+**minSdk 30 -> 28.** The floor was a choice from when the 11th-gen Fire was the
+oldest device, not a constraint: every API gate in the code is `>= S` (31) and
+Lint reports no NewApi at 28. That covers the Fire HD 10 9th gen and Fire HD 8
+10th gen. **Older 8" Fires (8th gen and earlier) are Fire OS 6/5 = API 25/22
+and are still excluded** — check each with `getprop ro.build.version.sdk`
+before assuming it's in.
+
+**`$ZAUD` is plumbed at last**, as its own StateFlow rather than folded into
+`BeaconSensors` — it arrives ~15 Hz, two orders of magnitude faster than the
+other channels, and merging it would rewrite that whole value and wake every
+consumer fifteen times a second. It nulls when the beacon goes quiet so the
+visualiser flatlines honestly.
+
+**Two things the ART card exposed, which is the argument for building the
+thing rather than speculating about it:**
+
+1. **BM has started publishing 2026 art.** 1526 entries fetched today into
+   `discovery_2026.json`. But **names only — no coordinates**: every record
+   lacks `eastM`/`northM`, so `point` is null and nothing can be placed. The
+   embargo is lifting in stages. The art layer will populate itself when the
+   placements land; nothing more to do but watch.
+2. **My first ART card was wrong three ways** — it counted theme camps as art,
+   counted entries that have no position, and called the entire city "nearby"
+   (it read "1526 PIECES NEARBY"). `artNearby()` now filters on kind, on having
+   a position, and on range, each with a test. The card correctly vanishes
+   today rather than claiming proximity it cannot know.
+
+**Passenger mode is a device role, not cockpit state.** detekt tripping
+`CockpitViewModel`'s function limit was the nudge to notice: it never changes
+while driving, no concept reads it, and it belongs to the tablet rather than
+the session. It lives in a process-scoped `DisplayRoleStore` now, next to the
+other device-level concerns. Hidden top-right long-press toggles it in both
+directions — a rider must not be able to escape into the driver's HUD, and a
+driver's tablet must not fall into passenger mode by accident.
+
+**Design rule worth keeping:** the passenger screen must never imply authority
+over the driver's display. No collision flags, no braking, no alarm red, and
+the driver's street/passing overlays are deliberately not drawn on it. SOULS
+additionally requires a genuinely LIVE Jetson feed — showing the demo crowd to
+passengers as "souls detected" would be inventing people.
+
+Card type scales off the panel rather than being fixed, since the fleet is a
+mix of 8" and 10" Fires in either orientation, and long art titles step down
+rather than truncate.
+
 ## 2026-08-08 — Fire HD 10 back on the bench, and it corrected a claim I had made
 
 Rob plugged in the **Fire HD 10** (`KFTUWI`, API 30) and the **A54** over USB.
