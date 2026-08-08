@@ -20,6 +20,7 @@ channels the tracker doesn't touch hold their last value instead of dropping to 
 
 from __future__ import annotations
 
+import sys
 from typing import Dict, Optional, Protocol
 
 DMX_UNIVERSE_SIZE = 512
@@ -74,6 +75,7 @@ class OlaDmxSink:
         self.sends = 0
         self.errors = 0
         self._last_error: Optional[str] = None
+        self._reported = False
 
     def send(self, channels: Dict[int, int]) -> None:
         import urllib.parse
@@ -86,10 +88,22 @@ class OlaDmxSink:
         try:
             with urllib.request.urlopen(f"{self.base_url}/set_dmx", data=data, timeout=1.0):
                 self.sends += 1
+                self._reported = False  # re-arm: a later outage is news again
         # olad reachability is an IO boundary: keep tracking even if lighting drops.
         except Exception as exc:  # noqa: BLE001 - see rationale above
             self.errors += 1
             self._last_error = str(exc)
+            # Swallowed, but not silently: the OLA layer has already failed
+            # this project once with zero symptoms (plugin config written where
+            # olad never reads it), and a dead head at night just looks off.
+            # One line per outage — reported once, quiet until it recovers.
+            if not self._reported:
+                self._reported = True
+                print(
+                    f"zvision: DMX to {self.base_url} failing, light is dark: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     def close(self) -> None:
         pass
