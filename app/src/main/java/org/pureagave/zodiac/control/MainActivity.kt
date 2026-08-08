@@ -77,6 +77,7 @@ private fun zodiacApp() {
         audio = audio,
         passengerMode = passengerMode,
         onSetPassengerMode = app.displayRole::setPassengerMode,
+        artImages = app.artImages,
     )
     // Emitted *after* the cockpit deliberately: siblings at the root stack in
     // declaration order, so a gate declared first draws underneath the whole

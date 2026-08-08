@@ -52,6 +52,7 @@ class BmApiClient(
             subtitle = o.optString("artist").ifBlank { loc?.optString("location_string").orEmpty() },
             hometown = o.optStringOrNull("hometown"),
             description = o.optStringOrNull("description"),
+            address = o.optStringOrNull("location_string") ?: loc?.optStringOrNull("location_string"),
             category = o.optStringOrNull("category"),
             program = o.optStringOrNull("program"),
             guidedTours = o.optBoolean("guided_tours", false),

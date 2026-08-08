@@ -75,6 +75,7 @@ class DiscoveryRepository(
             o.put("subtitle", p.subtitle)
             p.hometown?.let { o.put("hometown", it) }
             p.description?.let { o.put("description", it) }
+            p.address?.let { o.put("address", it) }
             p.category?.let { o.put("category", it) }
             p.program?.let { o.put("program", it) }
             if (p.guidedTours) o.put("guided_tours", true)
@@ -105,6 +106,7 @@ class DiscoveryRepository(
                     subtitle = o.optString("subtitle"),
                     hometown = o.optStringOrNull("hometown"),
                     description = o.optStringOrNull("description"),
+                    address = o.optStringOrNull("address"),
                     category = o.optStringOrNull("category"),
                     program = o.optStringOrNull("program"),
                     guidedTours = o.optBoolean("guided_tours", false),

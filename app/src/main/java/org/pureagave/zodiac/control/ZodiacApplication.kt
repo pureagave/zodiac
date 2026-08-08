@@ -24,6 +24,7 @@ import org.pureagave.zodiac.control.data.FakeTelemetryRepository
 import org.pureagave.zodiac.control.data.RoutedVehicleGateway
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.VehicleConnectionGateway
+import org.pureagave.zodiac.control.data.art.ArtImageStore
 import org.pureagave.zodiac.control.data.discovery.BmApiClient
 import org.pureagave.zodiac.control.data.discovery.DiscoveryRepository
 import org.pureagave.zodiac.control.data.log.FileLogTree
@@ -124,6 +125,9 @@ class ZodiacApplication : Application() {
             scope = applicationScope,
         )
     }
+
+    /** Pre-rendered, pre-treated art images baked into the APK assets. */
+    val artImages: ArtImageStore by lazy { ArtImageStore(assets) }
 
     val playaMapRepository: PlayaMapRepository by lazy {
         AssetsPlayaMapRepository(

@@ -35,9 +35,15 @@ data class PlayaPoi(
      * anyone look it up later.
      */
     val description: String? = null,
-    /** Placement category, e.g. "Open Playa" / "Deep Playa". 98% of the 2026 feed. */
+    /**
+     * The piece's BRC address, e.g. "3:45 & Esplanade" — from the feed's
+     * `location_string`. Null for the whole 2026 feed until BM publishes
+     * placements; it takes the tag slot the moment it arrives.
+     */
+    val address: String? = null,
+    /** Placement category, e.g. "Open Playa". Not shown — see `artTags`. */
     val category: String? = null,
-    /** Funding programme, e.g. "Honorarium" / "Self-Funded". 100% of the feed. */
+    /** Funding programme, e.g. "Honorarium". Not shown — see `artTags`. */
     val program: String? = null,
     /** The artist offers guided tours of the piece. */
     val guidedTours: Boolean = false,

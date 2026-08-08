@@ -21,6 +21,7 @@ import org.pureagave.zodiac.control.core.log.RollingFileLog
 import org.pureagave.zodiac.control.core.model.CockpitConcept
 import org.pureagave.zodiac.control.core.ops.sunTimes
 import org.pureagave.zodiac.control.core.telemetry.AudioLevel
+import org.pureagave.zodiac.control.data.art.ArtImageStore
 import org.pureagave.zodiac.control.ui.concepts.ThemeTracker
 import org.pureagave.zodiac.control.ui.concepts.driverNightScreen
 import org.pureagave.zodiac.control.ui.concepts.instrumentBayScreen
@@ -55,6 +56,8 @@ fun cockpitScreen(
     /** This tablet's role; see [org.pureagave.zodiac.control.core.passenger.DisplayRoleStore]. */
     passengerMode: Boolean = false,
     onSetPassengerMode: (Boolean) -> Unit = {},
+    /** Pre-rendered art images; null outside the passenger display. */
+    artImages: ArtImageStore? = null,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val cycle: () -> Unit = viewModel::cycleConcept
@@ -81,6 +84,7 @@ fun cockpitScreen(
                         now = LocalTime.now(),
                         sunrise = sun?.sunrise,
                         sunset = sun?.sunset,
+                        artImages = artImages,
                     )
                 } else {
                     when (state.concept) {

@@ -6,12 +6,14 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,11 +42,13 @@ import org.pureagave.zodiac.control.core.passenger.CardRotation
 import org.pureagave.zodiac.control.core.passenger.PassengerCard
 import org.pureagave.zodiac.control.core.passenger.PassengerInputs
 import org.pureagave.zodiac.control.core.passenger.PassengerView
+import org.pureagave.zodiac.control.core.passenger.approachingArt
 import org.pureagave.zodiac.control.core.passenger.artNearby
 import org.pureagave.zodiac.control.core.passenger.availablePassengerCards
 import org.pureagave.zodiac.control.core.passenger.passengerLocationLine
 import org.pureagave.zodiac.control.core.telemetry.AudioLevel
 import org.pureagave.zodiac.control.core.vision.VisionFeed
+import org.pureagave.zodiac.control.data.art.ArtImageStore
 import org.pureagave.zodiac.control.ui.RetroFont
 import org.pureagave.zodiac.control.ui.concepts.ConceptTheme
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
@@ -70,6 +76,7 @@ fun passengerScreen(
     now: LocalTime,
     sunrise: LocalTime?,
     sunset: LocalTime?,
+    artImages: ArtImageStore? = null,
 ) {
     val rotation = remember { CardRotation() }
     var view by remember { mutableStateOf<PassengerView?>(null) }
@@ -80,17 +87,24 @@ fun passengerScreen(
     val projection = remember { PlayaProjection(GoldenSpike.ACTIVE) }
     val egoPoint = state.egoFix?.location?.let(projection::project)
     val nearbyArt = artNearby(state.pois, egoPoint)
+    // What we are driving *towards*, which is not the same as what is nearest —
+    // the nearest piece is frequently one we have already gone past.
+    val approach = approachingArt(state.pois, egoPoint, state.headingDeg.toDouble())
+    // The card describes the piece we are meeting when there is one, and falls
+    // back to the nearest when parked among several.
+    val shownArt = approach?.poi ?: nearbyArt.firstOrNull()
 
-    val inputs =
-        PassengerInputs(
-            hasFix = state.egoFix != null,
-            hasAudio = audio != null,
-            visionLive = state.visionFeed == VisionFeed.LIVE,
-            hasShock = state.shockAlertG != null || state.beaconReadout.shockG != null,
-            odometer = state.odometer,
-            artAhead = nearbyArt.size,
-        )
-    val available = availablePassengerCards(inputs)
+    // Decode off the main thread, keyed by the piece — so approaching a new
+    // one swaps the picture and nothing decodes twice.
+    val nearestUid = shownArt?.uid
+    var artImage by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(nearestUid, artImages) {
+        val uid = nearestUid
+        val store = artImages
+        artImage = if (uid != null && store != null) store.load(uid) else null
+    }
+
+    val available = availablePassengerCards(passengerInputs(state, audio, nearbyArt.size))
 
     // Event interrupts: the things a passenger physically just experienced.
     val shockG = state.shockAlertG
@@ -100,6 +114,15 @@ fun passengerScreen(
             rotation.interruptWith(PassengerCard.BUMP, tickMs)
         }
     }
+    val approachUid = approach?.poi?.uid
+    LaunchedEffect(approachUid, tickMs) {
+        // Re-arming every tick is what keeps the card up for the length of the
+        // pass: interruptWith() resets the timer rather than stacking, so the
+        // card holds while the piece is ahead and releases a few seconds after
+        // it drops behind. No separate "am I still passing it" state needed.
+        if (approachUid != null) rotation.interruptWith(PassengerCard.ART, tickMs)
+    }
+
     val street = state.streetPopup
     LaunchedEffect(street) {
         if (street != null && street != lastStreet) {
@@ -167,6 +190,10 @@ fun passengerScreen(
                     state = state,
                     audio = audio,
                     nearbyArt = nearbyArt,
+                    shownArt = shownArt,
+                    approaching = approach != null,
+                    approachAbeam = approach?.abeam == true,
+                    artImage = artImage,
                     parked = stopped,
                     motion = PassengerMotion(phase, sweep),
                     sun = SunClock(now, sunrise, sunset),
@@ -196,6 +223,14 @@ data class PassengerContext(
     val state: CockpitUiState,
     val audio: AudioLevel?,
     val nearbyArt: List<PlayaPoi>,
+    /** The piece the card is describing — what we're approaching, else nearest. */
+    val shownArt: PlayaPoi?,
+    /** True while a piece is ahead of us within approach range. */
+    val approaching: Boolean,
+    /** The approaching piece is off to one side — we're passing it, not nearing it. */
+    val approachAbeam: Boolean,
+    /** Pre-rendered, already-treated image for the shown piece; null if none. */
+    val artImage: ImageBitmap?,
     /** Vehicle is stopped — the art card holds and shows its full description. */
     val parked: Boolean,
     val motion: PassengerMotion,
@@ -217,7 +252,7 @@ private fun passengerCard(
         PassengerCard.BUMP -> bumpCard(ctx.state, theme, urgent)
         PassengerCard.TRIP -> tripCard(ctx.state, theme)
         PassengerCard.SUN -> sunCard(theme, ctx.sun)
-        PassengerCard.ART -> artCard(ctx.nearbyArt, theme, ctx.parked)
+        PassengerCard.ART -> artCard(ctx, theme)
     }
 }
 
@@ -327,14 +362,15 @@ private fun sunCard(
 
 @Composable
 private fun artCard(
-    nearbyArt: List<PlayaPoi>,
+    ctx: PassengerContext,
     theme: ConceptTheme,
-    parked: Boolean,
 ) {
-    val nearest = nearbyArt.firstOrNull()
+    val nearest = ctx.shownArt
+    val artImage = ctx.artImage
+    val parked = ctx.parked
     passengerCardFrame(
         theme = theme,
-        label = if (parked) "YOU ARE PARKED AT" else "ART NEARBY",
+        label = artLabel(parked, ctx.approachAbeam, ctx.approaching),
         value = nearest?.name?.uppercase() ?: "—",
         // The artist and where they're from, then the piece in their own
         // words. "What IS that?" is the question people actually ask from a
@@ -342,6 +378,15 @@ private fun artCard(
         // card answers it rather than making anyone look it up later.
         footnote = artByline(nearest),
     ) {
+        if (artImage != null) {
+            Image(
+                bitmap = artImage,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxWidth(IMAGE_WIDTH_FRACTION).heightIn(max = IMAGE_MAX_HEIGHT),
+            )
+            Spacer(Modifier.height(10.dp))
+        }
         val blurb = nearest?.description
         if (!blurb.isNullOrBlank()) {
             Text(
@@ -358,7 +403,7 @@ private fun artCard(
                 modifier = Modifier.fillMaxWidth(BLURB_WIDTH_FRACTION),
             )
         }
-        val tags = artTags(nearest, nearbyArt.size)
+        val tags = artTags(nearest, ctx.nearbyArt.size)
         if (tags.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             Text(
@@ -374,9 +419,15 @@ private fun artCard(
 }
 
 /**
- * The rest of what the feed knows, as short chips. Ordered by how much a
- * passenger can act on it: an artist asking for hands beats a funding
- * programme. Anything absent is simply omitted — no "UNKNOWN" filler.
+ * The short chips under the description. Deliberately sparse: a passenger
+ * glancing up wants to know *where it is* and whether they can go in, not how
+ * it was funded.
+ *
+ * Category ("Open Playa"), programme ("Self-Funded") and the volunteer call
+ * were all dropped — they read as filler next to the artist's own words, and
+ * the slot is reserved for the piece's **address**, which is the one fact a
+ * passenger can act on. That is null across the whole 2026 feed today; it takes
+ * this slot automatically the moment BM publishes placements.
  */
 internal fun artTags(
     poi: PlayaPoi?,
@@ -384,14 +435,44 @@ internal fun artTags(
 ): List<String> {
     if (poi == null) return emptyList()
     return buildList {
-        if (poi.needsVolunteers) add("NEEDS VOLUNTEERS")
+        poi.address?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
         if (poi.guidedTours) add("GUIDED TOURS")
         if (poi.selfGuidedTour) add("ON THE TOUR MAP")
-        poi.category?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
-        poi.program?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
         if (nearbyCount > 1) add("+${nearbyCount - 1} MORE NEARBY")
     }
 }
+
+/** The availability inputs, split out to keep [passengerScreen] under its complexity budget. */
+private fun passengerInputs(
+    state: CockpitUiState,
+    audio: AudioLevel?,
+    artCount: Int,
+): PassengerInputs =
+    PassengerInputs(
+        hasFix = state.egoFix != null,
+        hasAudio = audio != null,
+        visionLive = state.visionFeed == VisionFeed.LIVE,
+        hasShock = state.shockAlertG != null || state.beaconReadout.shockG != null,
+        odometer = state.odometer,
+        artAhead = artCount,
+    )
+
+/**
+ * What the card is telling you, which depends entirely on where the piece is
+ * relative to the nose. Parked wins over everything — a stopped vehicle next to
+ * a piece is the clearest case there is.
+ */
+internal fun artLabel(
+    parked: Boolean,
+    abeam: Boolean,
+    approaching: Boolean,
+): String =
+    when {
+        parked -> "YOU ARE PARKED AT"
+        abeam -> "PASSING"
+        approaching -> "COMING UP"
+        else -> "ART NEARBY"
+    }
 
 /** `ABRAM SANTA CRUZ · LONG BEACH, CA` — artist first, since that's who to thank. */
 internal fun artByline(poi: PlayaPoi?): String {
@@ -446,5 +527,7 @@ private const val BLURB_LINE_SP = 24
 private const val BLURB_LINES = 4
 private const val BLURB_LINES_PARKED = 10
 private const val TAG_SP = 15
+private const val IMAGE_WIDTH_FRACTION = 0.55f
+private val IMAGE_MAX_HEIGHT = 240.dp
 private const val STOPPED_KPH = 1.5
 private const val BLURB_WIDTH_FRACTION = 0.82f

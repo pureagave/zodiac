@@ -33,24 +33,42 @@ class ArtBylineTest {
     }
 
     @Test
-    fun tags_lead_with_what_a_passenger_can_act_on() {
-        // An artist asking for hands is more use to a car full of people than
-        // a funding programme, so it comes first.
-        val poi = full().copy(needsVolunteers = true, guidedTours = true)
+    fun the_address_leads_because_it_is_the_only_actionable_fact() {
+        val poi = full().copy(address = "3:45 & Esplanade", guidedTours = true)
 
         val tags = artTags(poi, nearbyCount = 1)
 
-        assertEquals("NEEDS VOLUNTEERS", tags.first())
+        assertEquals("3:45 & ESPLANADE", tags.first())
         assertTrue(tags.contains("GUIDED TOURS"))
-        assertTrue(tags.contains("OPEN PLAYA"))
-        assertTrue(tags.contains("SELF-FUNDED"))
     }
 
     @Test
-    fun absent_fields_are_omitted_rather_than_filled_with_unknown() {
-        val bare = full().copy(category = null, program = null)
+    fun funding_category_and_volunteer_calls_are_never_shown() {
+        // Dropped deliberately: they read as filler beside the artist's own
+        // words, and the slot belongs to the address.
+        val poi = full().copy(needsVolunteers = true, category = "Open Playa", program = "Self-Funded")
+
+        val tags = artTags(poi, nearbyCount = 1)
+
+        assertTrue(tags.none { it.contains("VOLUNTEER") })
+        assertTrue(tags.none { it.contains("OPEN PLAYA") })
+        assertTrue(tags.none { it.contains("SELF-FUNDED") })
+    }
+
+    @Test
+    fun with_no_address_yet_the_row_carries_only_what_is_known() {
+        // The 2026 state today: placements embargoed, so no address exists.
+        val bare = full().copy(address = null)
 
         assertEquals(emptyList<String>(), artTags(bare, nearbyCount = 1))
+    }
+
+    @Test
+    fun the_label_follows_where_the_piece_is() {
+        assertEquals("YOU ARE PARKED AT", artLabel(parked = true, abeam = true, approaching = true))
+        assertEquals("PASSING", artLabel(parked = false, abeam = true, approaching = true))
+        assertEquals("COMING UP", artLabel(parked = false, abeam = false, approaching = true))
+        assertEquals("ART NEARBY", artLabel(parked = false, abeam = false, approaching = false))
     }
 
     @Test
