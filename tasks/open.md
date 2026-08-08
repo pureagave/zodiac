@@ -1,6 +1,68 @@
 # Open
 
-What's worth doing next, drawn from `audit.md` (2026-04-26) and a few items surfaced in the M/L sweep. Critical and High audit items are all done — see `done.md`. The remaining items are real but none block shipping.
+What's worth doing next. Critical and High audit items are all done — see `done.md`.
+
+> **Handoff, 2026-08-08.** The two sections immediately below are the live
+> picture. Everything under them is older backlog, still valid but not the
+> current front. Read the top of `SYNC.md` first — it is the working log and
+> carries the *why* behind each decision.
+
+## ⛔ Blocked on Rob / hardware — cannot be done from a keyboard
+
+Ranked by consequence on the playa.
+
+- [ ] **`MotionDetector` resets a track on a single-frame dropout.** A flickering
+      blob gets a new id *and* a reset collision baseline, so collision may
+      chronically under-fire — a systematic bias toward false **negatives**
+      while driving. **Highest-value remaining item.** Deliberately not fixed
+      blind: it changes detection behaviour and needs real bodies at real
+      distances in front of the real camera.
+      ⚠️ **Do not add tablet-side contact coasting until this is fixed** —
+      coasting by id while the Jetson churns ids draws one person as two.
+- [ ] **Detector tuning** against people at 5 / 10 / 20 m, day and night.
+- [ ] **Night legibility of the surround ring on the A54.** The acceptance gate
+      the design names, and the one thing no measurement substitutes for: is a
+      `#00421E` rim visible at brightness 20 in real darkness, and does a red
+      collision blip register **peripherally**? The build is installed on the
+      phone. Objectively verified already: rim solid over the covered arc (99%
+      of samples lit) vs dashed elsewhere (~34–53%).
+- [ ] **DMX fixture.** Whole path proven to the XLR connector — `olad` opens the
+      widget, reports "Granularity GOOD", zvision drives pan/tilt/dimmer. Attach
+      the moving head and aim it. Then **calibrate `pan_center_deg` / `pan_gain`**
+      and `reach_half_deg` (currently 90°, i.e. forward + both sides).
+- [ ] **Rig azimuth calibration** per camera against the vehicle nose, once the
+      pod is mounted. An error rotates that camera's whole contact set.
+- [ ] **Pod assembly** — waiting on the germanium D20 window.
+- [ ] **Cross-camera dedup** with two cameras on one moving target (needs a
+      second camera mounted).
+- [ ] **grr validation tests** — rescue link, `fsck.repair` after reboot, HDMI
+      capture. See the memory note; needs Rob's parts and hands.
+- [ ] **Fire HD 10** — not on the network; can't check the perf floor.
+- [ ] **XCover Pro** — needs USB to give the Beacon app its one-time
+      STOP→START so `$ZAUD` picks up the mic grant.
+- [ ] **Beacon channels + auto-dim** end-to-end on the tablets.
+
+## 🟢 Doable without Rob — I ran out of session, not options
+
+- [ ] **Shock-alert banner.** `CockpitUiState` carries the shock state and
+      nothing draws it. Self-contained UI + testable logic. Listed twice and
+      skipped twice; no good reason.
+- [ ] **2026 map on-device address check.** Type our camp (**2:15 & H**) via
+      `adb input` on the S9+/A54 and confirm it lands on the right corner. The
+      one gate before trusting nav. Fiddly UI navigation, not hard.
+- [ ] **Confirm the FFC fix over a long run.** `~/nightwatch/fp2.log` on the
+      Jetson is accumulating. Pre-fix baseline: **104 contact-frames and 10
+      phantom collisions per 7.7 h** in an empty room, arriving in 9 bursts.
+      Post-fix at 40 min: **0 / 0** (pre-fix had already burst twice by then).
+      Needs hours before the rate claim is honest. Listener script lives in
+      `~/nightwatch/listen.py`; start it with `setsid`, and remember
+      `pkill -f listen.py` over ssh **kills your own session** — use
+      `"[l]isten.py"`.
+- [ ] **M10 — rolling file logs** (Timber + `getExternalFilesDir`). Still the
+      biggest operational gap: without logs we cannot postmortem a tablet that
+      misbehaves on the playa.
+- [ ] The older M6/M8/M9/M14/M16 UI items below.
+
 
 ## 2026 map migration — DONE in code 2026-07-30 (commit `ca74867`), pending on-device verify
 
@@ -21,8 +83,18 @@ zvision now runs a ring of cameras and merges them into one full-circle contact 
 - [x] Fisheye/rectilinear lens models (`pixel_to_bearing`), `--hfov` default 57 → 160, `--lens`, `--fov-ref`.
 - [x] Multi-camera rig: `--camera` specs, mount-angle rotation, per-camera id namespacing, overlap dedup, coverage/blind-arc report, per-camera failure tolerance.
 - [x] Wire arc ±90 → ±180 on both sides; `DriverNightScreen` explicitly filters to the forward half so nothing changed on screen.
-- [ ] **Surround DRIVER HUD** (on-device) — rear contacts are on the bus and nothing draws them. Needs a layout decision: full 360 ring vs forward view + rear strip. Drop `HUD_FORWARD_ARC_DEG` when it lands.
-- [ ] **Is the Lepton UW's 160° horizontal or diagonal?** Decides `--fov-ref`; a 160° *horizontal* figure across a square sensor implies an impossible ~226° diagonal, so this is worth resolving off the datasheet or on the bench before trusting edge bearings.
+- [x] **Surround DRIVER HUD — SHIPPED 2026-08-07/08** and verified against real
+      bus traffic. Hybrid layout: forward perspective figures (±30°) plus a
+      nose-up plan ring carrying every contact. Design doc:
+      `design/surround-driver-hud.md` (rev 2, after a Fable review).
+- [x] **FOV reference — SETTLED 2026-08-08: the 160° is the DIAGONAL.** The rig
+      covers **±64°, not ±80°**. FLIR never states the axis; the board emits
+      160×120, and 160° across the width of a 4:3 f-theta frame needs a ~200°
+      diagonal, which is not a real lens. `fovref=d` is in the deployed config.
+      This feeds `pixel_to_bearing`, so the old reading mis-aimed every edge
+      bearing by up to 16°. **Policy set: under uncertainty, under-claim
+      coverage.** Widen only against a real measurement or a FLIR figure naming
+      the axis.
 - [ ] **Calibrate each camera's `az`** against the vehicle's actual nose once mounted — an error there rotates that camera's entire contact set and swings the tracker light onto the wrong person.
 - [ ] **Decide RGB count + lens FOV** — that's what closes the ring. The UW already covers the forward 160°, so the RGB cameras mainly own the sides and rear; `zvision -v` prints the resulting blind sectors.
 

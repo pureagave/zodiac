@@ -6,6 +6,42 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — HANDOFF: fresh context starts here
+
+Rob is restarting the assistant with clean context. Everything needed to pick up
+cold is in three places, in this order: the **`zodiac-resume-point` memory**
+(READ FIRST), the top of **this file** (the *why* behind each decision), and
+**`tasks/open.md`** — whose top two sections are now the live picture, split into
+**blocked on Rob/hardware** and **doable without him**.
+
+**State:** `main` clean and green. app **593** tests, beacon **35**, jetson
+**299**. Both CI workflows passing. Jetson at 192.168.86.235 running the current
+build; A54 has the current APK installed.
+
+**What I did NOT get to, though I could have** (now written down rather than
+carried in my head):
+- **Shock-alert banner** — state is plumbed in `CockpitUiState`, nothing draws
+  it. Listed twice, skipped twice, no good reason.
+- **2026 map on-device address check** (our camp, 2:15 & H) — the one gate
+  before trusting nav. Drivable over `adb input`; just fiddly.
+- **M10 rolling file logs** — still the biggest operational gap. Without logs we
+  cannot postmortem a tablet that misbehaves on the playa.
+- **Long-run confirmation of the FFC fix.** `~/nightwatch/fp2.log` is
+  accumulating. Pre-fix: 104 contact-frames / 10 phantom collisions per 7.7 h in
+  an empty room. Post-fix at 40 min: 0 / 0 — and pre-fix had already burst twice
+  by that point, so it is real positive evidence but **not yet conclusive**.
+  Give it hours before making the rate claim.
+
+**Blocked on hardware/Rob, ranked:** MotionDetector single-frame track reset
+(false-negative bias, needs real bodies) → ring night legibility on the A54 →
+DMX fixture + calibration → rig azimuth → pod assembly (germanium window
+pending) → cross-camera dedup → grr validation → Fire HD 10 (offline) → XCover
+mic grant.
+
+**One standing warning worth repeating:** do not add tablet-side contact
+coasting until the Jetson's id churn is fixed — coasting by id while ids churn
+draws one person as two.
+
 ## 2026-08-08 — the overnight run found a real detector bug: FFC read as a crowd
 
 **Measured, not reasoned about.** A passive bus listener watched the live
