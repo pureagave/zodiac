@@ -20,6 +20,7 @@ its imports exactly like ``detector.py`` does.
 from __future__ import annotations
 
 import inspect
+import math
 import sys
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -105,6 +106,8 @@ class CameraMount:
 
 
 def _parse_float(key: str, raw: str) -> float:
+    # Note float() happily accepts "nan"/"inf"; rejecting those is
+    # validate_mount's job, so both config paths get the same gate.
     try:
         return float(raw)
     except ValueError:
@@ -116,6 +119,54 @@ def _parse_int(key: str, raw: str) -> int:
         return int(raw)
     except ValueError:
         raise ValueError(f"camera spec: {key}={raw!r} is not an integer") from None
+
+
+def validate_mount(mount: CameraMount) -> CameraMount:
+    """Reject a mount whose numbers cannot drive the geometry — the shared gate
+    for both config paths (``--camera`` specs and the legacy single-camera
+    flags), so ``--check`` actually stands between a typo and the vehicle.
+
+    The dangerous cases are the quiet ones. ``float("nan")`` parses, and every
+    downstream guard is a comparison NaN answers False to: a nan mount angle
+    made every bearing from that camera the string ``"nan"`` on the wire
+    (silently dropped by the tablet — green service, blind HUD), and a nan
+    ``far_h`` slipped past the inverted-calibration guard so every contact
+    read as size 1.0 — reported as touching the vehicle."""
+    prefix = f"camera {mount.name!r}:"
+    if not mount.name or any(sep in mount.name for sep in ("/", "\\")) or mount.name in (".", ".."):
+        raise ValueError(
+            f"camera name {mount.name!r} must be a plain name — it becomes a "
+            "recording directory, so path separators would scatter frames"
+        )
+    if not math.isfinite(mount.mount_az_deg):
+        raise ValueError(f"{prefix} mount az must be finite, got {mount.mount_az_deg}")
+    if not (math.isfinite(mount.fov_deg) and mount.fov_deg > 0):
+        raise ValueError(f"{prefix} fov must be a positive, finite number of degrees, got {mount.fov_deg}")
+    if mount.width <= 0 or mount.height <= 0:
+        raise ValueError(f"{prefix} width/height must be positive, got {mount.width}x{mount.height}")
+    if mount.fourcc and len(mount.fourcc) != 4:
+        raise ValueError(f"{prefix} fourcc must be 4 characters, got {mount.fourcc!r}")
+    if mount.fps is not None and not (math.isfinite(mount.fps) and mount.fps > 0):
+        raise ValueError(f"{prefix} fps must be positive and finite, got {mount.fps}")
+    t = mount.tuning
+    for label, value in (
+        ("min-area/minarea", t.min_area_frac),
+        ("match-dist/match", t.match_dist),
+        ("far-h/farh", t.far_h),
+        ("near-h/nearh", t.near_h),
+        ("collision-az-rate/azrate", t.collision_az_rate_dps),
+        ("collision-min-size/minsize", t.collision_min_size),
+    ):
+        if not math.isfinite(value):
+            raise ValueError(f"{prefix} {label} must be a finite number, got {value}")
+    # `not (a > b)` rather than `a <= b`: the two differ exactly on NaN, and
+    # NaN is the case that turned this guard off entirely.
+    if not (t.near_h > t.far_h):
+        raise ValueError(
+            f"{prefix} near-h/nearh ({t.near_h}) must exceed far-h/farh ({t.far_h}) "
+            "— otherwise every contact reads as maximum range"
+        )
+    return mount
 
 
 def parse_camera_spec(
@@ -181,18 +232,12 @@ def parse_camera_spec(
     name = kw.pop("name", f"{source}{index}")
     az = _parse_float("az", kw.pop("az", "0"))
     fov = _parse_float("fov", kw.pop("fov", str(base.fov_deg)))
-    if not fov > 0:
-        raise ValueError(f"camera spec: fov must be positive, got {fov}")
     width = _parse_int("width", kw.pop("width", str(base.width)))
     height = _parse_int("height", kw.pop("height", str(base.height)))
 
     fourcc = kw.pop("fourcc", base.fourcc).strip().upper()
-    if fourcc and len(fourcc) != 4:
-        raise ValueError(f"camera spec: fourcc must be 4 characters, got {fourcc!r}")
     fps_raw = kw.pop("fps", "" if base.fps is None else str(base.fps))
     fps = _parse_float("fps", fps_raw) if fps_raw else None
-    if fps is not None and fps <= 0:
-        raise ValueError(f"camera spec: fps must be positive, got {fps}")
 
     lens_raw = kw.pop("lens", base.lens).lower()
     lens = _LENS_ALIASES.get(lens_raw, lens_raw)
@@ -213,28 +258,25 @@ def parse_camera_spec(
         collision_az_rate_dps=_parse_float("azrate", kw.pop("azrate", str(t.collision_az_rate_dps))),
         collision_min_size=_parse_float("minsize", kw.pop("minsize", str(t.collision_min_size))),
     )
-    if tuning.near_h <= tuning.far_h:
-        raise ValueError(
-            f"camera spec: nearh ({tuning.near_h}) must exceed farh ({tuning.far_h}) "
-            "— otherwise every contact reads as maximum range"
-        )
 
     if kw:
         raise ValueError(f"camera spec: unknown key(s) {', '.join(sorted(kw))}")
 
-    return CameraMount(
-        name=name,
-        source=source,
-        device=device,
-        mount_az_deg=wrap180(az),
-        fov_deg=fov,
-        fov_ref=fov_ref,
-        lens=lens,
-        width=width,
-        height=height,
-        fourcc=fourcc,
-        fps=fps,
-        tuning=tuning,
+    return validate_mount(
+        CameraMount(
+            name=name,
+            source=source,
+            device=device,
+            mount_az_deg=wrap180(az),
+            fov_deg=fov,
+            fov_ref=fov_ref,
+            lens=lens,
+            width=width,
+            height=height,
+            fourcc=fourcc,
+            fps=fps,
+            tuning=tuning,
+        )
     )
 
 

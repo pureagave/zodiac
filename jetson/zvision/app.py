@@ -20,7 +20,9 @@ instead of freezing on the last contacts.
 from __future__ import annotations
 
 import argparse
+import math
 import signal
+import socket
 import sys
 import time
 from typing import List, Optional
@@ -36,7 +38,14 @@ from .recorder import (
     RecorderConfig,
     summarize,
 )
-from .rig import DEFAULT_DEDUP_DEG, CameraMount, build_rig, coverage_gaps, parse_camera_spec
+from .rig import (
+    DEFAULT_DEDUP_DEG,
+    CameraMount,
+    build_rig,
+    coverage_gaps,
+    parse_camera_spec,
+    validate_mount,
+)
 from .threat_protocol import format_frame
 
 
@@ -201,11 +210,48 @@ def _mounts_from_args(args: argparse.Namespace) -> List[CameraMount]:
             parse_camera_spec(spec, index=i, defaults=defaults)
             for i, spec in enumerate(args.camera)
         ]
-    if defaults.tuning.near_h <= defaults.tuning.far_h:
-        raise ValueError(
-            f"--near-h ({defaults.tuning.near_h}) must exceed --far-h ({defaults.tuning.far_h})"
-        )
-    return [defaults]
+    # The legacy single-camera path takes its numbers straight from argparse,
+    # which accepts "nan"/"inf" as floats — run it through the same gate the
+    # --camera specs go through, so --check means the same thing on both.
+    return [validate_mount(defaults)]
+
+
+def _validate_runtime_args(args: argparse.Namespace) -> None:
+    """Catch the runtime arguments that would otherwise fail *after* --check
+    passed them — the service is Restart=always, so anything that raises at
+    startup is a crash loop (a malformed --iface-ip died inside inet_aton with
+    a bare traceback), and anything the socket layer only rejects per-send is
+    worse: a healthy-looking service broadcasting to nobody (a typo'd --group
+    just counts send errors forever). --hz gets the same treatment because
+    "inf" parses: period 0 is a hot loop flooding the vehicle network."""
+    if not (math.isfinite(args.hz) and args.hz > 0):
+        raise ValueError(f"--hz must be a positive, finite rate, got {args.hz}")
+    if not math.isfinite(args.merge_deg):
+        raise ValueError(f"--merge-deg must be finite, got {args.merge_deg}")
+    if not 1 <= args.port <= 65535:
+        raise ValueError(f"--port must be 1..65535, got {args.port}")
+    for flag, value in (
+        ("--group", args.group),
+        ("--iface-ip", args.iface_ip),
+        ("--bind-ip", args.bind_ip),
+        ("--broadcast", args.broadcast),
+    ):
+        if value in (None, ""):
+            continue
+        try:
+            socket.inet_aton(value)
+        except OSError:
+            raise ValueError(f"{flag}: {value!r} is not an IPv4 address") from None
+    if args.record is not None and not (math.isfinite(args.record_hz) and args.record_hz >= 0):
+        raise ValueError(f"--record-hz must be a finite rate, got {args.record_hz}")
+    if args.dmx != "none":
+        for flag, value in (
+            ("--dmx-pan-center", args.dmx_pan_center),
+            ("--dmx-pan-gain", args.dmx_pan_gain),
+        ):
+            if not math.isfinite(value):
+                # A NaN aim parks the head at 0 forever while looking configured.
+                raise ValueError(f"{flag} must be finite, got {value}")
 
 
 def _print_rig(mounts: List[CameraMount], show_tuning: bool = False) -> None:
@@ -239,6 +285,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         mounts = _mounts_from_args(args)
+        _validate_runtime_args(args)
     except ValueError as exc:
         print(f"zvision: {exc}", file=sys.stderr, flush=True)
         return 2

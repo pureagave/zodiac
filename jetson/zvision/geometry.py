@@ -123,9 +123,14 @@ def bbox_height_to_size(h_norm: float, far_h: float = 0.05, near_h: float = 0.9)
     """Proxy range from a person's bbox height as a fraction of frame height: a
     tall box (close) -> ~1, a tiny box (far) -> ~0. Linear between the calibrated
     far/near heights, clamped to [0, 1]."""
-    if near_h <= far_h:
+    # `not (a > b)` rather than `a <= b`: they differ exactly on NaN, and a NaN
+    # calibration used to slip past this guard and make every contact size 1.0
+    # (min/max with NaN silently picks the limit) — reported touching the car.
+    if not (near_h > far_h):
         return 0.0
     frac = (h_norm - far_h) / (near_h - far_h)
+    if not math.isfinite(frac):
+        return 0.0
     return max(0.0, min(1.0, frac))
 
 

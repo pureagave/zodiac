@@ -123,6 +123,60 @@ class CheckModeTest(unittest.TestCase):
         self.assertIn("near-h", err.getvalue())
 
 
+class CheckCatchesStartupHazardsTest(unittest.TestCase):
+    """Everything here used to pass --check and then fail live — either as a
+    Restart=always crash loop (bad --iface-ip died inside inet_aton with a
+    traceback) or as something quieter and worse: a healthy-looking service
+    broadcasting to nobody, or at an unusable rate."""
+
+    def _check(self, extra):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = main(["--check"] + extra)
+        return rc, err.getvalue()
+
+    def test_a_malformed_iface_ip_fails_check_instead_of_crash_looping(self):
+        rc, err = self._check(["--iface-ip", "192.168.0.999"])
+        self.assertEqual(2, rc)
+        self.assertIn("iface-ip", err)
+
+    def test_a_typoed_group_fails_check_instead_of_broadcasting_to_nobody(self):
+        # A bad group address is only rejected per-send, and sends swallow
+        # OSError — the frame counter ticks while zero targets receive.
+        rc, err = self._check(["--group", "239.7.7.300"])
+        self.assertEqual(2, rc)
+        self.assertIn("group", err)
+
+    def test_a_zero_or_negative_rate_is_rejected(self):
+        self.assertEqual(2, self._check(["--hz", "0"])[0])
+        self.assertEqual(2, self._check(["--hz", "-5"])[0])
+
+    def test_an_infinite_rate_is_rejected(self):
+        # "inf" parses as a float; the period becomes 0 and the loop floods
+        # the vehicle network flat out.
+        self.assertEqual(2, self._check(["--hz", "inf"])[0])
+
+    def test_an_out_of_range_port_is_rejected(self):
+        self.assertEqual(2, self._check(["--port", "70000"])[0])
+
+    def test_nan_on_the_legacy_flags_is_rejected(self):
+        # The legacy single-camera path bypasses parse_camera_spec, so it must
+        # go through the same validation gate.
+        self.assertEqual(2, self._check(["--hfov", "nan"])[0])
+        self.assertEqual(2, self._check(["--far-h", "nan"])[0])
+
+    def test_a_nan_dmx_calibration_is_rejected_when_dmx_is_on(self):
+        # A NaN pan-center aims the head at NaN, which parks it at 0 forever
+        # while every status line looks configured.
+        self.assertEqual(2, self._check(["--dmx", "fake", "--dmx-pan-center", "nan"])[0])
+        self.assertEqual(0, self._check(["--dmx", "fake", "--dmx-pan-center", "270"])[0])
+
+    def test_the_live_path_gets_the_same_loud_error_not_a_traceback(self):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            rc = main(["--once", "--iface-ip", "not-an-ip"])
+        self.assertEqual(2, rc)
+        self.assertIn("iface-ip", err.getvalue())
+
+
 class TuningFlagsTest(unittest.TestCase):
     def test_global_flags_become_the_rig_default(self):
         mounts = _mounts_from_args(

@@ -121,6 +121,46 @@ class ParseSpecTest(unittest.TestCase):
             parse_camera_spec("")
 
 
+class NonFiniteSpecTest(unittest.TestCase):
+    """float() accepts "nan" and "inf", and every guard downstream is a
+    comparison NaN answers False to. Before these were rejected, az=nan passed
+    --check and then turned every bearing from that camera into the string
+    "nan" on the wire — which the tablet parser silently drops, so the service
+    looked green while the HUD was blind to that whole arc. farh=nan was
+    worse still: every contact read as size 1.0, touching the vehicle."""
+
+    def test_a_nan_mount_angle_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_camera_spec("fake:az=nan")
+
+    def test_an_infinite_fov_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_camera_spec("fake:fov=inf")
+
+    def test_non_finite_tuning_values_are_rejected(self):
+        for key in ("minarea", "match", "farh", "nearh", "azrate", "minsize"):
+            with self.assertRaises(ValueError, msg=f"{key}=nan must not pass"):
+                parse_camera_spec(f"fake:{key}=nan")
+
+    def test_a_nan_fps_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_camera_spec("fake:fps=nan")
+
+    def test_a_nan_default_flowing_in_from_the_rig_is_still_caught(self):
+        # The rig-wide CLI flags come from argparse, which also accepts "nan";
+        # a bad default must not sneak into a spec that never mentions it.
+        bad_default = CameraMount("d", fov_deg=float("nan"))
+        with self.assertRaises(ValueError):
+            parse_camera_spec("rgb:az=90", defaults=bad_default)
+
+    def test_a_camera_name_that_is_a_path_is_rejected(self):
+        # The name becomes a recording directory (<dump>/<name>/...); a
+        # separator would scatter frames outside the dump dir.
+        for bad in ("a/b", "..", "port\\aft"):
+            with self.assertRaises(ValueError, msg=f"name={bad!r} must not pass"):
+                parse_camera_spec(f"fake:name={bad}")
+
+
 class TuningSpecTest(unittest.TestCase):
     """The field-tuning knobs must be reachable without editing code — that's
     the whole point of them, since none can be got right until the rig is on the

@@ -145,6 +145,16 @@ class SizeTest(unittest.TestCase):
         self.assertEqual(1.0, bbox_height_to_size(2.0))
         self.assertEqual(0.0, bbox_height_to_size(-1.0))
 
+    def test_a_nan_calibration_reads_far_not_touching(self):
+        # NaN slips through `near_h <= far_h` (False) and then through
+        # min/max clamping (which silently picks the limit), so a nan far_h
+        # used to make EVERY contact size 1.0 — reported touching the car,
+        # and always past the collision min-size gate. Broken calibration
+        # must degrade to "far", the honest unknown.
+        self.assertEqual(0.0, bbox_height_to_size(0.5, float("nan"), 0.9))
+        self.assertEqual(0.0, bbox_height_to_size(0.5, 0.05, float("nan")))
+        self.assertEqual(0.0, bbox_height_to_size(float("nan"), 0.05, 0.9))
+
 
 class CollisionTest(unittest.TestCase):
     def test_first_sighting_never_flags(self):
