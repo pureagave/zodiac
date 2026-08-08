@@ -6,6 +6,44 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — the overnight run found a real detector bug: FFC read as a crowd
+
+**Measured, not reasoned about.** A passive bus listener watched the live
+thermal against an empty room for **7.7 hours: 421,309 frames, 104 frames with
+contacts (0.025%), 120 contacts, and 10 phantom COLLISION flags.** The arrival
+pattern was the tell — **nine short bursts, 83 of 92 five-minute windows
+completely silent.** A noise floor is uniform; that is a discrete sensor event.
+
+**Cause, found by instrumenting the real board:** every few minutes the Lepton
+re-baselines (flat-field correction) and **100% of pixels move by >40 counts**
+with the frame median stepping **128–232**. Cadence measured at ~3 minutes
+(92 s, 275 s, 458 s). The background subtractor reads a whole-frame step as
+movement everywhere. The per-frame median centre already absorbed the *drift* a
+correction leaves behind — nothing guarded the frame where it happens.
+
+**Fix:** `ReBaselineGuard` in `normalize.py`. The foreground mask already tells
+us — a body is a few percent of the frame even up close, a re-baseline is all of
+it — so the threshold never has to be delicate. Detections are dropped across
+the step and for 3 frames after while MOG2 re-absorbs. Deliberately suppression,
+not correction: there is no recovering what the scene did during the step, and
+inventing contacts is worse than briefly having none. Cost is a ~⅓ s blind
+window every few minutes.
+
+**Why this was worth chasing rather than filing as an acceptable rate:** one
+false `! BRAKE !` every 45 minutes is exactly how a driver learns to ignore the
+real one.
+
+A mutation showed the detector could ignore the guard entirely and every test
+still passed — so there is now a wiring test (recording fake `cv2`, no OpenCV
+needed) asserting the guard short-circuits *before* contour extraction. That
+mutation is caught now.
+
+Post-fix measurement is running (`~/nightwatch/fp2.log`). **Not yet conclusive
+— at 10 minutes it is clean, but the pre-fix run's first burst was at 15
+minutes, so this needs hours before it means anything.**
+
+jetson **296 tests**. Also removed `/opt/zodiac.pre-git-20260807`.
+
 ## 2026-08-08 (overnight) — FOV settled, alerts latched, alert path proven on hardware
 
 **The Lepton UW's 160 deg is the DIAGONAL, not the horizontal.** FLIR never
