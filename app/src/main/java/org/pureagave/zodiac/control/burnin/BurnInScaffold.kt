@@ -3,6 +3,7 @@ package org.pureagave.zodiac.control.burnin
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -30,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import timber.log.Timber
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -60,6 +62,12 @@ private const val SHIFT_Y_RATE = 0.5f
 @Composable
 fun burnInScaffold(
     manager: BurnInMitigationManager,
+    /**
+     * Label for the layout currently on screen (the active concept). Only used
+     * to key the burn-in ledger — within one concept the chrome that risks
+     * burning is the same pixels the whole time it's displayed.
+     */
+    zone: String = "cockpit",
     content: @Composable () -> Unit,
 ) {
     val phase by manager.phase.collectAsStateWithLifecycle()
@@ -93,6 +101,15 @@ fun burnInScaffold(
     }
 
     var tuningOpen by remember { mutableStateOf(false) }
+
+    // Burn-in stress ledger. Costs a map lookup per (zone, phase) transition
+    // and nothing per frame; the running total goes to the rolling log so the
+    // record survives reboots without another persistence layer.
+    val ledger = remember { BurnInLedger { SystemClock.elapsedRealtime() } }
+    LaunchedEffect(zone, phase) {
+        ledger.mark("$zone/$phase")
+        Timber.i(ledger.report())
+    }
 
     val tSec = remember { mutableFloatStateOf(0f) }
     val animating = phase != BurnInPhase.SLEEP

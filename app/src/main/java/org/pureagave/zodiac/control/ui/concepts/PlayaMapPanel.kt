@@ -24,6 +24,7 @@ import org.pureagave.zodiac.control.core.geo.LatLon
 import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.geo.PlayaViewport
+import org.pureagave.zodiac.control.core.model.MapCameraState
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.core.model.PlayaMap
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
@@ -65,25 +66,29 @@ enum class EgoStyle { TRIANGLE, HEX }
 data class MapUiInputs(
     val playaMap: PlayaMap?,
     val egoFix: GpsFix?,
-    val cameraOverride: PlayaPoint?,
-    val viewRotationDeg: Double,
-    val pixelsPerMeter: Double,
-    val tiltDeg: Int,
-    val mapMode: MapMode,
+    /**
+     * The whole camera as one value (A2). Held grouped rather than flattened
+     * specifically because the viewport `remember` below keys off it: five
+     * separate keys were five chances to add a camera field and forget to
+     * invalidate on it, which shows up as a map that silently stops following.
+     */
+    val camera: MapCameraState,
     val headingDeg: Int,
     val pois: List<PlayaPoi>,
     val routeM: List<PlayaPoint>,
 ) {
+    val cameraOverride: PlayaPoint? get() = camera.cameraOverride
+    val viewRotationDeg: Double get() = camera.viewRotationDeg
+    val pixelsPerMeter: Double get() = camera.pixelsPerMeter
+    val tiltDeg: Int get() = camera.tiltDeg
+    val mapMode: MapMode get() = camera.mapMode
+
     companion object {
         fun from(state: CockpitUiState): MapUiInputs =
             MapUiInputs(
                 playaMap = state.playaMap,
                 egoFix = state.egoFix,
-                cameraOverride = state.cameraOverride,
-                viewRotationDeg = state.viewRotationDeg,
-                pixelsPerMeter = state.pixelsPerMeter,
-                tiltDeg = state.tiltDeg,
-                mapMode = state.mapMode,
+                camera = state.camera,
                 headingDeg = state.headingDeg,
                 pois = state.pois,
                 routeM = state.routeWaypointsM,
@@ -223,10 +228,8 @@ fun playaMapPanel(
     val viewport: PlayaViewport? =
         remember(
             inputs.egoFix?.location,
-            inputs.cameraOverride,
-            inputs.viewRotationDeg,
-            inputs.pixelsPerMeter,
-            inputs.tiltDeg,
+            // One key for the whole camera — see MapUiInputs.camera.
+            inputs.camera,
             tilt,
             canvasSize,
         ) {

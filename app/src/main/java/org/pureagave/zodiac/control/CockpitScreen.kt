@@ -52,7 +52,7 @@ fun cockpitScreen(
     // palette from LocalCockpitTheme instead of being handed one. The concepts
     // share a palette today, so this changes no pixels — it's the seam that
     // lets one diverge, and what the second map consumer (A3) will need.
-    burnInScaffold(manager = burnInManager) {
+    burnInScaffold(manager = burnInManager, zone = state.concept.name) {
         provideCockpitTheme(ThemeTracker) {
             Box(Modifier.fillMaxSize()) {
                 when (state.concept) {
