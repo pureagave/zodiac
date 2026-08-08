@@ -6,6 +6,47 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — track mirroring: the Jetson is authoritative, everything else pulls
+
+Rob asked to mirror the breadcrumb to a tablet or two, and to back it up when
+there's internet. First half is built and verified.
+
+**Direction was the design decision.** The Jetson pushing to tablets would
+make every new mirror a config change on the one box that must not be fiddled
+with mid-burn, and a wedged push could in principle disturb the recorder.
+Instead it *serves* the track read-only over HTTP on the vehicle LAN and
+mirrors pull. Adding a mirror is then a client-side decision, and a broken
+mirror cannot touch the recording.
+
+It also means a laptop or a phone can grab the whole burn with `curl`, today,
+with nothing installed:
+
+```
+curl http://192.168.86.235:8087/                              # index + sizes
+curl -O http://192.168.86.235:8087/zodiac-track-2026-08-30.csv
+```
+
+**It serves position history, so it is locked down by construction:** GET/HEAD
+only, exactly one directory, and `safe_name()` *rejects* rather than sanitises
+— a request that needed cleaning up was not a request for a track file. Eight
+tests including six traversal attacks (encoded, doubled, nested); widening the
+filename pattern fails three of them, so the guard is load-bearing. Verified on
+the box: `/../../../../etc/passwd` returns **403**, real files return 200.
+
+The index is newest-first with sizes so a mirror can stop as soon as it
+recognises a file it already has, instead of walking the whole burn every poll.
+
+Both services are `enabled` — they come back after a power cycle, which is the
+only property that matters for something recording a two-week event.
+
+**Still to build:** the Android mirror client (periodic pull into the tablet's
+external files dir) and the internet backup. On the backup — the destination
+must be Rob's explicit choice, not something I pick: this is a complete record
+of where the vehicle has been, and uploading it anywhere is his call to make,
+not a default to inherit.
+
+jetson **320** tests.
+
 ## 2026-08-08 — a full-burn breadcrumb, and the art feed answers "what IS that?"
 
 **Breadcrumb recorder is live on the Jetson and enabled at boot.**
