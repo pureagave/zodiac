@@ -380,6 +380,15 @@ class MultiDetectorTest(unittest.TestCase):
         self.assertEqual(1, len(merged))
         self.assertEqual(1, err.getvalue().count("aft"))  # reported once, then quiet
 
+    def test_every_real_camera_type_honours_the_close_contract(self):
+        # MultiDetector.close politely skips anything without a close(), so a
+        # camera class that forgets one leaks its V4L2 handle in silence —
+        # UvcCamera shipped that way while ThermalCamera had close() twice.
+        from zvision.capture import ThermalCamera, UvcCamera
+
+        self.assertTrue(callable(getattr(UvcCamera, "close", None)))
+        self.assertTrue(callable(getattr(ThermalCamera, "close", None)))
+
     def test_close_closes_every_camera(self):
         cams = [
             (CameraMount("a"), StubDetector([])),

@@ -11,6 +11,7 @@ from zvision.normalize import (
     DEFAULT_MIN_SPREAD,
     TRACK_ID_LIMIT,
     assign_track_id,
+    image_rows,
     stretch_window,
 )
 
@@ -106,6 +107,24 @@ class StretchRobustnessTest(unittest.TestCase):
     def test_a_corrupt_ema_recovers(self):
         _, scale, ema = stretch_window(0.0, 500.0, float("nan"))
         self.assertAlmostEqual(500.0, ema, places=6)
+
+
+class TelemetryCropTest(unittest.TestCase):
+    """Both halves of the 2026-08-07 telemetry-row trap, pinned. Cropping too
+    little leaves a permanent band of false motion along the bottom edge;
+    cropping unconditionally eats two real image rows off the mode that has no
+    telemetry at all."""
+
+    def test_the_taller_y16_mode_loses_exactly_its_telemetry_rows(self):
+        self.assertEqual(120, image_rows(122, 120))
+
+    def test_a_frame_at_sensor_height_is_untouched(self):
+        # Asking the driver for 120 returns 120: there is nothing to crop, and
+        # the first fix cropped anyway, silently discarding real image.
+        self.assertEqual(120, image_rows(120, 120))
+
+    def test_a_short_frame_is_never_shortened_further(self):
+        self.assertEqual(118, image_rows(118, 120))
 
 
 class TrackAssignmentTest(unittest.TestCase):

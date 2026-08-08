@@ -82,6 +82,20 @@ def stretch_window(
     return centre - scale, scale, new_ema
 
 
+def image_rows(actual_rows: int, expected_rows: int) -> int:
+    """How many rows of a thermal frame are *image*, as opposed to appended
+    Lepton telemetry.
+
+    Both 2026-08-07 outcomes live in this one comparison. The taller Y16 mode
+    returns 122 rows for a 120-row sensor — the last two are telemetry, and
+    left in place they are a permanent band of false motion along the bottom
+    edge. But a mode that returns exactly the sensor height has no telemetry
+    to crop, and the first fix cropped unconditionally, silently discarding
+    two real image rows. So: crop only what exceeds the sensor height, and
+    never shorten a frame that is already at or under it."""
+    return expected_rows if actual_rows > expected_rows else actual_rows
+
+
 def assign_track_id(
     cx: float,
     cy: float,

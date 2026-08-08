@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .normalize import stretch_window
+from .normalize import image_rows, stretch_window
 
 
 class UvcCamera:
@@ -69,6 +69,13 @@ class UvcCamera:
     def read(self) -> Optional["object"]:
         ok, frame = self._cap.read()
         return frame if ok else None
+
+    def close(self) -> None:
+        # MultiDetector's shutdown politely skips cameras without a close();
+        # before this existed, RGB V4L2 handles were simply never released.
+        cap = getattr(self, "_cap", None)
+        if cap is not None:
+            cap.release()
 
 
 class ThermalCamera:
@@ -197,9 +204,9 @@ class ThermalCamera:
             f = f[:, :, 0]
         # Telemetry rows only exist in the taller mode (122 for a 120-row
         # sensor). Cropping unconditionally eats real image rows — measured:
-        # asking for 120 returns 120, and a blind crop left us with 118.
-        if f.shape[0] > self._rows:
-            f = f[: self._rows]
+        # asking for 120 returns 120, and a blind crop left us with 118. The
+        # decision lives in zvision.normalize so it is pinned by a unit test.
+        f = f[: image_rows(f.shape[0], self._rows)]
         f = f.astype(np.float32)
         # Median, not a percentile endpoint: a hot object barely moves it, so
         # the mapping doesn't lurch when someone walks into frame.
@@ -215,11 +222,6 @@ class ThermalCamera:
         )
         stretched = np.clip((f - lo) / (2.0 * scale) * 255.0, 0, 255).astype(np.uint8)
         return self._cv2.cvtColor(stretched, self._cv2.COLOR_GRAY2BGR)
-
-    def close(self) -> None:
-        cap = getattr(self, "_cap", None)
-        if cap is not None:
-            cap.release()
 
     def close(self) -> None:
         cap = getattr(self, "_cap", None)
