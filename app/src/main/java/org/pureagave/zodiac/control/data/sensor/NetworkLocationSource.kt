@@ -18,6 +18,7 @@ import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceError
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.telemetry.AudioLevel
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.telemetry.VehicleTelemetry
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
@@ -94,9 +95,22 @@ class NetworkLocationSource(
     val telemetry: StateFlow<VehicleTelemetry?> = _telemetry.asStateFlow()
 
     // Low-rate Sensor Hub channels (ambient light, shock, health, odometer),
-    // bundled into one flow for the cockpit. Audio ($ZAUD) is not consumed here.
+    // bundled into one flow for the cockpit.
     private val _beaconSensors = MutableStateFlow(BeaconSensors())
     val beaconSensors: StateFlow<BeaconSensors> = _beaconSensors.asStateFlow()
+
+    /**
+     * Mic level from `$ZAUD` (~15 Hz), kept OUT of [beaconSensors] on purpose:
+     * it updates two orders of magnitude faster than the other channels, and
+     * folding it in would rewrite that whole value — and every consumer of it —
+     * fifteen times a second. The only subscriber is the passenger display's
+     * audio visualiser; the driver-facing cockpit never reads it.
+     *
+     * Null when the beacon has gone quiet, so the visualiser can flatline
+     * honestly rather than hold the last waveform forever.
+     */
+    private val _audioLevel = MutableStateFlow<AudioLevel?>(null)
+    val audioLevel: StateFlow<AudioLevel?> = _audioLevel.asStateFlow()
 
     override suspend fun start() {
         job?.cancel()
@@ -124,6 +138,10 @@ class NetworkLocationSource(
                         // an event counter the ViewModel diffs against, and
                         // rewinding it would swallow the next real impact.
                         _beaconSensors.update { BeaconSensors(shockCount = it.shockCount) }
+                        // Same reasoning: a visualiser still dancing to a
+                        // waveform from a beacon that died an hour ago is a
+                        // display telling a lie.
+                        _audioLevel.value = null
                     }
                     delay(staleMs / 2)
                 }
@@ -229,13 +247,7 @@ class NetworkLocationSource(
             // forwarder) would otherwise keep a dead hub's battery, satellite
             // count and uptime on the ops footer indefinitely.
             if (line.startsWith(HUB_SENTENCE_PREFIX)) beaconRxMs = nowMs()
-            NmeaParser.parseVehicleTelemetry(line)?.let { _telemetry.value = it }
-            NmeaParser.parseAmbientLight(line)?.let { al -> _beaconSensors.update { it.copy(ambientLight = al) } }
-            NmeaParser.parseBeaconHealth(line)?.let { h -> _beaconSensors.update { it.copy(beaconHealth = h) } }
-            NmeaParser.parseOdometer(line)?.let { o -> _beaconSensors.update { it.copy(odometer = o) } }
-            NmeaParser.parseShockEvent(line)?.let { s ->
-                _beaconSensors.update { it.copy(lastShockG = s.peakG, shockCount = it.shockCount + 1) }
-            }
+            ingestSensorChannels(line)
             NmeaParser.parse(line)?.let {
                 lastFix = it
                 positionRxMs = nowMs()
@@ -250,6 +262,23 @@ class NetworkLocationSource(
                 val compass = lastHeadingDeg?.takeIf { nowMs() - headingRxMs <= headingStaleMs }
                 _state.value = LocationSourceState.Active(fix.copy(headingDeg = compass ?: fix.headingDeg))
             }
+        }
+    }
+
+    /**
+     * The hub's own proprietary channels, split out from [ingest] so the
+     * position/heading merge stays readable as one idea and this stays a flat
+     * list of independent sentence handlers — adding a seventh channel
+     * shouldn't make the fix logic harder to follow.
+     */
+    private fun ingestSensorChannels(line: String) {
+        NmeaParser.parseVehicleTelemetry(line)?.let { _telemetry.value = it }
+        NmeaParser.parseAmbientLight(line)?.let { al -> _beaconSensors.update { it.copy(ambientLight = al) } }
+        NmeaParser.parseAudioLevel(line)?.let { _audioLevel.value = it }
+        NmeaParser.parseBeaconHealth(line)?.let { h -> _beaconSensors.update { it.copy(beaconHealth = h) } }
+        NmeaParser.parseOdometer(line)?.let { o -> _beaconSensors.update { it.copy(odometer = o) } }
+        NmeaParser.parseShockEvent(line)?.let { s ->
+            _beaconSensors.update { it.copy(lastShockG = s.peakG, shockCount = it.shockCount + 1) }
         }
     }
 

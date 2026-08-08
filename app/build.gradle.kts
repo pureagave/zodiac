@@ -20,7 +20,12 @@ android {
 
     defaultConfig {
         applicationId = "org.pureagave.zodiac.control"
-        minSdk = 30
+        // 28 = Android 9 / Fire OS 7, which is what the Fire HD 10 9th gen and
+        // Fire HD 8 10th gen run. Nothing in the app needs 30 — every API gate
+        // in the code is >= S (31) and Lint reports no NewApi at 28. Older 8"
+        // Fires (8th gen and earlier) are Fire OS 6/5 = API 25/22 and would
+        // need a further drop; check each with `getprop ro.build.version.sdk`.
+        minSdk = 28
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
