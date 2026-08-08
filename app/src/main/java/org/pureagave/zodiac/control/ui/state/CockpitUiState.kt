@@ -9,6 +9,7 @@ import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.model.CockpitConcept
 import org.pureagave.zodiac.control.core.model.CockpitMode
 import org.pureagave.zodiac.control.core.model.FollowMode
+import org.pureagave.zodiac.control.core.model.MapCameraState
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.core.model.PlayaMap
 import org.pureagave.zodiac.control.core.navigation.NavigationCue
@@ -52,24 +53,13 @@ data class CockpitUiState(
     val playaMap: PlayaMap? = null,
     val selectedLocationSource: LocationSourceType = LocationSourceType.FAKE,
     val locationState: LocationSourceState = LocationSourceState.Disconnected,
-    val mapMode: MapMode = MapMode.TOP,
-    val tiltDeg: Int = DEFAULT_TILT_DEG,
-    val pixelsPerMeter: Double = DEFAULT_PIXELS_PER_METER,
     /**
-     * Absolute camera position in playa metres when [followMode] is
-     * [FollowMode.FREE]. Null in [FollowMode.TRACK_UP] — the renderer
-     * centres on the live GPS fix instead.
+     * Where the map camera is looking — mode, tilt, zoom, free-pan position,
+     * follow mode and view rotation, as one value (A2). Writers must go
+     * through this; the flat properties below are read-only conveniences so
+     * the render path keeps its short names.
      */
-    val cameraOverride: PlayaPoint? = null,
-    val followMode: FollowMode = FollowMode.TRACK_UP,
-    /**
-     * Compass direction (degrees CW from true north) currently aligned with
-     * the top of the viewport. In [FollowMode.TRACK_UP] this tracks
-     * [headingDeg] so the ego always points up. In [FollowMode.FREE] the
-     * two-finger rotate gesture moves it independently of the ego's
-     * physical heading.
-     */
-    val viewRotationDeg: Double = 0.0,
+    val camera: MapCameraState = MapCameraState.DEFAULT,
     val mapLoadError: String? = null,
     val concept: CockpitConcept = CockpitConcept.RADAR,
     val navCue: NavigationCue = NavigationCue.Unknown,
@@ -179,9 +169,11 @@ data class CockpitUiState(
         get() = BeaconReadout(odometer = odometer, health = beaconHealth, shockG = shockAlertG)
 
     companion object {
-        const val DEFAULT_TILT_DEG: Int = 40
-        const val MIN_TILT_DEG: Int = 0
-        const val MAX_TILT_DEG: Int = 80
+        // Camera bounds now live on MapCameraState (A2); re-exported here
+        // because call sites across the UI already reach for them by this name.
+        const val DEFAULT_TILT_DEG: Int = MapCameraState.DEFAULT_TILT_DEG
+        const val MIN_TILT_DEG: Int = MapCameraState.MIN_TILT_DEG
+        const val MAX_TILT_DEG: Int = MapCameraState.MAX_TILT_DEG
 
         // Vehicle command bounds. Heading is full circle exclusive of 360 (which
         // wraps to 0). Speed cap is a soft limit on what the cockpit will ever
@@ -194,15 +186,22 @@ data class CockpitUiState(
         // Map zoom in screen pixels per playa meter. Defaults frame the ~5 km
         // city radius at the typical Fire-tablet viewport. Mirrors the bounds
         // enforced by MapTouchInput's pinch handler.
-        const val DEFAULT_PIXELS_PER_METER: Double = 0.18
-        const val MIN_PIXELS_PER_METER: Double = 0.05
-        const val MAX_PIXELS_PER_METER: Double = 5.0
-
-        // Hard cap on how far the camera can drift from ego in [FollowMode.FREE].
-        // Keeps a stuck/dragging finger from sliding the city far off-canvas
-        // where the recenter button might be the only escape.
-        const val MAX_CAMERA_OFFSET_M: Double = 5_000.0
+        const val DEFAULT_PIXELS_PER_METER: Double = MapCameraState.DEFAULT_PIXELS_PER_METER
+        const val MIN_PIXELS_PER_METER: Double = MapCameraState.MIN_PIXELS_PER_METER
+        const val MAX_PIXELS_PER_METER: Double = MapCameraState.MAX_PIXELS_PER_METER
+        const val MAX_CAMERA_OFFSET_M: Double = MapCameraState.MAX_CAMERA_OFFSET_M
     }
+
+    // Read-only views onto [camera]. Kept because ~90 call sites across the
+    // render path read them by these names, and because a renderer has no
+    // business writing the camera — only CockpitViewModel does, and it writes
+    // the whole value at once so an inconsistent pair can't slip through.
+    val mapMode: MapMode get() = camera.mapMode
+    val tiltDeg: Int get() = camera.tiltDeg
+    val pixelsPerMeter: Double get() = camera.pixelsPerMeter
+    val cameraOverride: PlayaPoint? get() = camera.cameraOverride
+    val followMode: FollowMode get() = camera.followMode
+    val viewRotationDeg: Double get() = camera.viewRotationDeg
 
     val egoFix: GpsFix? = (locationState as? LocationSourceState.Active)?.fix
 

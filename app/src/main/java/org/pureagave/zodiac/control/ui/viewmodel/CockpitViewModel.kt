@@ -148,9 +148,12 @@ class CockpitViewModel(
             _uiState.update {
                 it.copy(
                     selectedLocationSource = saved.locationSource,
-                    mapMode = saved.mapMode,
-                    tiltDeg = saved.tiltDeg,
-                    pixelsPerMeter = saved.pixelsPerMeter,
+                    camera =
+                        it.camera.copy(
+                            mapMode = saved.mapMode,
+                            tiltDeg = saved.tiltDeg,
+                            pixelsPerMeter = saved.pixelsPerMeter,
+                        ),
                     concept = saved.concept,
                 )
             }
@@ -230,7 +233,7 @@ class CockpitViewModel(
                         current.copy(
                             locationState = state,
                             headingDeg = newHeading,
-                            viewRotationDeg = newRotation,
+                            camera = current.camera.copy(viewRotationDeg = newRotation),
                         )
                     }
                     recomputeNavCue()
@@ -320,19 +323,19 @@ class CockpitViewModel(
     }
 
     fun setMapMode(mode: MapMode) {
-        _uiState.update { it.copy(mapMode = mode) }
+        _uiState.update { it.copy(camera = it.camera.copy(mapMode = mode)) }
         viewModelScope.launch { preferences.setMapMode(mode) }
     }
 
     fun setTiltDeg(deg: Int) {
         val clamped = deg.coerceIn(CockpitUiState.MIN_TILT_DEG, CockpitUiState.MAX_TILT_DEG)
-        _uiState.update { it.copy(tiltDeg = clamped) }
+        _uiState.update { it.copy(camera = it.camera.copy(tiltDeg = clamped)) }
         viewModelScope.launch { preferences.setTiltDeg(clamped) }
     }
 
     fun setPixelsPerMeter(zoom: Double) {
         val clamped = zoom.coerceIn(CockpitUiState.MIN_PIXELS_PER_METER, CockpitUiState.MAX_PIXELS_PER_METER)
-        _uiState.update { it.copy(pixelsPerMeter = clamped) }
+        _uiState.update { it.copy(camera = it.camera.copy(pixelsPerMeter = clamped)) }
         // Pinch is a map gesture — counts as user interaction in FREE mode
         // and resets the auto-recenter timer, but doesn't itself switch
         // out of TRACK_UP (the camera still tracks ego, just at new zoom).
@@ -361,7 +364,7 @@ class CockpitViewModel(
                     eastM = (fromCamera.eastM + dEastM).coerceIn(ego.eastM - cap, ego.eastM + cap),
                     northM = (fromCamera.northM + dNorthM).coerceIn(ego.northM - cap, ego.northM + cap),
                 )
-            current.copy(cameraOverride = newCamera, followMode = FollowMode.FREE)
+            current.copy(camera = current.camera.copy(cameraOverride = newCamera, followMode = FollowMode.FREE))
         }
         scheduleAutoRecenter()
     }
@@ -382,8 +385,7 @@ class CockpitViewModel(
             val raw = current.viewRotationDeg + deltaDeg
             val normalized = ((raw % FULL_CIRCLE_DEG) + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
             current.copy(
-                viewRotationDeg = normalized,
-                followMode = FollowMode.FREE,
+                camera = current.camera.copy(viewRotationDeg = normalized, followMode = FollowMode.FREE),
             )
         }
         scheduleAutoRecenter()
@@ -400,11 +402,9 @@ class CockpitViewModel(
         autoRecenterJob?.cancel()
         autoRecenterJob = null
         _uiState.update { current ->
-            current.copy(
-                cameraOverride = null,
-                viewRotationDeg = current.headingDeg.toDouble(),
-                followMode = FollowMode.TRACK_UP,
-            )
+            // One named operation rather than three coordinated field
+            // edits — recentring is a single idea and now reads as one.
+            current.copy(camera = current.camera.recentredOn(current.headingDeg))
         }
     }
 
@@ -425,8 +425,12 @@ class CockpitViewModel(
                 // In TRACK_UP we keep the display rotation glued to the ego's
                 // heading; in FREE the user has explicitly rotated the
                 // display, so leave that alone even if heading changes.
-                viewRotationDeg =
-                    if (current.followMode == FollowMode.TRACK_UP) clamped.toDouble() else current.viewRotationDeg,
+                camera =
+                    if (current.camera.isFree) {
+                        current.camera
+                    } else {
+                        current.camera.copy(viewRotationDeg = clamped.toDouble())
+                    },
             )
         }
         // Steer the synthetic GPS — the next fix will integrate position
