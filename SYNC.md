@@ -6,6 +6,45 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — Fire HD 10 back on the bench, and it corrected a claim I had made
+
+Rob plugged in the **Fire HD 10** (`KFTUWI`, API 30) and the **A54** over USB.
+Both updated to the current build and verified.
+
+**A claim in this log and the README was wrong.** M10 said the rolling log
+"comes off the tablet with a plain `adb pull` — no root, no debug build". True
+on the Samsungs. **False on the Fire**, which is the device most likely to need
+a postmortem: Fire OS denies shell access to `/sdcard/Android/data`, so `ls`,
+`adb pull` and even `run-as` all return "Permission denied". The log is being
+written — logcat carries the boot line and the path — it simply cannot be read
+over adb. Docs corrected.
+
+**Which means today's on-device log viewer is the only way to read logs on the
+Fire.** It was built for "no laptop next to the vehicle"; it turns out to also
+be the only route on a third of the fleet. Verified on the Fire through the
+corner long-press.
+
+**The v2 cache bump earned itself.** Both devices logged `map: 2026 parsed from
+GeoJSON (573 streets, 561 tagged, 12 plazas)` — *parsed*, not cached, because
+the schema bump invalidated their stale v1 caches. The Fire had been offline
+since before this morning's GIS fix, so it was carrying exactly the kind-less
+parse the bump exists to evict. That bump was reasoning this morning; this is
+the device that proves it was needed.
+
+**M14 is settled on the device it was filed against.** The RECENTER chip fits
+on the Fire at 1920×1200 with room to spare. Both concepts render correctly at
+the perf floor, including today's new GPS status line.
+
+**The performance section is now unblocked** — every item in it says "validate
+on a real Fire HD 10 before landing", and the Fire is on the bench. Not started;
+it's a profiling campaign (gfxinfo framestats, recomposition counts,
+Macrobenchmark) rather than a keyboard task, and worth agreeing scope first.
+
+Also confirmed incidentally: the A54 is on DRIVER and reading the Jetson live
+(`vision: feed LIVE`, HUD showing `0 CONTACTS CLEAR` — and CLEAR can only
+render when the feed is LIVE), and the burn-in ledger is recording on both
+(`burn-in: DRIVER/ACTIVE`, `burn-in: MAP/ACTIVE`).
+
 ## 2026-08-08 — the keyboard-only backlog is empty, and three of its entries were fiction
 
 Rob's call on the one open question: **Apache-2.0**. `LICENSE` added, plus a
