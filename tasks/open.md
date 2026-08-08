@@ -30,6 +30,12 @@ Ranked by consequence on the playa.
       widget, reports "Granularity GOOD", zvision drives pan/tilt/dimmer. Attach
       the moving head and aim it. Then **calibrate `pan_center_deg` / `pan_gain`**
       and `reach_half_deg` (currently 90°, i.e. forward + both sides).
+      **Manual is now in the repo** (`jetson/MOVING-HEAD.md`) and reading it
+      already fixed the dimmer channel (was 5 = colour wheel, is 8). Set the
+      fixture to **11-channel** mode, not 9 — the fine pan/tilt channels are
+      what make a slow follow smooth. One open question the manual doesn't
+      answer: **channel 9 is pan/tilt speed and it doesn't say which end is
+      fast.** We send 0; if the head lags a walking contact, try that first.
 - [ ] **Rig azimuth calibration** per camera against the vehicle nose, once the
       pod is mounted. An error rotates that camera's whole contact set.
 - [ ] **Pod assembly** — waiting on the germanium D20 window.

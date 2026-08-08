@@ -6,6 +6,40 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — the moving-head manual is in the repo, and it found a bug
+
+Rob's transcription lands as **`jetson/MOVING-HEAD.md`**, with a section on how
+zvision actually drives the fixture.
+
+**Reading it against our channel table found the dimmer on the wrong channel.**
+`TrackerConfig.dimmer_channel` was **5**. On this head channel 5 is the
+**colour wheel** (140-255 = "auto colour change, fast") and the dimmer is
+**channel 8**. The tracker light would have spun colours at full speed with the
+dimmer stuck at 0 — a fixture that looks dead on the bench with nothing in the
+logs to explain it, on the night we finally hang it. Pan/tilt/fine on 1-4 and
+the 540°/270° spans were all correct.
+
+**Two tests had hardcoded channel 5, so they agreed with the bug.** They now
+read `TrackerConfig().dimmer_channel`. That's the general lesson: an assertion
+that repeats the implementation's magic number can only ever confirm it.
+
+Two further traps are now asserted rather than assumed — **ch11 at 250-255 for
+5 s is a motor reset**, and **ch10 above 59 hands the head to its internal
+programs**, which fight explicit pan/tilt writes. We never write either, and a
+test says so, because "we happen not to touch it" is not a guarantee.
+
+**Set the fixture to 11-channel, not 9.** 8-bit pan over 540° is ~2.1° a step,
+visibly steppy on a slow follow; the fine channels are the entire reason for
+the longer personality. `NINE_CHANNEL_OVERRIDES` is there for a head stuck in
+the short mode.
+
+**What the manual does NOT settle, recorded so nobody re-derives it:** channel 9
+is pan/tilt movement speed with no indication of which end is fast. We send 0.
+If the head lags a walking contact on the bench, that is the first thing to
+try, and it interacts with our software slew ceilings.
+
+jetson **322** tests.
+
 ## 2026-08-08 — track mirroring: the Jetson is authoritative, everything else pulls
 
 Rob asked to mirror the breadcrumb to a tablet or two, and to back it up when
