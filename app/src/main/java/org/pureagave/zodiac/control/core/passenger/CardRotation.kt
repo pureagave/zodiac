@@ -27,6 +27,7 @@ class CardRotation(
     private var lastAdvanceMs = Long.MIN_VALUE
     private var interrupt: PassengerCard? = null
     private var interruptUntilMs = 0L
+    private var heldElapsedMs = 0L
 
     /**
      * Raise [card] over the rotation until [interruptMs] has passed. A second
@@ -45,10 +46,20 @@ class CardRotation(
     /**
      * What to show at [nowMs], given the cards that currently have data.
      * Returns null only when nothing at all is available.
+     *
+     * @param hold keep the current card up instead of advancing. Used when the
+     *   vehicle has stopped next to something worth reading: parked is exactly
+     *   when passengers have time for a long description, and rotating it away
+     *   mid-sentence is the most annoying thing this display could do. The
+     *   rotation clock is *paused* rather than ignored, so releasing the hold
+     *   resumes the current card's remaining dwell rather than instantly
+     *   flipping — otherwise pulling away would snatch the card at the moment
+     *   someone looked back up.
      */
     fun view(
         nowMs: Long,
         available: List<PassengerCard>,
+        hold: Boolean = false,
     ): PassengerView? {
         if (available.isEmpty()) {
             interrupt = null
@@ -66,12 +77,19 @@ class CardRotation(
         }
 
         if (lastAdvanceMs == Long.MIN_VALUE) lastAdvanceMs = nowMs
-        // A loop, not an if: a long interrupt can span several dwell periods,
-        // and the rotation should land where it would have been rather than
-        // creep forward one card per query.
-        while (nowMs - lastAdvanceMs >= dwellMs) {
-            lastAdvanceMs += dwellMs
-            index++
+        if (hold) {
+            // Slide the dwell window forward with the clock so no time accrues
+            // against the held card.
+            lastAdvanceMs = nowMs - heldElapsedMs
+        } else {
+            heldElapsedMs = (nowMs - lastAdvanceMs).coerceIn(0L, dwellMs)
+            // A loop, not an if: a long interrupt can span several dwell
+            // periods, and the rotation should land where it would have been
+            // rather than creep forward one card per query.
+            while (nowMs - lastAdvanceMs >= dwellMs) {
+                lastAdvanceMs += dwellMs
+                index++
+            }
         }
         // Reduce in place rather than letting `index` grow forever. Same
         // reasoning as the fake telemetry tick: a display that runs for months

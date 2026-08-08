@@ -134,6 +134,58 @@ class CardRotationTest {
         assertEquals(PassengerCard.WHERE, shrunk!!.card)
     }
 
+    // --- hold while parked -------------------------------------------------
+
+    @Test
+    fun holding_keeps_the_current_card_past_its_dwell() {
+        // Parked next to a piece of art: passengers finally have time to read
+        // the description, so the card must not rotate out from under them.
+        val r = rotation()
+        val first = r.view(0, all)!!.card
+
+        assertEquals(first, r.view(DWELL * 5, all, hold = true)!!.card)
+        assertEquals(first, r.view(DWELL * 20, all, hold = true)!!.card)
+    }
+
+    @Test
+    fun releasing_the_hold_resumes_the_remaining_dwell_not_an_instant_flip() {
+        // Pulling away must not snatch the card at the moment someone looks
+        // back up: the held card keeps whatever dwell it had left.
+        val r = rotation()
+        r.view(0, all)
+        r.view(DWELL / 4, all) // a quarter of the dwell has genuinely elapsed
+        r.view(DWELL * 10, all, hold = true)
+
+        val justAfterRelease = r.view(DWELL * 10 + 1, all)!!
+
+        assertEquals(all[0], justAfterRelease.card)
+    }
+
+    @Test
+    fun the_rotation_advances_normally_once_the_hold_ends() {
+        val r = rotation()
+        r.view(0, all)
+        r.view(DWELL * 10, all, hold = true)
+
+        // Enough time after release for the remaining dwell to expire.
+        val later = r.view(DWELL * 10 + DWELL + 1, all)!!
+
+        assertEquals(all[1], later.card)
+    }
+
+    @Test
+    fun an_event_still_interrupts_a_held_card() {
+        // Safety-adjacent framing aside, a bump is something the passenger
+        // just physically felt; it should still get its moment.
+        val r = rotation()
+        r.view(0, all)
+        r.interruptWith(PassengerCard.BUMP, nowMs = 1_000)
+
+        val during = r.view(2_000, all, hold = true)!!
+
+        assertEquals(PassengerCard.BUMP, during.card)
+    }
+
     private companion object {
         const val DWELL = 25_000L
         const val INTERRUPT = 8_000L

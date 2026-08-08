@@ -75,6 +75,11 @@ class DiscoveryRepository(
             o.put("subtitle", p.subtitle)
             p.hometown?.let { o.put("hometown", it) }
             p.description?.let { o.put("description", it) }
+            p.category?.let { o.put("category", it) }
+            p.program?.let { o.put("program", it) }
+            if (p.guidedTours) o.put("guided_tours", true)
+            if (p.selfGuidedTour) o.put("self_guided_tour_map", true)
+            if (p.needsVolunteers) o.put("needs_volunteers", true)
             p.point?.let {
                 o.put("eastM", it.eastM)
                 o.put("northM", it.northM)
@@ -100,6 +105,11 @@ class DiscoveryRepository(
                     subtitle = o.optString("subtitle"),
                     hometown = o.optStringOrNull("hometown"),
                     description = o.optStringOrNull("description"),
+                    category = o.optStringOrNull("category"),
+                    program = o.optStringOrNull("program"),
+                    guidedTours = o.optBoolean("guided_tours", false),
+                    selfGuidedTour = o.optBoolean("self_guided_tour_map", false),
+                    needsVolunteers = o.optBoolean("needs_volunteers", false),
                 )
             }
         } catch (e: Exception) {

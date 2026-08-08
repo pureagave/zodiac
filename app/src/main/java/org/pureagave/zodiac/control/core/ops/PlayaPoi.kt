@@ -35,6 +35,16 @@ data class PlayaPoi(
      * anyone look it up later.
      */
     val description: String? = null,
+    /** Placement category, e.g. "Open Playa" / "Deep Playa". 98% of the 2026 feed. */
+    val category: String? = null,
+    /** Funding programme, e.g. "Honorarium" / "Self-Funded". 100% of the feed. */
+    val program: String? = null,
+    /** The artist offers guided tours of the piece. */
+    val guidedTours: Boolean = false,
+    /** The piece is on the self-guided tour map. */
+    val selfGuidedTour: Boolean = false,
+    /** The artist is asking for hands — worth surfacing to a car full of people. */
+    val needsVolunteers: Boolean = false,
 )
 
 /**

@@ -8,8 +8,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
@@ -112,7 +115,12 @@ fun passengerScreen(
         }
     }
 
-    val view = rotation.view(tickMs, available)
+    // Parked next to a piece is exactly when there's time to read it, so hold
+    // the art card while the vehicle is stopped. Only art — holding the trip
+    // counter or the sun clock at a standstill would just be a stuck screen.
+    val stopped = (state.egoFix?.speedKph ?: state.speedKph.toDouble()) < STOPPED_KPH
+    val holding = stopped && nearbyArt.isNotEmpty() && rotation.view(tickMs, available)?.card == PassengerCard.ART
+    val view = rotation.view(tickMs, available, hold = holding)
 
     // Continuous phase for the scope trace and the souls sweep. Driven by a
     // Compose transition rather than the rotation ticker so the animation is
@@ -152,6 +160,7 @@ fun passengerScreen(
                     state = state,
                     audio = audio,
                     nearbyArt = nearbyArt,
+                    parked = stopped,
                     motion = PassengerMotion(phase, sweep),
                     sun = SunClock(now, sunrise, sunset),
                 ),
@@ -180,6 +189,8 @@ data class PassengerContext(
     val state: CockpitUiState,
     val audio: AudioLevel?,
     val nearbyArt: List<PlayaPoi>,
+    /** Vehicle is stopped — the art card holds and shows its full description. */
+    val parked: Boolean,
     val motion: PassengerMotion,
     val sun: SunClock,
 )
@@ -199,7 +210,7 @@ private fun passengerCard(
         PassengerCard.BUMP -> bumpCard(ctx.state, theme, urgent)
         PassengerCard.TRIP -> tripCard(ctx.state, theme)
         PassengerCard.SUN -> sunCard(theme, ctx.sun)
-        PassengerCard.ART -> artCard(ctx.nearbyArt, theme)
+        PassengerCard.ART -> artCard(ctx.nearbyArt, theme, ctx.parked)
     }
 }
 
@@ -311,11 +322,12 @@ private fun sunCard(
 private fun artCard(
     nearbyArt: List<PlayaPoi>,
     theme: ConceptTheme,
+    parked: Boolean,
 ) {
     val nearest = nearbyArt.firstOrNull()
     passengerCardFrame(
         theme = theme,
-        label = "ART NEARBY",
+        label = if (parked) "YOU ARE PARKED AT" else "ART NEARBY",
         value = nearest?.name?.uppercase() ?: "—",
         // The artist and where they're from, then the piece in their own
         // words. "What IS that?" is the question people actually ask from a
@@ -332,11 +344,45 @@ private fun artCard(
                 fontSize = BLURB_SP.sp,
                 lineHeight = BLURB_LINE_SP.sp,
                 textAlign = TextAlign.Center,
-                maxLines = BLURB_LINES,
+                // Parked, there's time to read the whole thing; moving, a
+                // glance is all anyone gets, so cap it and don't tease.
+                maxLines = if (parked) BLURB_LINES_PARKED else BLURB_LINES,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(BLURB_WIDTH_FRACTION),
             )
         }
+        val tags = artTags(nearest, nearbyArt.size)
+        if (tags.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = tags.joinToString("   "),
+                color = theme.secondary,
+                fontFamily = RetroFont,
+                fontSize = TAG_SP.sp,
+                letterSpacing = 2.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+/**
+ * The rest of what the feed knows, as short chips. Ordered by how much a
+ * passenger can act on it: an artist asking for hands beats a funding
+ * programme. Anything absent is simply omitted — no "UNKNOWN" filler.
+ */
+internal fun artTags(
+    poi: PlayaPoi?,
+    nearbyCount: Int,
+): List<String> {
+    if (poi == null) return emptyList()
+    return buildList {
+        if (poi.needsVolunteers) add("NEEDS VOLUNTEERS")
+        if (poi.guidedTours) add("GUIDED TOURS")
+        if (poi.selfGuidedTour) add("ON THE TOUR MAP")
+        poi.category?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+        poi.program?.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+        if (nearbyCount > 1) add("+${nearbyCount - 1} MORE NEARBY")
     }
 }
 
@@ -391,4 +437,7 @@ private const val METERS_PER_KM = 1_000.0
 private const val BLURB_SP = 17
 private const val BLURB_LINE_SP = 24
 private const val BLURB_LINES = 4
+private const val BLURB_LINES_PARKED = 10
+private const val TAG_SP = 15
+private const val STOPPED_KPH = 1.5
 private const val BLURB_WIDTH_FRACTION = 0.82f
