@@ -201,6 +201,31 @@ class TrackIdWrapTest(unittest.TestCase):
         self.assertEqual(4, tid)
         self.assertEqual(1, nxt)
 
+    def test_a_lapped_counter_never_mints_an_id_still_tracking_someone(self):
+        # The counter has gone all the way round while track 1 — a stationary
+        # person, maybe the one the DMX light is latched onto — stayed alive
+        # the whole time. Reissuing their id to a new blob splices two people
+        # into one track: the collision estimator sees a teleporting bearing
+        # and suppresses a real alarm, and the light follows the wrong person.
+        tracks = {1: (0.9, 0.9)}
+        tid, nxt = assign_track_id(0.1, 0.1, tracks, {}, 0.15, 1)
+        self.assertNotIn(tid, tracks, "minted a live track's id")
+        self.assertEqual(2, tid)
+        self.assertEqual(3, nxt)
+
+    def test_a_lapped_counter_skips_ids_already_handed_out_this_frame(self):
+        seen = {1: (0.5, 0.5)}
+        tid, _ = assign_track_id(0.1, 0.1, {}, seen, 0.15, 1)
+        self.assertNotIn(tid, seen)
+        self.assertEqual(2, tid)
+
+    def test_skipping_a_live_id_wraps_without_reaching_zero(self):
+        # The last id in the block is alive; the skip must lap to 1, never 0.
+        top = TRACK_ID_LIMIT - 1
+        tracks = {top: (0.9, 0.9)}
+        tid, _ = assign_track_id(0.1, 0.1, tracks, {}, 0.15, top)
+        self.assertEqual(1, tid)
+
 
 if __name__ == "__main__":
     unittest.main()

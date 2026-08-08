@@ -116,8 +116,25 @@ def assign_track_id(
             best_id, best_d = tid, d
     if best_id is not None:
         return best_id, next_id
-    # Wrap within [1, id_limit): 0 is reserved for "ad-hoc, not a stable track".
-    following = next_id + 1
+    # Mint, wrapping within [1, id_limit): 0 is reserved for "ad-hoc, not a
+    # stable track".
+    #
+    # Skip any id that is still alive — in ``tracks`` from previous frames, or
+    # in ``seen`` from earlier this frame. After the counter laps (a night of
+    # churning blobs passes 1000 easily), ``next_id`` can land on a track that
+    # has been held *continuously* the whole way round — say a stationary
+    # person the DMX light is latched onto. Handing their id to a new blob
+    # splices two people into one track: the collision estimator sees a
+    # teleporting bearing (suppressing a real constant-bearing alarm), and the
+    # light believes it is holding one person while being fed another.
+    tid = next_id
+    for _ in range(id_limit):
+        if tid not in tracks and tid not in seen:
+            break
+        tid += 1
+        if tid >= id_limit:
+            tid = 1
+    following = tid + 1
     if following >= id_limit:
         following = 1
-    return next_id, following
+    return tid, following
