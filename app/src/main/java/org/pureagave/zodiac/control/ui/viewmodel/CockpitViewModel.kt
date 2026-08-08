@@ -38,6 +38,7 @@ import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.VisionFeed
+import org.pureagave.zodiac.control.core.vision.brakeAdvisory
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.VehicleConnectionGateway
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
@@ -228,6 +229,15 @@ class CockpitViewModel(
                 // Thermal contacts for the DRIVER HUD (network feed or fake demo).
                 threatsFlow.collect { threats ->
                     _uiState.update { it.copy(threats = threats) }
+                }
+            }
+            launch {
+                // Braking advice: sector- and speed-gated, then latched so a
+                // collision flag chattering at frame rate can't strobe the
+                // warning. See brakeAdvisory — the timer to clear it lives in
+                // the operator, since a passed hazard produces no more frames.
+                threatsFlow.brakeAdvisory({ _uiState.value.speedKph.toFloat() }).collect { advised ->
+                    _uiState.update { it.copy(brakeAdvised = advised) }
                 }
             }
             launch {

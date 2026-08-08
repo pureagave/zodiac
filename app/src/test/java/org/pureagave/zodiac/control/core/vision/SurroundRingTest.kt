@@ -453,7 +453,7 @@ class SurroundRingTest {
         // A stale "CLEAR" is worse than an honest "no reading at all" — an
         // absent feed must win regardless of what the (stale) contact list says.
         val forward = listOf(t(az = 5f, collision = true))
-        assertEquals(HudStatus.NO_VISION, SurroundRing.hudStatus(forward, aboveGate, VisionFeed.ABSENT))
+        assertEquals(HudStatus.NO_VISION, SurroundRing.hudStatus(forward, SurroundRing.brakeAdvised(forward, aboveGate), VisionFeed.ABSENT))
     }
 
     @Test
@@ -461,19 +461,22 @@ class SurroundRingTest {
         // Braking is the more urgent instruction and must not be masked by
         // the simultaneous rear check.
         val mixed = listOf(t(az = 178f, collision = true), t(az = 3f, collision = true))
-        assertEquals(HudStatus.BRAKE, SurroundRing.hudStatus(mixed, aboveGate, VisionFeed.LIVE))
+        assertEquals(HudStatus.BRAKE, SurroundRing.hudStatus(mixed, SurroundRing.brakeAdvised(mixed, aboveGate), VisionFeed.LIVE))
     }
 
     @Test
     fun check_rear_when_only_a_rear_collision_is_present() {
         val rearOnly = listOf(t(az = 178f, collision = true))
-        assertEquals(HudStatus.CHECK_REAR, SurroundRing.hudStatus(rearOnly, aboveGate, VisionFeed.LIVE))
+        assertEquals(
+            HudStatus.CHECK_REAR,
+            SurroundRing.hudStatus(rearOnly, SurroundRing.brakeAdvised(rearOnly, aboveGate), VisionFeed.LIVE),
+        )
     }
 
     @Test
     fun demo_status_when_the_feed_is_demo_and_the_road_is_quiet() {
         val quiet = listOf(t(az = 0f, collision = false))
-        assertEquals(HudStatus.DEMO, SurroundRing.hudStatus(quiet, aboveGate, VisionFeed.DEMO))
+        assertEquals(HudStatus.DEMO, SurroundRing.hudStatus(quiet, SurroundRing.brakeAdvised(quiet, aboveGate), VisionFeed.DEMO))
     }
 
     @Test
@@ -481,13 +484,26 @@ class SurroundRingTest {
         // The demo is meant to exercise the real alert path — it should not
         // be silently downgraded to the DEMO label when it fires an alarm.
         val demoCollision = listOf(t(az = 5f, collision = true))
-        assertEquals(HudStatus.BRAKE, SurroundRing.hudStatus(demoCollision, aboveGate, VisionFeed.DEMO))
+        assertEquals(
+            HudStatus.BRAKE,
+            SurroundRing.hudStatus(demoCollision, SurroundRing.brakeAdvised(demoCollision, aboveGate), VisionFeed.DEMO),
+        )
     }
 
     @Test
     fun clear_when_the_feed_is_live_and_the_road_is_quiet() {
         val quiet = listOf(t(az = 0f, collision = false))
-        assertEquals(HudStatus.CLEAR, SurroundRing.hudStatus(quiet, aboveGate, VisionFeed.LIVE))
+        assertEquals(HudStatus.CLEAR, SurroundRing.hudStatus(quiet, SurroundRing.brakeAdvised(quiet, aboveGate), VisionFeed.LIVE))
+    }
+
+    @Test
+    fun the_status_line_follows_the_latched_decision_not_a_fresh_one() {
+        // The whole point of taking brakeAdvised as a parameter: between
+        // frames the edge box's collision flag drops, but the latch is still
+        // holding. The status line must keep saying BRAKE, or it strobes out
+        // of step with the centre banner.
+        val flagDropped = listOf(t(az = 5f, collision = false))
+        assertEquals(HudStatus.BRAKE, SurroundRing.hudStatus(flagDropped, brakeAdvised = true, VisionFeed.LIVE))
     }
 
     @Test
@@ -496,7 +512,7 @@ class SurroundRingTest {
         // and isn't a rear contact either — the aggregate status must not
         // invent an alert the two underlying checks both declined to raise.
         val boarding = listOf(t(az = 5f, collision = true))
-        assertEquals(HudStatus.CLEAR, SurroundRing.hudStatus(boarding, speedKph = 0f, visionFeed = VisionFeed.LIVE))
+        assertEquals(HudStatus.CLEAR, SurroundRing.hudStatus(boarding, SurroundRing.brakeAdvised(boarding, speedKph = 0f), VisionFeed.LIVE))
     }
 }
 

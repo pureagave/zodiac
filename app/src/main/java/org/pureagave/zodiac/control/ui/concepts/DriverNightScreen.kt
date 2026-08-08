@@ -124,7 +124,7 @@ fun driverNightScreen(
         // list) so the count and the alert both stay honest about the whole
         // picture; SurroundRing.hudStatus decides which of the five states
         // applies, this only maps that decision to text and colour.
-        val hudStatus = SurroundRing.hudStatus(state.threats, state.speedKph.toFloat(), state.visionFeed)
+        val hudStatus = SurroundRing.hudStatus(state.threats, state.brakeAdvised, state.visionFeed)
         Text(
             text = "$mph MPH",
             color = NightPurple,
@@ -211,7 +211,7 @@ private fun DrawScope.drawDriverHud(
     // collision gets CHECK REAR on the status line and no centre flash: a
     // centre-screen alert for something astern is the exact mistrust-training
     // problem brakeAdvised's own doc warns about.
-    if (SurroundRing.brakeAdvised(state.threats, state.speedKph.toFloat())) {
+    if (state.brakeAdvised) {
         hudText("! COLLISION COURSE !", Offset(w * 0.5f, h * 0.15f), NightRed, h * 0.042f, tf, Paint.Align.CENTER)
     }
 }

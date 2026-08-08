@@ -114,6 +114,14 @@ data class CockpitUiState(
      */
     val visionFeed: VisionFeed = VisionFeed.ABSENT,
     /**
+     * Whether the HUD should be telling the driver to brake, **after** the
+     * flicker latch — see [org.pureagave.zodiac.control.core.vision.AlarmLatch].
+     * Distinct from recomputing `brakeAdvised` at the draw site, which strobes:
+     * the edge box's collision flag chatters at frame rate while the hazard
+     * itself is continuous.
+     */
+    val brakeAdvised: Boolean = false,
+    /**
      * Short message describing the most recent failed vehicle command send
      * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced
      * here so a dropped command on a vehicle control surface is observable

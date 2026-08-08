@@ -329,6 +329,12 @@ object SurroundRing {
      * and the alert both stay honest about the whole picture, not just what
      * the perspective view happens to be drawing.
      *
+     * Takes the **already-latched** [brakeAdvised] rather than recomputing it,
+     * so the status line and the centre banner cannot disagree about whether
+     * the vehicle should be braking — and so a collision flag chattering at
+     * frame rate cannot strobe the line. See
+     * [org.pureagave.zodiac.control.core.vision.AlarmLatch].
+     *
      * Precedence matters: an absent feed overrides everything (a stale
      * "CLEAR" is worse than no reading at all), and a simultaneous forward
      * and rear collision shows [HudStatus.BRAKE] — braking is the more
@@ -339,12 +345,12 @@ object SurroundRing {
      */
     fun hudStatus(
         threats: List<DriverThreat>,
-        speedKph: Float,
+        brakeAdvised: Boolean,
         visionFeed: VisionFeed,
     ): HudStatus =
         when {
             visionFeed == VisionFeed.ABSENT -> HudStatus.NO_VISION
-            brakeAdvised(threats, speedKph) -> HudStatus.BRAKE
+            brakeAdvised -> HudStatus.BRAKE
             rearAlert(threats) -> HudStatus.CHECK_REAR
             visionFeed == VisionFeed.DEMO -> HudStatus.DEMO
             else -> HudStatus.CLEAR
