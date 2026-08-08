@@ -27,6 +27,7 @@ import org.pureagave.zodiac.control.core.permission.grantedAnythingNew
 import org.pureagave.zodiac.control.core.permission.permissionPromptFor
 import org.pureagave.zodiac.control.core.permission.permissionsToRequest
 import org.pureagave.zodiac.control.core.permission.requiredCockpitPermissions
+import org.pureagave.zodiac.control.kiosk.KioskController
 import org.pureagave.zodiac.control.ui.concepts.ThemeTracker
 import org.pureagave.zodiac.control.ui.ops.permissionRationalePanel
 import org.pureagave.zodiac.control.ui.state.luxToBrightness
@@ -34,10 +35,20 @@ import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModelFactory
 
 class MainActivity : ComponentActivity() {
+    private val kiosk by lazy { KioskController(this) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableImmersiveMode()
         setContent { zodiacApp() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-engaged on every resume rather than once at create: a tablet that
+        // somehow got out of lock task (a crash, a service dialog) should fall
+        // back into it by itself. No-op unless provisioned as device owner.
+        kiosk.engage(this)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

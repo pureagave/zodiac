@@ -52,6 +52,22 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/usb_gps_device_filter" />
         </activity>
+        <!--
+          Device-admin component for kiosk mode. Provisioned once per tablet
+          over adb after a factory reset (see docs/KIOSK.md); the app runs
+          perfectly well unprovisioned, just unlocked.
+        -->
+        <receiver
+            android:name=".kiosk.ZodiacDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
