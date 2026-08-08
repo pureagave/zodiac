@@ -30,6 +30,24 @@ class FormatTest(unittest.TestCase):
         self.assertEqual("ZTHREAT;1:-12.0:0.300:0;2:4.5:0.900:1", frame)
 
 
+class FormatGuardTest(unittest.TestCase):
+    def test_a_non_finite_contact_is_dropped_at_the_source(self):
+        # NaN would serialise as the literal "nan" and be discarded by the
+        # tablet — the producer must not put a malformed contact on the wire
+        # and lean on the consumer's guard.
+        frame = format_frame(
+            [
+                DriverThreat(rel_az_deg=float("nan"), size=0.5, id=1),
+                DriverThreat(rel_az_deg=10.0, size=float("inf"), id=2),
+                DriverThreat(rel_az_deg=10.0, size=0.5, id=3),
+            ]
+        )
+        self.assertNotIn("nan", frame.lower())
+        self.assertNotIn("inf", frame.lower())
+        parsed = parse_frame(frame)
+        self.assertEqual([3], [c.id for c in parsed])
+
+
 class ParseTest(unittest.TestCase):
     def test_parses_a_tablet_shaped_frame(self):
         # The exact example from the Kotlin ThreatProtocol docstring.

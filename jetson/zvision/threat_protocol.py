@@ -48,6 +48,13 @@ def format_frame(threats: List[DriverThreat]) -> str:
         capped = sorted(capped, key=lambda t: (t.collision, t.size), reverse=True)[:MAX_CONTACTS]
     parts = [HEADER]
     for t in capped:
+        if not (math.isfinite(t.rel_az_deg) and math.isfinite(t.size)):
+            # A NaN from a buggy detector would serialise as the literal
+            # string "nan", which every parser (the tablet's and ours) drops —
+            # so the contact vanishes either way. But a malformed field must
+            # not leave this box relying on the consumer's guard being there;
+            # the producer keeps its own frames well-formed.
+            continue
         col = 1 if t.collision else 0
         parts.append(
             f"{t.id}{_FIELD_SEP}{_fmt(t.rel_az_deg, 1)}"
