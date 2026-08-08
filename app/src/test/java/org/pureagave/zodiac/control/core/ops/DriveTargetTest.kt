@@ -27,7 +27,8 @@ class DriveTargetTest {
     @Test
     fun esplanade_and_ring_lookup_is_case_and_whitespace_insensitive() {
         val esp = addressTarget(ClockTime(6, 0), "Esplanade", projection)!!
-        assertEquals(752.0, distanceFromOrigin(projection.project(esp.location)), 5.0)
+        // 761.5 m is the measured GIS centreline; BundledGisTest owns the value.
+        assertEquals(761.5, distanceFromOrigin(projection.project(esp.location)), 5.0)
         assertNotNull(addressTarget(ClockTime(3, 0), " k ", projection)) // lowercase + spaces resolve
     }
 

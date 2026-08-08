@@ -12,6 +12,13 @@ import org.pureagave.zodiac.control.core.model.StreetLine
  * Minimal GeoJSON reader for the BRC Innovate dataset shape.
  * Handles Point, LineString, and Polygon (single outer ring); other types are
  * skipped silently. Property lookups are case-sensitive.
+ *
+ * **The street schema changes between years and BM promises nothing.** 2025
+ * tagged each line `type: radial|arc` with a string `width`; 2026 renamed those
+ * to `source: radial|annular|center_camp` and a numeric `width_ft`. Both are
+ * read here, because an unrecognised tag is not a cosmetic loss: [StreetLine]s
+ * without a kind are dropped from `PlayaCityModel`, which silently takes street
+ * cues and address routing with them. `BundledGisTest` guards this.
  */
 object GeoJsonParser {
     fun parseStreetLines(raw: String): List<StreetLine> =
@@ -20,19 +27,25 @@ object GeoJsonParser {
             val props = feature.optJSONObject("properties")
             StreetLine(
                 name = props?.optString("name").nullIfEmpty(),
-                kind = props?.optString("type").toStreetKind(),
-                widthFeet = props?.optString("width")?.toIntOrNull(),
+                kind = props?.streetKind(),
+                widthFeet = props?.widthFeet(),
                 points = coords,
             )
         }
 
+    /**
+     * [nameKeys] are tried in order, first non-empty wins — the same property
+     * gets recased or renamed between years (2025 `Name` → 2026 `name`), and a
+     * missed key means an unlabelled layer rather than a loud failure.
+     */
     fun parsePolygons(
         raw: String,
-        nameKey: String? = null,
+        vararg nameKeys: String,
     ): List<PolygonRing> =
         featuresOf(raw).mapNotNull { feature ->
             val ring = polygonOuterRing(feature) ?: return@mapNotNull null
-            val name = nameKey?.let { feature.optJSONObject("properties")?.optString(it).nullIfEmpty() }
+            val props = feature.optJSONObject("properties")
+            val name = nameKeys.firstNotNullOfOrNull { props?.optString(it).nullIfEmpty() }
             PolygonRing(name = name, ring = ring)
         }
 
@@ -99,9 +112,19 @@ object GeoJsonParser {
 
 private fun String?.nullIfEmpty(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
 
-private fun String?.toStreetKind(): StreetKind? =
-    when (this) {
+/**
+ * `type` is the 2025 key, `source` the 2026 one. Center-camp streets carry
+ * neither `radial` nor `annular` and stay untagged — they sit inside the
+ * Esplanade, where routing and arc-crossing cues don't apply anyway.
+ */
+private fun JSONObject.streetKind(): StreetKind? =
+    when (optString("type").nullIfEmpty() ?: optString("source").nullIfEmpty()) {
         "radial" -> StreetKind.Radial
-        "arc" -> StreetKind.Arc
+        "arc", "annular" -> StreetKind.Arc
         else -> null
     }
+
+/** 2025 quotes the width as a string; 2026 renamed it and made it numeric. */
+private fun JSONObject.widthFeet(): Int? =
+    optString("width").nullIfEmpty()?.toIntOrNull()
+        ?: optInt("width_ft", 0).takeIf { it > 0 }

@@ -132,8 +132,10 @@ class AssetsPlayaMapRepository(
             streetLines = GeoJsonParser.parseStreetLines(read("street_lines")),
             streetOutlines = GeoJsonParser.parsePolygons(read("street_outlines")),
             cityBlocks = GeoJsonParser.parsePolygons(read("city_blocks")),
-            plazas = GeoJsonParser.parsePolygons(read("plazas"), nameKey = "Name"),
-            toilets = GeoJsonParser.parsePolygons(read("toilets"), nameKey = "ref"),
+            // Plaza labels are the only polygon names that reach the screen, and
+            // the key was recased in 2026 ("Name" -> "name") — accept both.
+            plazas = GeoJsonParser.parsePolygons(read("plazas"), "Name", "name"),
+            toilets = GeoJsonParser.parsePolygons(read("toilets"), "ref", "class"),
             cpns = GeoJsonParser.parsePoints(read("cpns"), nameKey = "NAME", kindKey = "TYPE"),
             // Art is optional: the 2026 GIS ships no art layer (art comes from the
             // BM API, embargoed until ~3 weeks pre-event), so a missing file is

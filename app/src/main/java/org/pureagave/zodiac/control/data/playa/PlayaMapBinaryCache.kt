@@ -262,9 +262,12 @@ class PlayaMapBinaryCache(private val cacheDir: File) {
         // 'PLAY' as ASCII so a hex dump of the file header is recognisable.
         private const val MAGIC = 0x504C4159
 
-        // Bump on any breaking change to the on-disk shape — older caches
-        // become unreadable and re-derive from JSON automatically.
-        private const val SCHEMA_VERSION = 1
+        // Bump on any breaking change to the on-disk shape *or to what the
+        // parser extracts* — older caches become unreadable and re-derive from
+        // JSON automatically. v2: the 2026 street schema (`source`/`width_ft`)
+        // is now understood, so a v1 cache holds a whole city of kind-less,
+        // width-less streets that would otherwise persist across the upgrade.
+        private const val SCHEMA_VERSION = 2
 
         // Upper bound on any count/length read from the cache. Anything
         // larger is taken as corruption rather than a real element count,

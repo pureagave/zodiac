@@ -204,6 +204,6 @@ class PlayaMapBinaryCacheTest {
         // Mirror the private consts in PlayaMapBinaryCache so the hand-written
         // corrupt-cache header matches what read() expects.
         const val CACHE_MAGIC = 0x504C4159 // 'PLAY'
-        const val CACHE_SCHEMA_VERSION = 1
+        const val CACHE_SCHEMA_VERSION = 2
     }
 }

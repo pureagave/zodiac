@@ -26,14 +26,20 @@ data class PlayaPoi(
 )
 
 /**
- * BRC lettered-street ring radii (metres from the Man), measured from the 2025
- * Innovate GIS street data. Names change yearly but the ring positions are
- * stable, so this is a good year-agnostic placement for camp `intersection`
- * letters. Provisional — refine per year if needed (same caveat as [Camp]).
+ * BRC lettered-street ring radii (metres from the Man), being the mean radius
+ * of each ring's centreline in the Innovate GIS street data. Names change
+ * yearly but the ring positions do not — 2025 and 2026 agree to within 0.3 m
+ * on every ring — so this stays year-agnostic and places camp `intersection`
+ * letters and keypad addresses alike.
+ *
+ * `BundledGisTest` re-measures these against the shipped assets, so a city
+ * that does move gets caught rather than quietly mis-placing every address.
+ * (That test is how the Esplanade's long-standing 752 m — 9.5 m short of both
+ * years' data — was found.)
  */
 val StreetRingRadiiM: Map<String, Double> =
     mapOf(
-        "ESPLANADE" to 752.0, "A" to 894.0, "B" to 979.0, "C" to 1065.0,
+        "ESPLANADE" to 761.5, "A" to 894.0, "B" to 979.0, "C" to 1065.0,
         "D" to 1150.0, "E" to 1237.0, "F" to 1385.0, "G" to 1470.0,
         "H" to 1555.0, "I" to 1641.0, "J" to 1695.0, "K" to 1753.0,
     )

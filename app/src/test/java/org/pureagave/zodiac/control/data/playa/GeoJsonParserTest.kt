@@ -39,7 +39,7 @@ class GeoJsonParserTest {
             ]}
             """.trimIndent()
 
-        val polys = GeoJsonParser.parsePolygons(raw, nameKey = "Name")
+        val polys = GeoJsonParser.parsePolygons(raw, "Name")
 
         assertEquals(1, polys.size)
         assertEquals("3:00 & B Plaza", polys[0].name)
@@ -133,7 +133,7 @@ class GeoJsonParserTest {
             ]}
             """.trimIndent()
 
-        val polys = GeoJsonParser.parsePolygons(raw, nameKey = "Name")
+        val polys = GeoJsonParser.parsePolygons(raw, "Name")
 
         assertEquals(1, polys.size)
         assertEquals("Good Plaza", polys[0].name)
