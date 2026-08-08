@@ -124,7 +124,7 @@ fun driverNightScreen(
         // list) so the count and the alert both stay honest about the whole
         // picture; SurroundRing.hudStatus decides which of the five states
         // applies, this only maps that decision to text and colour.
-        val hudStatus = SurroundRing.hudStatus(state.threats, state.brakeAdvised, state.visionFeed)
+        val hudStatus = SurroundRing.hudStatus(state.brakeAdvised, state.checkRear, state.visionFeed)
         Text(
             text = "$mph MPH",
             color = NightPurple,

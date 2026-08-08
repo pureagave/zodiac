@@ -122,6 +122,13 @@ data class CockpitUiState(
      */
     val brakeAdvised: Boolean = false,
     /**
+     * Whether a closing contact astern should be called out — latched the same
+     * way as [brakeAdvised], and for the same reason. Braking is deliberately
+     * *not* advised for these: it puts the vehicle further into the contact's
+     * path.
+     */
+    val checkRear: Boolean = false,
+    /**
      * Short message describing the most recent failed vehicle command send
      * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced
      * here so a dropped command on a vehicle control surface is observable

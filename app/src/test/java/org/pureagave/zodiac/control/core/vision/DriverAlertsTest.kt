@@ -19,7 +19,7 @@ import org.junit.Test
  * to re-evaluate on.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class BrakeAdvisoryTest {
+class DriverAlertsTest {
     private fun t(
         az: Float,
         collision: Boolean,
@@ -31,12 +31,12 @@ class BrakeAdvisoryTest {
     fun a_closing_contact_ahead_raises_the_warning_on_the_very_first_frame() =
         runTest {
             val frames = MutableSharedFlow<List<DriverThreat>>()
-            val seen = mutableListOf<Boolean>()
-            val job = launch { frames.brakeAdvisory({ driving }, latch()).toList(seen) }
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
             runCurrent()
             frames.emit(listOf(t(az = 5f, collision = true)))
             runCurrent()
-            assertEquals("no confirmation delay — that costs the moment it exists for", listOf(true), seen)
+            assertEquals("no confirmation delay — that costs the moment it exists for", listOf(true), seen.map { it.brake })
             job.cancel()
         }
 
@@ -46,15 +46,15 @@ class BrakeAdvisoryTest {
             // Ten seconds of 8 fps with the edge box flipping the flag every
             // other frame. Without the latch this emits dozens of times.
             val frames = MutableSharedFlow<List<DriverThreat>>()
-            val seen = mutableListOf<Boolean>()
-            val job = launch { frames.brakeAdvisory({ driving }, latch()).toList(seen) }
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
             runCurrent()
             repeat(80) { frame ->
                 frames.emit(listOf(t(az = 5f, collision = frame % 2 == 0)))
                 advanceTimeBy(125)
                 runCurrent()
             }
-            assertEquals("one steady warning, not a flicker", listOf(true), seen)
+            assertEquals("one steady warning, not a flicker", listOf(true), seen.map { it.brake })
             job.cancel()
         }
 
@@ -65,15 +65,15 @@ class BrakeAdvisoryTest {
             // flagging it, no further frames arrive — and the last "! BRAKE !"
             // stays on screen until some unrelated contact happens along.
             val frames = MutableSharedFlow<List<DriverThreat>>()
-            val seen = mutableListOf<Boolean>()
-            val job = launch { frames.brakeAdvisory({ driving }, latch()).toList(seen) }
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
             runCurrent()
             frames.emit(listOf(t(az = 5f, collision = true)))
             runCurrent()
-            assertEquals(listOf(true), seen)
+            assertEquals(listOf(true), seen.map { it.brake })
             advanceTimeBy(AlarmLatch.DEFAULT_HOLD_MS + 1)
             runCurrent()
-            assertEquals("it must clear on its own, with no further frames", listOf(true, false), seen)
+            assertEquals("it must clear on its own, with no further frames", listOf(true, false), seen.map { it.brake })
             job.cancel()
         }
 
@@ -81,8 +81,8 @@ class BrakeAdvisoryTest {
     fun a_later_frame_supersedes_a_pending_clear() =
         runTest {
             val frames = MutableSharedFlow<List<DriverThreat>>()
-            val seen = mutableListOf<Boolean>()
-            val job = launch { frames.brakeAdvisory({ driving }, latch()).toList(seen) }
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
             runCurrent()
             frames.emit(listOf(t(az = 5f, collision = true)))
             runCurrent()
@@ -91,7 +91,7 @@ class BrakeAdvisoryTest {
             runCurrent()
             advanceTimeBy(200)
             runCurrent()
-            assertEquals("the re-trigger pushed the expiry out", listOf(true), seen)
+            assertEquals("the re-trigger pushed the expiry out", listOf(true), seen.map { it.brake })
             job.cancel()
         }
 
@@ -99,15 +99,15 @@ class BrakeAdvisoryTest {
     fun a_quiet_road_never_raises_anything() =
         runTest {
             val frames = MutableSharedFlow<List<DriverThreat>>()
-            val seen = mutableListOf<Boolean>()
-            val job = launch { frames.brakeAdvisory({ driving }, latch()).toList(seen) }
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
             runCurrent()
             repeat(20) {
                 frames.emit(listOf(t(az = 5f, collision = false), t(az = -40f, collision = false)))
                 advanceTimeBy(125)
                 runCurrent()
             }
-            assertEquals(listOf(false), seen)
+            assertEquals(listOf(false), seen.map { it.brake })
             job.cancel()
         }
 
@@ -116,12 +116,13 @@ class BrakeAdvisoryTest {
         runTest {
             // Braking puts the vehicle further into a rear contact's path.
             val frames = MutableSharedFlow<List<DriverThreat>>()
-            val seen = mutableListOf<Boolean>()
-            val job = launch { frames.brakeAdvisory({ driving }, latch()).toList(seen) }
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
             runCurrent()
             frames.emit(listOf(t(az = 175f, collision = true)))
             runCurrent()
-            assertEquals(listOf(false), seen)
+            assertEquals(listOf(false), seen.map { it.brake })
+            assertEquals("but it must still be called out", listOf(true), seen.map { it.checkRear })
             job.cancel()
         }
 
@@ -132,22 +133,60 @@ class BrakeAdvisoryTest {
             // is a constant-bearing looming track. The gate has to follow the
             // vehicle actually stopping, not the speed captured at subscribe.
             val frames = MutableSharedFlow<List<DriverThreat>>()
-            val seen = mutableListOf<Boolean>()
+            val seen = mutableListOf<DriverAlerts>()
             var speed = driving
-            val job = launch { frames.brakeAdvisory({ speed }, latch()).toList(seen) }
+            val job = launch { frames.driverAlerts({ speed }, latch(), latch()).toList(seen) }
             runCurrent()
             frames.emit(listOf(t(az = 5f, collision = true)))
             runCurrent()
-            assertEquals(listOf(true), seen)
+            assertEquals(listOf(true), seen.map { it.brake })
             speed = 0f
             advanceTimeBy(AlarmLatch.DEFAULT_HOLD_MS + 1)
             runCurrent()
             frames.emit(listOf(t(az = 5f, collision = true)))
             runCurrent()
-            assertEquals("stopped: the contact still draws, the imperative goes quiet", listOf(true, false), seen)
+            assertEquals("stopped: the contact still draws, the imperative goes quiet", listOf(true, false), seen.map { it.brake })
             job.cancel()
         }
 
     /** A latch on the test's virtual clock, so holds elapse with advanceTimeBy. */
     private fun kotlinx.coroutines.test.TestScope.latch() = AlarmLatch(nowMs = { testScheduler.currentTime })
+
+    @Test
+    fun a_chattering_rear_flag_does_not_strobe_the_rear_callout_either() =
+        runTest {
+            // Found on the bench 2026-08-08: brake was latched and the rear
+            // callout was not, so the same noisy flag that used to strobe
+            // "! BRAKE !" still strobed "! CHECK REAR !".
+            val frames = MutableSharedFlow<List<DriverThreat>>()
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
+            runCurrent()
+            repeat(80) { frame ->
+                frames.emit(listOf(t(az = 175f, collision = frame % 2 == 0)))
+                advanceTimeBy(125)
+                runCurrent()
+            }
+            assertEquals("one steady callout, not a flicker", listOf(true), seen.map { it.checkRear })
+            job.cancel()
+        }
+
+    @Test
+    fun the_two_alerts_are_latched_independently() =
+        runTest {
+            // A forward collision that resolves must not keep the rear callout
+            // alive, nor vice versa — they describe different hazards.
+            val frames = MutableSharedFlow<List<DriverThreat>>()
+            val seen = mutableListOf<DriverAlerts>()
+            val job = launch { frames.driverAlerts({ driving }, latch(), latch()).toList(seen) }
+            runCurrent()
+            frames.emit(listOf(t(az = 5f, collision = true)))
+            runCurrent()
+            advanceTimeBy(AlarmLatch.DEFAULT_HOLD_MS + 1)
+            runCurrent()
+            frames.emit(listOf(t(az = 175f, collision = true)))
+            runCurrent()
+            assertEquals(DriverAlerts(brake = false, checkRear = true), seen.last())
+            job.cancel()
+        }
 }

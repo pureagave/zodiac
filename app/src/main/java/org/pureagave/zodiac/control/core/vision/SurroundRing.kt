@@ -324,12 +324,12 @@ object SurroundRing {
     enum class HudStatus { NO_VISION, BRAKE, CHECK_REAR, DEMO, CLEAR }
 
     /**
-     * Which status-line state applies right now, evaluated over **all**
-     * threats — not the forward-filtered figure list — so the contact count
-     * and the alert both stay honest about the whole picture, not just what
-     * the perspective view happens to be drawing.
+     * Which status-line state applies right now — pure precedence over the
+     * already-decided inputs, so the status line and the centre banner cannot
+     * disagree about what the vehicle should do.
      *
-     * Takes the **already-latched** [brakeAdvised] rather than recomputing it,
+     * Takes the **already-latched** [brakeAdvised] and [checkRear] rather than
+     * recomputing them,
      * so the status line and the centre banner cannot disagree about whether
      * the vehicle should be braking — and so a collision flag chattering at
      * frame rate cannot strobe the line. See
@@ -344,14 +344,14 @@ object SurroundRing {
      * backwards, and it's what keeps [MAX_BLIPS]/clustering honest.
      */
     fun hudStatus(
-        threats: List<DriverThreat>,
         brakeAdvised: Boolean,
+        checkRear: Boolean,
         visionFeed: VisionFeed,
     ): HudStatus =
         when {
             visionFeed == VisionFeed.ABSENT -> HudStatus.NO_VISION
             brakeAdvised -> HudStatus.BRAKE
-            rearAlert(threats) -> HudStatus.CHECK_REAR
+            checkRear -> HudStatus.CHECK_REAR
             visionFeed == VisionFeed.DEMO -> HudStatus.DEMO
             else -> HudStatus.CLEAR
         }
