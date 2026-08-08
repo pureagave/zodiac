@@ -2,117 +2,80 @@
 
 What's worth doing next. Critical and High audit items are all done — see `done.md`.
 
-> **Handoff, 2026-08-08.** The two sections immediately below are the live
-> picture. Everything under them is older backlog, still valid but not the
-> current front. Read the top of `SYNC.md` first — it is the working log and
-> carries the *why* behind each decision.
+> **Handoff, 2026-08-08 (evening).** The three sections below are the live
+> picture. Everything under them is older backlog. Read the top of `SYNC.md`
+> first — it carries the *why*.
+>
+> **app 719 / beacon 35 / jetson 322 tests, main green.**
 
-## ⛔ Blocked on Rob / hardware — cannot be done from a keyboard
+## ⛔ Blocked on Rob / hardware
 
 Ranked by consequence on the playa.
 
-- [ ] **`MotionDetector` resets a track on a single-frame dropout.** A flickering
-      blob gets a new id *and* a reset collision baseline, so collision may
-      chronically under-fire — a systematic bias toward false **negatives**
-      while driving. **Highest-value remaining item.** Deliberately not fixed
-      blind: it changes detection behaviour and needs real bodies at real
-      distances in front of the real camera.
-      ⚠️ **Do not add tablet-side contact coasting until this is fixed** —
-      coasting by id while the Jetson churns ids draws one person as two.
+- [ ] **`MotionDetector` resets a track on a single-frame dropout.** Biases
+      toward false **negatives** while driving. Still the highest-value
+      remaining item. Needs real bodies at real distances in front of the real
+      camera. ⚠️ **Do not add tablet-side contact coasting until this is
+      fixed** — coasting by id while the Jetson churns ids draws one person as
+      two.
 - [ ] **Detector tuning** against people at 5 / 10 / 20 m, day and night.
-- [ ] **Night legibility of the surround ring on the A54.** The acceptance gate
-      the design names, and the one thing no measurement substitutes for: is a
-      `#00421E` rim visible at brightness 20 in real darkness, and does a red
-      collision blip register **peripherally**? The build is installed on the
-      phone. Objectively verified already: rim solid over the covered arc (99%
-      of samples lit) vs dashed elsewhere (~34–53%).
-- [ ] **DMX fixture.** Whole path proven to the XLR connector — `olad` opens the
-      widget, reports "Granularity GOOD", zvision drives pan/tilt/dimmer. Attach
-      the moving head and aim it. Then **calibrate `pan_center_deg` / `pan_gain`**
-      and `reach_half_deg` (currently 90°, i.e. forward + both sides).
-      **Manual is now in the repo** (`jetson/MOVING-HEAD.md`) and reading it
-      already fixed the dimmer channel (was 5 = colour wheel, is 8). Set the
-      fixture to **11-channel** mode, not 9 — the fine pan/tilt channels are
-      what make a slow follow smooth. One open question the manual doesn't
-      answer: **channel 9 is pan/tilt speed and it doesn't say which end is
-      fast.** We send 0; if the head lags a walking contact, try that first.
-- [ ] **Rig azimuth calibration** per camera against the vehicle nose, once the
-      pod is mounted. An error rotates that camera's whole contact set.
+- [ ] **Night legibility of the surround ring on the A54** — the acceptance
+      gate no measurement replaces.
+- [ ] **DMX fixture.** Path proven to the XLR connector. Attach the head, aim
+      it, calibrate `pan_center_deg` / `pan_gain` / `reach_half_deg`.
+      **Manual is in the repo** (`jetson/MOVING-HEAD.md`) and already fixed the
+      dimmer channel (was 5 = colour wheel, is 8). **Set the fixture to
+      11-channel, not 9.** Open question the manual doesn't answer: **ch9 is
+      pan/tilt speed and it doesn't say which end is fast** — we send 0; try it
+      first if the head lags a walking contact.
+- [ ] **Rig azimuth calibration** per camera against the vehicle nose.
 - [ ] **Pod assembly** — waiting on the germanium D20 window.
-- [ ] **Cross-camera dedup** with two cameras on one moving target (needs a
-      second camera mounted).
-- [ ] **grr validation tests** — rescue link, `fsck.repair` after reboot, HDMI
-      capture. See the memory note; needs Rob's parts and hands.
-- [ ] **Fire HD 10** — not on the network; can't check the perf floor.
-- [ ] **XCover Pro** — needs USB to give the Beacon app its one-time
-      STOP→START so `$ZAUD` picks up the mic grant.
+- [ ] **Cross-camera dedup** with two cameras on one moving target.
+- [ ] **grr validation tests** — rescue link, `fsck.repair`, HDMI capture.
+- [ ] **XCover Pro** — needs USB for the Beacon's one-time STOP→START so
+      `$ZAUD` picks up the mic grant.
 - [ ] **Beacon channels + auto-dim** end-to-end on the tablets.
 
-## 🟢 Doable without Rob — I ran out of session, not options
+## 🟡 Waiting on the world
 
-- [x] ~~**Shock-alert banner.**~~ Already shipped — `opsReadout` draws
-      `◆ SHOCK n.ng` in the beacon line (red, faults-only palette), the
-      ViewModel clears it after 2 s, and `CockpitViewModelTest` covers the
-      re-arm. The backlog entry was stale, not the code.
-- [x] **2026 map on-device address check — DONE 2026-08-08, and it found a
-      real bug.** The 2026 GIS renamed its street schema, so every street
-      parsed kind-less and the whole city model was empty: no street cues, no
-      routes. Fixed + `BundledGisTest` now measures the parse, the ring radii,
-      and `2:15 & H` against the shipped GeoJSON. Verified on the S9+:
-      `2:15 & H → HEADING 112°, 1.6km`, matching the HOME preset exactly. See
-      the SYNC entry.
-- [ ] **Confirm the FFC fix over a long run.** `~/nightwatch/fp2.log` on the
-      Jetson is accumulating. Pre-fix baseline: **104 contact-frames and 10
-      phantom collisions per 7.7 h** in an empty room, arriving in 9 bursts.
-      Post-fix at 40 min: **0 / 0** (pre-fix had already burst twice by then).
-      Needs hours before the rate claim is honest. Listener script lives in
-      `~/nightwatch/listen.py`; start it with `setsid`, and remember
-      `pkill -f listen.py` over ssh **kills your own session** — use
-      `"[l]isten.py"`.
-- [x] **M10 — rolling file logs — SHIPPED 2026-08-08.** `core/log/RollingFileLog`
-      (bounded, never throws, drops oldest) + `data/log/FileLogTree` on Timber,
-      writing to `getExternalFilesDir("logs")` so a tablet's log comes off with
-      a plain `adb pull`. Lifecycle tagged: GPS select/failover, vision feed
-      state, transport, map load path, uncaught exceptions. Verified on the
-      S9+. Remaining: a debug screen over `RollingFileLog.tail(n)` (the method
-      exists and is tested), and surfacing `droppedLines`.
-- [x] **GPS source restarts once at startup — FIXED 2026-08-08.** Only missing
-      permissions are requested now. Verified both directions on the S9+: a
-      revoked permission still raises the dialog and logs one `gps: start`;
-      granting it produces exactly one stop/start.
-- [x] **M9 — `LocationSourceError` — SHIPPED 2026-08-08.** Five actionable
-      categories across all 14 sites; category on screen, detail to the log.
-- [x] **On-device log viewer — SHIPPED 2026-08-08.** Hidden bottom-right
-      long-press; last 400 lines, severity-coloured, with the dropped count.
-- [x] **L2 / L11 — SHIPPED 2026-08-08.** No-fix wire format + round-trip tests
-      (mutation-verified); USB filter widened to vendor-wide + CDC class.
-      L11 is unverifiable until a dongle is plugged in.
-- [x] ~~**M14**~~ — stale: the label is already `RECENTER`, not `RECENTER MAP`.
-      Still unconfirmed on the Fire (offline).
-- [x] **M8 — SHIPPED 2026-08-08.** Rationale panel shown only when Android
-      reports a prior decline, because the *second* decline latches to "don't
-      ask again". Caught on device: the gate was declared before `cockpitScreen`
-      and root siblings stack in declaration order, so the panel rendered
-      underneath the whole UI. Verified end to end after the fix.
-- [x] **M6 / M16 / L1 / L3 / L4 / L6 / L7 / L10 / L13 — DONE 2026-08-08.**
-      See SYNC. Notable: M6's colour literals turned out to be the RADAR sweep
-      palette, not theme colours — porting them would have been a visual
-      regression dressed as cleanup, so only the four genuine palette
-      duplicates moved, plus `LocalCockpitTheme`. L1 produced `PinchSession`
-      (12 tests, mutation-verified). L13 is Apache-2.0, with a `NOTICE` carving
-      out the Innovate-ToS GIS data.
-- [x] **Burn-in stress ledger — DONE 2026-08-08.** `BurnInLedger` accumulates
-      on-time per `<concept>/<phase>` and reports to the rolling log. That
-      granularity is the honest limit — finer would invent data the app never
-      measures.
-- [x] ~~**L8**~~ — stale: `CRTVectorScreen.kt` no longer exists. Largest file is
-      now `CockpitViewModel.kt` (674) then `PlayaMapPanel.kt` (598), both under
-      detekt's thresholds. Nothing to split; revisit if detekt fires.
-- [ ] **L10 remainder — needs hardware.** The matching logic and its diagnostic
-      are extracted and tested (`BleDeviceMatch`), and a failed match now names
-      the paired devices instead of dead-ending on "no device matched". The
-      *picker UI* still wants a paired BLE GPS to build against.
+- [ ] **BM 2026 art/camp placements.** `location` and `location_string` are
+      null on all 332 art records; everything else (artist, hometown,
+      description, programme, images) is published and already in the app.
+      **When BM publishes placements, the map markers, the ART card and the
+      approach detection all light up with no code change.** Re-run
+      `tools/prerender_art.py` then to pick up any new pieces.
+- [ ] **Fire HD 10 perf profiling** — the Fire is on the bench now, so the
+      whole `design/PERFORMANCE.md` section is unblocked. Top item: GPU
+      layer-promotion of the rasterised map. It's a profiling campaign
+      (`gfxinfo framestats`, recomposition counts, Macrobenchmark), worth
+      scoping before starting.
 
+## 🟢 Doable without Rob
+
+- [ ] **Android track-mirror client.** The Jetson serves the track read-only at
+      `http://192.168.86.235:8087/` (index + files, GET/HEAD, traversal-proof)
+      and mirrors pull. The tablet-side puller isn't written. **Understand it
+      as a partial copy, not a peer** — doze and process death punch holes in
+      anything an Android app records or fetches on a schedule, which is
+      exactly why the Jetson is authoritative.
+- [ ] **Debug screen over `RollingFileLog.tail(n)`** — the method exists and is
+      tested; only a screen is missing. Also surface `droppedLines`.
+- [ ] **`artNearby` / `approachingArt` share a scan.** Both walk `state.pois`
+      every tick. Fine at 332 pieces; worth merging if the feed grows.
+- [ ] The older M6 remainder, L8-class file-shape items, and anything left in
+      the sections below.
+
+## 🔵 Needs Rob's decision, not a keyboard
+
+- [ ] **Internet backup destination for the breadcrumb.** S3? your own box over
+      rsync/scp? Deliberately not chosen — it's a complete record of where the
+      vehicle has been. Credentials would go in `local.properties` beside the
+      BM key.
+- [ ] **Kiosk provisioning.** `docs/KIOSK.md` has the runbook; the app supports
+      it and no-ops without it. Rob is sourcing cheap screens first. **One-way
+      door per tablet** (removal needs another factory reset), so provision
+      only once the build has settled. Not the A54 — kiosk costs the driver
+      maps/phone/camera on the one screen they might need them.
 
 ## 2026 map migration — DONE in code 2026-07-30 (commit `ca74867`), pending on-device verify
 

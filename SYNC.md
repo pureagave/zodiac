@@ -6,6 +6,99 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — HANDOFF: end of a very long session. Start here.
+
+Rob is restarting the assistant with clean context. **app 719 / beacon 35 /
+jetson 322 tests, `main` clean and green, both CI workflows passing.**
+
+Read the `zodiac-resume-point` memory first, then this entry, then
+`tasks/open.md`. Entries below this one carry the detail; this is the map.
+
+### What shipped today, in order of consequence
+
+1. **The 2026 map migration had silently disabled the whole nav stack.** The
+   GIS renamed `type`→`source`/`kind`, `width`→`width_ft`, `Name`→`name`, so
+   every street parsed `kind = null`, `PlayaCityModel` dropped them all, and
+   there were no street cues and no address routes — since 2026-07-30, through
+   green CI, because **the renderer only needs geometry**. `BundledGisTest` now
+   measures the parse, every ring radius and `2:15 & H` against the shipped
+   GeoJSON. Esplanade was also wrong by 9.5 m in *both* years' data.
+2. **M10 rolling logs + an on-device log viewer.** Then the logs immediately
+   found a GPS source rebinding its multicast socket on every cold launch.
+3. **A passenger display** (`ui/passenger/`, `core/passenger/`) — self-running
+   card carousel for the people riding the car. Now the biggest feature area.
+4. **A full-burn breadcrumb recorder** on the Jetson, live and enabled at boot.
+5. **Pre-rendered art**: 315 pieces baked into the APK in the phosphor
+   treatment, plus approach detection so the card meets you as you drive up.
+6. **Kiosk mode** (device-owner lock task) — built, documented, *not yet
+   provisioned on any tablet*.
+7. **minSdk 30 → 28**, now hardware-verified on the Fire HD 10 9th gen.
+
+### Decisions that should not be re-litigated
+
+- **A1 and A5: deliberately NOT done**, with evidence in `tasks/open.md`. A1
+  assumes three routers; there are two, with intentionally opposite semantics.
+  A5 trades a real consistency guarantee for an unmeasurable allocation win.
+- **The passenger display must never imply authority over the driver's HUD** —
+  no collision flags, no braking, no alarm red, and the driver's street/passing
+  overlays are deliberately not drawn on it.
+- **SOULS requires a genuinely LIVE Jetson feed.** Showing the demo crowd to
+  passengers as "souls detected" would be inventing people.
+- **Art images are baked in, not fetched.** RuntimeShader is API 33+ and the
+  Fires are API 28; the playa has no reliable internet. Changing the look means
+  re-running `tools/prerender_art.py` and shipping a new APK — that is the
+  right way round.
+- **No face-anonymising pass on art images.** Edge detection already renders
+  photographed people as faceless wireframes; the detector's confident hits are
+  mostly *sculpted* faces (Zarvan, El Diabla), and blurring those would deface
+  the artwork the card exists to show. Rob reviewed and agreed.
+- **Art tags show the address only** — category, funding programme and the
+  volunteer call were dropped as filler (Rob's call).
+
+### Things measured today that would otherwise get re-derived
+
+- **BM 2026 art API**: 332 pieces. `artist`, `hometown`, `description`,
+  `program` at **100%**; `category` 98%; `images` 98%. **`location` and
+  `location_string` are null on all 332** — the embargo is only about *where*,
+  never *what*. The card and the map both light up automatically when BM
+  publishes placements; nothing to do but wait.
+- **Fire OS blocks `adb pull` of app external storage.** `ls`, `pull` and even
+  `run-as` all return Permission denied on `/sdcard/Android/data`. The log *is*
+  written; it just can't be read over adb. **On the Fires the on-device log
+  viewer is the only way in.** (Corrected an earlier claim in this file.)
+- **Track storage maths**: a 14-day burn at 1 Hz is ~66 MB raw / ~8 MB gzipped
+  against 434 GB free on the Jetson. **No reason to geogate anything.**
+- **Document-vs-photo detection is not viable** on luma/saturation — they
+  overlap completely across the art feed. Only pure CAD (median luma 1.0,
+  saturation 0.0) separates; 12 pieces were skipped on that narrow rule.
+- **~46% of art thumbnails contain people** (65 of 140 sampled).
+
+### Traps added to the list
+
+- **A stateful call is never safe in a composable body.** `CardRotation.view()`
+  mutates; calling it from composition (twice, to compute a hold flag) made the
+  rotation double-step and skip cards. Only found because a screenshot was
+  impossible. The ticker owns the state machine now.
+- **Root-level composable siblings stack in declaration order.** The permission
+  gate declared before `cockpitScreen` rendered *underneath the entire UI* and
+  was invisible. Caught on device, not in review.
+- **A test that repeats the implementation's magic number can only confirm it.**
+  Two tests hardcoded DMX channel 5 and so agreed with a wiring bug.
+- **Fire tablets: no data cable = nothing enumerates**, and ad-supported units
+  serve adverts on the lockscreen — the first thing a passenger would see.
+
+### Left deliberately unfinished
+
+- **Android track-mirror client** — the Jetson serves the track read-only over
+  HTTP (`:8087`) and mirrors pull. The tablet-side puller is not written. Note
+  an Android app can only ever be a *partial* mirror: doze and process death
+  punch holes, which is why the Jetson is authoritative.
+- **Internet backup destination** — needs Rob to name where. Deliberately not
+  chosen for him: it is a complete record of where the vehicle has been.
+- **Kiosk provisioning** — `docs/KIOSK.md` is written and the app supports it.
+  Rob is sourcing cheap screens first and will factory-reset then. It is a
+  one-way door per tablet; provision only once the build has settled.
+
 ## 2026-08-08 — the moving-head manual is in the repo, and it found a bug
 
 Rob's transcription lands as **`jetson/MOVING-HEAD.md`**, with a section on how
