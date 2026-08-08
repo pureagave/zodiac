@@ -1,0 +1,21 @@
+[Unit]
+Description=Zodiac Track - complete breadcrumb recorder
+Documentation=https://github.com/pureagave/zodiac/blob/main/jetson/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+# Never stop retrying: a recorder that gives up after N failures is one that
+# silently misses the burn.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=zodiac
+WorkingDirectory=/opt/zodiac/jetson
+ExecStart=/usr/bin/python3 -u -m zvision.tracklog --dir /var/lib/zodiac/track
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

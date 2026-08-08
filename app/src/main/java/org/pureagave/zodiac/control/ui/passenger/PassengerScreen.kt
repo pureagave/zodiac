@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
@@ -316,8 +318,34 @@ private fun artCard(
         theme = theme,
         label = "ART NEARBY",
         value = nearest?.name?.uppercase() ?: "—",
-        footnote = "${nearbyArt.size} WITHIN ${(ART_NEARBY_RADIUS_M / METERS_PER_KM).toInt()} KM",
-    )
+        // The artist and where they're from, then the piece in their own
+        // words. "What IS that?" is the question people actually ask from a
+        // moving art car, and the feed answers it for every piece — so the
+        // card answers it rather than making anyone look it up later.
+        footnote = artByline(nearest),
+    ) {
+        val blurb = nearest?.description
+        if (!blurb.isNullOrBlank()) {
+            Text(
+                text = blurb.trim(),
+                color = theme.primary,
+                fontFamily = RetroFont,
+                fontSize = BLURB_SP.sp,
+                lineHeight = BLURB_LINE_SP.sp,
+                textAlign = TextAlign.Center,
+                maxLines = BLURB_LINES,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(BLURB_WIDTH_FRACTION),
+            )
+        }
+    }
+}
+
+/** `ABRAM SANTA CRUZ · LONG BEACH, CA` — artist first, since that's who to thank. */
+internal fun artByline(poi: PlayaPoi?): String {
+    if (poi == null) return "NOTHING PLACED NEARBY YET"
+    val parts = listOfNotNull(poi.subtitle.takeIf { it.isNotBlank() }, poi.hometown?.takeIf { it.isNotBlank() })
+    return if (parts.isEmpty()) "ARTIST UNKNOWN" else parts.joinToString("  ·  ").uppercase()
 }
 
 /** Playful reading of an impact magnitude. Deliberately not a safety judgement. */
@@ -361,3 +389,7 @@ private const val BUMP_MED = 0.6
 private const val SECONDS_PER_MINUTE = 60
 private const val MINUTES_PER_HOUR = 60
 private const val METERS_PER_KM = 1_000.0
+private const val BLURB_SP = 17
+private const val BLURB_LINE_SP = 24
+private const val BLURB_LINES = 4
+private const val BLURB_WIDTH_FRACTION = 0.82f

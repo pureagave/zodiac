@@ -23,6 +23,18 @@ data class PlayaPoi(
     val kind: PoiKind,
     val point: PlayaPoint?,
     val subtitle: String,
+    /**
+     * Where the artist is from, e.g. "Long Beach, CA, United States". Present
+     * on 100% of the 2026 art feed.
+     */
+    val hometown: String? = null,
+    /**
+     * The artist's own description of the piece. This is the answer to the
+     * question people actually ask from a moving art car — "what *is* that?" —
+     * and the feed carries it for every piece, so there is no reason to make
+     * anyone look it up later.
+     */
+    val description: String? = null,
 )
 
 /**

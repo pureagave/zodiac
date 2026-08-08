@@ -1,0 +1,25 @@
+[Unit]
+Description=Zodiac Track - complete breadcrumb recorder
+Documentation=https://github.com/pureagave/zodiac/blob/main/jetson/DEPLOY.md
+# Needs the vehicle network before it can join the multicast group.
+After=network-online.target
+Wants=network-online.target
+# Never stop retrying: a recorder that gives up after N failures is a recorder
+# that silently misses the burn.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=zodiac
+WorkingDirectory=/opt/zodiac/jetson
+ExecStart=/usr/bin/python3 -u -m zvision.tracklog --dir /var/lib/zodiac/track
+# The recording is the deliverable, so restart forever and quickly.
+Restart=always
+RestartSec=3
+# Deliberately NOT hardened into a read-only filesystem: this service exists
+# to write, and its one directory is created by install.sh.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

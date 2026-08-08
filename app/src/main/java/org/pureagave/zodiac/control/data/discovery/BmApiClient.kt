@@ -50,6 +50,8 @@ class BmApiClient(
             kind = PoiKind.ART,
             point = point,
             subtitle = o.optString("artist").ifBlank { loc?.optString("location_string").orEmpty() },
+            hometown = o.optStringOrNull("hometown"),
+            description = o.optStringOrNull("description"),
         )
     }
 

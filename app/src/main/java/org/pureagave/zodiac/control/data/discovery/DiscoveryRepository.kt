@@ -73,6 +73,8 @@ class DiscoveryRepository(
             o.put("name", p.name)
             o.put("kind", p.kind.name)
             o.put("subtitle", p.subtitle)
+            p.hometown?.let { o.put("hometown", it) }
+            p.description?.let { o.put("description", it) }
             p.point?.let {
                 o.put("eastM", it.eastM)
                 o.put("northM", it.northM)
@@ -96,6 +98,8 @@ class DiscoveryRepository(
                     kind = runCatching { PoiKind.valueOf(o.optString("kind")) }.getOrDefault(PoiKind.ART),
                     point = point,
                     subtitle = o.optString("subtitle"),
+                    hometown = o.optStringOrNull("hometown"),
+                    description = o.optStringOrNull("description"),
                 )
             }
         } catch (e: Exception) {
@@ -107,3 +111,6 @@ class DiscoveryRepository(
         const val REFRESH_INTERVAL_MS = 24L * 60 * 60 * 1000 // ~daily
     }
 }
+
+private fun JSONObject.optStringOrNull(key: String): String? =
+    if (has(key) && !isNull(key)) optString(key).takeIf { it.isNotBlank() } else null
