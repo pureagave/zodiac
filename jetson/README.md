@@ -24,7 +24,7 @@ protocol. The round-trip tests here also guard that contract.
 ```bash
 cd jetson
 python3 -m zvision --source fake -v        # emit synthetic contacts, print each frame
-python3 -m unittest discover -s tests -t . # 152 tests, standard library only
+python3 -m unittest discover -s tests -t . # the whole suite, standard library only
 ```
 
 `--source fake` needs nothing installed — it's how you prove the bus and light

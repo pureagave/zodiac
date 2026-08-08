@@ -6,6 +6,7 @@ import contextlib
 import io
 import socket
 import unittest
+from unittest import mock
 
 from zvision.app import _mounts_from_args, _parse_args, main
 from zvision.geometry import FOV_DIAGONAL, LENS_EQUIDISTANT, LENS_RECTILINEAR
@@ -82,6 +83,42 @@ class RigCliTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             _run_once(["-v", "--camera", "fake:az=0:fov=160"])
         self.assertIn("blind:", out.getvalue())
+
+
+class DmxRunTest(unittest.TestCase):
+    """The runner's half of the tracker-light contract: the sink is actually
+    driven each frame, and shutdown parks the head and blacks it out — so a
+    service stop can't leave a spotlight frozen mid-sky on the last person it
+    tracked."""
+
+    def _run_with_dmx(self):
+        import zvision.dmx as dmx
+
+        captured = {}
+        real = dmx.build_sink
+
+        def capturing(kind, universe=0, base_url=""):
+            sink = real(kind, universe=universe, base_url=base_url)
+            captured["sink"] = sink
+            return sink
+
+        with mock.patch.object(dmx, "build_sink", capturing):
+            rc, _ = _run_once(["--source", "fake", "--dmx", "fake", "--dmx-no-sound"])
+        return rc, captured["sink"]
+
+    def test_the_sink_is_driven_and_the_head_aims_at_the_scene(self):
+        rc, sink = self._run_with_dmx()
+        self.assertEqual(0, rc)
+        self.assertGreaterEqual(sink.sends, 2)  # at least one aim + the park
+        self.assertNotEqual(0, sink.frame[0])   # pan coarse: it pointed somewhere
+
+    def test_exit_parks_the_head_and_blacks_it_out(self):
+        _, sink = self._run_with_dmx()
+        # Channel 5 (default master dimmer) must end dark: mid-run it was 255
+        # (the fake scene has a live contact), so a nonzero here means the
+        # park-on-exit frame never went out.
+        self.assertEqual(0, sink.frame[4])
+        self.assertEqual(0, sink.last_channels.get(5))
 
 
 class CheckModeTest(unittest.TestCase):

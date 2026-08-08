@@ -173,6 +173,29 @@ class CollisionTest(unittest.TestCase):
         # Bearing swinging fast (crossing in front) -> not a collision course.
         self.assertFalse(est.update(1, az=20.0, size=0.55, t=1.0))
 
+    def test_a_person_standing_still_never_reads_as_collision(self):
+        # The art car spends most of its life parked, and people deliberately
+        # walk up and stand next to it — constant bearing, constant size,
+        # frame after frame. The rule is constant bearing AND CLOSING; if
+        # standing still ever counts as closing, every bystander is a
+        # "! BRAKE !" and the driver learns to ignore the alarm, which is
+        # worse than no alarm. (Mutation `>` -> `>=` on the closing test
+        # passed the entire pre-existing suite.)
+        est = CollisionEstimator()
+        est.update(1, az=2.0, size=0.60, t=0.0)
+        for i in range(1, 10):
+            self.assertFalse(
+                est.update(1, az=2.0, size=0.60, t=float(i)),
+                "a stationary bystander must never flag",
+            )
+
+    def test_bearing_drift_exactly_at_the_threshold_still_counts(self):
+        # --collision-az-rate documents itself as "max bearing drift still
+        # counted as constant-bearing" — the boundary belongs to the alarm.
+        est = CollisionEstimator(az_rate_thresh_dps=3.0)
+        est.update(1, az=0.0, size=0.40, t=0.0)
+        self.assertTrue(est.update(1, az=3.0, size=0.55, t=1.0))
+
     def test_receding_contact_does_not_flag(self):
         est = CollisionEstimator()
         est.update(1, az=2.0, size=0.60, t=0.0)
