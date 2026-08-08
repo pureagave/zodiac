@@ -95,22 +95,22 @@ class SurroundRingTest {
     @Test
     fun bearings_inside_the_forward_thermal_arc_are_covered() {
         assertTrue(SurroundRing.isCovered(0f))
-        assertTrue(SurroundRing.isCovered(79f))
-        assertTrue(SurroundRing.isCovered(-79f))
+        assertTrue(SurroundRing.isCovered(63f))
+        assertTrue(SurroundRing.isCovered(-63f))
     }
 
     @Test
     fun coverage_includes_its_own_edges() {
-        assertTrue(SurroundRing.isCovered(80f))
-        assertTrue(SurroundRing.isCovered(-80f))
+        assertTrue(SurroundRing.isCovered(64f))
+        assertTrue(SurroundRing.isCovered(-64f))
     }
 
     @Test
     fun bearings_outside_the_forward_thermal_arc_are_uncovered() {
         // This is the whole point of 1.5f: an uncovered sector must not read
         // like a watched-and-clear one.
-        assertFalse(SurroundRing.isCovered(81f))
-        assertFalse(SurroundRing.isCovered(-81f))
+        assertFalse(SurroundRing.isCovered(65f))
+        assertFalse(SurroundRing.isCovered(-65f))
         assertFalse(SurroundRing.isCovered(180f))
         assertFalse(SurroundRing.isCovered(-180f))
     }
@@ -509,24 +509,24 @@ class SurroundRingTest {
 class SurroundRingCoverageGapTest {
     @Test
     fun a_forward_only_rig_leaves_one_gap_spanning_the_whole_stern() {
-        val gaps = SurroundRing.uncoveredArcs(listOf(-80f..80f))
+        val gaps = SurroundRing.uncoveredArcs(listOf(-64f..64f))
         assertEquals(1, gaps.size)
-        assertEquals(80f, gaps.single().start, 1e-4f)
-        assertEquals(280f, gaps.single().endInclusive, 1e-4f)
+        assertEquals(64f, gaps.single().start, 1e-4f)
+        assertEquals(296f, gaps.single().endInclusive, 1e-4f)
     }
 
     @Test
     fun the_gap_is_returned_unwrapped_so_a_renderer_can_sweep_it_directly() {
         // Splitting at the seam would need the caller to draw two arcs and get
         // the wrap right itself — exactly the bug this avoids.
-        val gap = SurroundRing.uncoveredArcs(listOf(-80f..80f)).single()
+        val gap = SurroundRing.uncoveredArcs(listOf(-64f..64f)).single()
         assertTrue("must run past +180 rather than wrapping", gap.endInclusive > 180f)
-        assertEquals("and must sweep the 200 deg the rig cannot see", 200f, gap.endInclusive - gap.start, 1e-4f)
+        assertEquals("and must sweep the 232 deg the rig cannot see", 232f, gap.endInclusive - gap.start, 1e-4f)
     }
 
     @Test
     fun the_gaps_and_the_covered_arcs_together_account_for_the_whole_circle() {
-        for (covered in listOf(listOf(-80f..80f), listOf(-30f..30f, 100f..170f), listOf(-179f..179f))) {
+        for (covered in listOf(listOf(-64f..64f), listOf(-30f..30f, 100f..170f), listOf(-179f..179f))) {
             val spans =
                 covered.sumOf { (it.endInclusive - it.start).toDouble() } +
                     SurroundRing.uncoveredArcs(covered).sumOf { (it.endInclusive - it.start).toDouble() }
@@ -570,7 +570,7 @@ class SurroundRingCoverageGapTest {
         // Guards the constant itself: today's rig is one forward 160 deg
         // thermal, so most of the circle is genuinely blind.
         val blind = SurroundRing.uncoveredArcs().sumOf { (it.endInclusive - it.start).toDouble() }
-        assertEquals(200.0, blind, 1e-3)
+        assertEquals(232.0, blind, 1e-3)
         assertFalse(SurroundRing.isCovered(180f))
     }
 }

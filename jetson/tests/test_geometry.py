@@ -3,6 +3,7 @@ import unittest
 
 from zvision.geometry import (
     FOV_DIAGONAL,
+    FOV_HORIZONTAL,
     LENS_EQUIDISTANT,
     LENS_EQUISOLID,
     LENS_LINEAR,
@@ -247,3 +248,56 @@ class CollisionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LeptonUwFovReferenceTest(unittest.TestCase):
+    """Which axis the Lepton UW's "160 deg" refers to is not stated by FLIR
+    anywhere we can find (product page, GroupGets, the R200 dewarping note),
+    and it is not cosmetic: ``fov_ref`` feeds ``pixel_to_bearing``, so choosing
+    wrong mis-aims every edge bearing by up to 16 deg — which is where the
+    tracker light points.
+
+    These pin the arithmetic that settles it on physical grounds, so nobody
+    flips the assumption back on a hunch.
+    """
+
+    # The real board, measured 2026-08-07: 160x120 output (plus 2 telemetry rows).
+    W, H = 160, 120
+
+    def half_angles(self, fov, ref):
+        """(horizontal, diagonal) half-angles for a quoted fov on this sensor."""
+        az, _ = pixel_to_bearing(1.0, 0.5, fov, self.H / self.W, LENS_EQUIDISTANT, ref)
+        corner_az, corner_el = pixel_to_bearing(1.0, 1.0, fov, self.H / self.W, LENS_EQUIDISTANT, ref)
+        return abs(az), math.degrees(
+            math.acos(
+                math.cos(math.radians(corner_az)) * math.cos(math.radians(corner_el))
+            )
+        )
+
+    def test_reading_160_as_horizontal_implies_a_lens_that_cannot_exist(self):
+        # An f-theta lens' diagonal grows with the sensor diagonal: 4:3 means
+        # the corner is 100/80 = 1.25x the half-width. 160 deg across the width
+        # therefore demands a 200 deg diagonal. Fisheyes past 180 exist but are
+        # exotic, and nothing about this part is sold as one.
+        _, diag = self.half_angles(160.0, FOV_HORIZONTAL)
+        self.assertGreater(diag * 2, 195.0, "horizontal reading demands a ~200 deg diagonal lens")
+
+    def test_reading_160_as_diagonal_is_an_ordinary_lens(self):
+        horiz, diag = self.half_angles(160.0, FOV_DIAGONAL)
+        self.assertAlmostEqual(160.0, diag * 2, delta=1.0, msg="the quoted figure IS the diagonal")
+        self.assertAlmostEqual(64.0, horiz, delta=0.5, msg="80 deg diagonal * 80/100 = 64 deg horizontal")
+
+    def test_the_two_readings_differ_by_enough_to_matter(self):
+        # 16 deg at the frame edge. A person 10 m away is ~2.8 m off where the
+        # light would be pointed.
+        h_only, _ = self.half_angles(160.0, FOV_HORIZONTAL)
+        d_only, _ = self.half_angles(160.0, FOV_DIAGONAL)
+        self.assertAlmostEqual(16.0, h_only - d_only, delta=0.5)
+
+    def test_the_choice_does_not_disturb_the_boresight(self):
+        # Whatever we pick, dead ahead is still dead ahead — only edge bearings
+        # scale. So this is safe to revise later without recalibrating mounts.
+        for ref in (FOV_HORIZONTAL, FOV_DIAGONAL):
+            az, el = pixel_to_bearing(0.5, 0.5, 160.0, self.H / self.W, LENS_EQUIDISTANT, ref)
+            self.assertAlmostEqual(0.0, az, places=6)
+            self.assertAlmostEqual(0.0, el, places=6)

@@ -109,9 +109,22 @@ object SurroundRing {
 
     /**
      * Bearings the sensor rig actually watches, as (from, to) inclusive
-     * ranges in wrapped ±180 terms. The rig today is one 160° UW thermal
-     * facing forward — not a closed ring — so a chunk of the circle is
-     * genuinely unwatched, not watched-and-clear.
+     * ranges in wrapped ±180 terms. The rig today is one UW thermal facing
+     * forward — not a closed ring — so most of the circle is genuinely
+     * unwatched, not watched-and-clear.
+     *
+     * **±64°, not ±80°** (revised 2026-08-07). FLIR quotes the Lepton UW as
+     * "160°" without ever saying which axis. It cannot be the horizontal: the
+     * board emits 160×120, and 160° across the width of a 4:3 f-theta frame
+     * demands a ~200° diagonal — not a lens that exists. Read as the diagonal
+     * it is an ordinary fisheye, and the horizontal half-angle is
+     * 80° × 80/100 = **64°**. The Jetson rig spec carries the matching
+     * `fovref=d`; `LeptonUwFovReferenceTest` pins the arithmetic.
+     *
+     * Under genuine uncertainty this errs toward under-claiming on purpose. A
+     * ring that says "not watched" where something is watching costs a little
+     * unnecessary caution; one that says "watched" where nothing is looking is
+     * the confident all-clear this whole mechanism exists to prevent.
      *
      * MUST be kept in step with the Jetson's `--camera` rig spec. There is no
      * wire field for this yet, so this constant is the only thing keeping the
@@ -121,7 +134,7 @@ object SurroundRing {
      * once the edge box puts rig geometry on the wire, instead of
      * duplicating it here.
      */
-    val COVERED_ARCS: List<ClosedFloatingPointRange<Float>> = listOf(-80f..80f)
+    val COVERED_ARCS: List<ClosedFloatingPointRange<Float>> = listOf(-64f..64f)
 
     /**
      * The bearings the rig does **not** watch — the complement of
