@@ -4,10 +4,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.VisionFeed
+import timber.log.Timber
 
 /**
  * Prefers the real [network] threat feed (the Jetson edge box), falling back to
@@ -45,14 +48,21 @@ class RoutedThreatSource(
     val feedState: StateFlow<VisionFeed> =
         network.feedAlive
             .map { alive -> deriveFeedState(alive, demoEnabled) }
+            .distinctUntilChanged()
+            // The single most useful line in a DRIVER postmortem: whether the
+            // HUD the driver was reading came from the edge box or the demo.
+            // After distinctUntilChanged, so this logs transitions, not frames.
+            .onEach { Timber.i("vision: feed %s", it) }
             .stateIn(scope, SharingStarted.Eagerly, deriveFeedState(network.feedAlive.value, demoEnabled))
 
     override suspend fun start() {
+        Timber.i("vision: start (demo %s)", if (demoEnabled) "enabled" else "disabled")
         network.start()
         fake.start()
     }
 
     override suspend fun stop() {
+        Timber.i("vision: stop")
         network.stop()
         fake.stop()
     }

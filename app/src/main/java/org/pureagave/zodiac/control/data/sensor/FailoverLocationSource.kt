@@ -13,6 +13,7 @@ import org.pureagave.zodiac.control.core.sensor.LocationFailoverPolicy
 import org.pureagave.zodiac.control.core.sensor.LocationRoute
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import timber.log.Timber
 
 /**
  * Wraps the beacon in this tablet's own GNSS as an automatic backup.
@@ -79,6 +80,17 @@ class FailoverLocationSource(
             // fallback only takes over when it can actually answer.
             val fallbackUsable = fallbackArmed && fallbackState is LocationSourceState.Active
             val useFallback = intent == LocationRoute.FALLBACK && fallbackUsable
+            if (useFallback != _usingFallback.value) {
+                // Deliberately invisible on screen (Rob: "we just want things
+                // to keep working"), so the log is the only record that the
+                // beacon dropped and this tablet's own GNSS took over.
+                Timber.i(
+                    "gps: %s (primary %s, fallback %s)",
+                    if (useFallback) "NET -> SYSTEM failover" else "back on NET",
+                    primaryState::class.simpleName,
+                    fallbackState::class.simpleName,
+                )
+            }
             _usingFallback.value = useFallback
             if (useFallback) fallbackState else primaryState
         }.stateIn(scope, SharingStarted.Eagerly, LocationSourceState.Disconnected)

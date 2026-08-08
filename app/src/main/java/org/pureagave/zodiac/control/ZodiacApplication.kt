@@ -2,6 +2,8 @@ package org.pureagave.zodiac.control
 
 import android.app.Application
 import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
@@ -15,6 +17,7 @@ import org.pureagave.zodiac.control.burnin.BurnInConfigStore
 import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
+import org.pureagave.zodiac.control.core.log.RollingFileLog
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.data.FakeTelemetryRepository
 import org.pureagave.zodiac.control.data.RoutedVehicleGateway
@@ -22,6 +25,7 @@ import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.VehicleConnectionGateway
 import org.pureagave.zodiac.control.data.discovery.BmApiClient
 import org.pureagave.zodiac.control.data.discovery.DiscoveryRepository
+import org.pureagave.zodiac.control.data.log.FileLogTree
 import org.pureagave.zodiac.control.data.playa.AssetsPlayaMapRepository
 import org.pureagave.zodiac.control.data.playa.PlayaMapBinaryCache
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
@@ -40,6 +44,8 @@ import org.pureagave.zodiac.control.data.transport.TransportRegistry
 import org.pureagave.zodiac.control.data.vision.FakeThreatSource
 import org.pureagave.zodiac.control.data.vision.NetworkThreatSource
 import org.pureagave.zodiac.control.data.vision.RoutedThreatSource
+import timber.log.Timber
+import java.io.File
 
 /**
  * Process-lifetime owner for the cockpit's manual DI graph. Replaces the
@@ -51,6 +57,52 @@ import org.pureagave.zodiac.control.data.vision.RoutedThreatSource
 class ZodiacApplication : Application() {
     val applicationScope: CoroutineScope by lazy {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    }
+
+    /**
+     * The rolling postmortem log. Lives under `getExternalFilesDir("logs")` so
+     * it comes off the tablet with a plain `adb pull` — no root, no debug
+     * build required, which is the whole point when a fleet tablet has been
+     * misbehaving in the dust for two days. Falls back to internal storage if
+     * external is unavailable (unmounted, or a device without it).
+     */
+    val fileLog: RollingFileLog by lazy {
+        RollingFileLog(dir = getExternalFilesDir("logs") ?: File(filesDir, "logs"))
+    }
+
+    private val fileLogTree: FileLogTree by lazy {
+        FileLogTree(log = fileLog, scope = applicationScope)
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
+        Timber.plant(fileLogTree)
+        installCrashLogger()
+        Timber.i(
+            "boot: %s %s (%s), api %d, %s %s",
+            BuildConfig.APPLICATION_ID,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.BUILD_TYPE,
+            Build.VERSION.SDK_INT,
+            Build.MANUFACTURER,
+            Build.MODEL,
+        )
+        Timber.i("boot: BRC year %d, log at %s", GoldenSpike.ACTIVE_YEAR, fileLog.currentFile.absolutePath)
+    }
+
+    /**
+     * Record an uncaught exception *before* handing back to the platform
+     * handler, which kills the process. Written synchronously — the async
+     * drain would lose precisely the entry worth having. The previous handler
+     * still runs, so the usual crash reporting/`am` behaviour is unchanged.
+     */
+    private fun installCrashLogger() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            fileLogTree.logBlocking(Log.ERROR, "Crash", "uncaught on thread '${thread.name}'", error)
+            previous?.uncaughtException(thread, error)
+        }
     }
 
     val telemetryRepository: TelemetryRepository by lazy { FakeTelemetryRepository() }

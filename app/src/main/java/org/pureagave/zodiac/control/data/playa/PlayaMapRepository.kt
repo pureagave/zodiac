@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONException
 import org.pureagave.zodiac.control.core.model.MapLoadResult
 import org.pureagave.zodiac.control.core.model.PlayaMap
+import timber.log.Timber
 import java.io.IOException
 
 interface PlayaMapRepository {
@@ -107,9 +108,26 @@ class AssetsPlayaMapRepository(
             try {
                 val cached = binaryCache?.read(year)
                 if (cached != null) {
+                    // Which path served the map matters, and so does the tagged
+                    // count: a stale binary cache is exactly how a fixed parser
+                    // still delivers broken data (see the v1 -> v2 bump).
+                    Timber.i(
+                        "map: %s loaded from binary cache (%d streets, %d tagged, %d plazas)",
+                        year,
+                        cached.streetLines.size,
+                        cached.streetLines.count { it.kind != null },
+                        cached.plazas.size,
+                    )
                     MapLoadResult.Loaded(cached)
                 } else {
                     val parsed = parseAll()
+                    Timber.i(
+                        "map: %s parsed from GeoJSON (%d streets, %d tagged, %d plazas)",
+                        year,
+                        parsed.streetLines.size,
+                        parsed.streetLines.count { it.kind != null },
+                        parsed.plazas.size,
+                    )
                     // Publish the map first; serialising hundreds of KB to the
                     // binary cache must not block time-to-first-map. The write
                     // is already best-effort, so run it fire-and-forget.
@@ -119,8 +137,10 @@ class AssetsPlayaMapRepository(
                     MapLoadResult.Loaded(parsed)
                 }
             } catch (e: IOException) {
+                Timber.e(e, "map: %s failed to load", year)
                 MapLoadResult.Failed(e.message ?: "I/O error reading map")
             } catch (e: JSONException) {
+                Timber.e(e, "map: %s is malformed", year)
                 MapLoadResult.Failed(e.message ?: "Malformed map data")
             }
         }

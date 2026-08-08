@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import timber.log.Timber
 
 /**
  * Holds the active [LocationSource] selection and reflects its [state] as a
@@ -59,12 +60,16 @@ class RoutedLocationSource(
 
     suspend fun start() =
         mutex.withLock {
+            Timber.i("gps: start %s", _selected.value)
             registry.sourceFor(_selected.value).start()
         }
 
     suspend fun select(type: LocationSourceType) =
         mutex.withLock {
             if (type == _selected.value) return@withLock
+            // "Which source were we on when it went wrong" is the first
+            // question of any GPS postmortem, and nothing else records it.
+            Timber.i("gps: select %s -> %s", _selected.value, type)
             registry.sourceFor(_selected.value).stop()
             _selected.value = type
             registry.sourceFor(type).start()
@@ -72,6 +77,7 @@ class RoutedLocationSource(
 
     suspend fun stop() =
         mutex.withLock {
+            Timber.i("gps: stop %s", _selected.value)
             registry.sourceFor(_selected.value).stop()
         }
 }

@@ -116,6 +116,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("com.github.mik3y:usb-serial-for-android:3.9.0")
+    // Logging facade. The value here is the Tree abstraction: debug builds get
+    // logcat, every build writes the rolling file we postmortem from.
+    implementation("com.jakewharton.timber:timber:5.0.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

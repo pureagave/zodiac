@@ -14,6 +14,7 @@ import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.model.VehicleCommand
 import org.pureagave.zodiac.control.data.transport.TransportAdapter
 import org.pureagave.zodiac.control.data.transport.TransportRegistry
+import timber.log.Timber
 
 /**
  * Routes vehicle commands to whichever [TransportAdapter] is currently
@@ -47,14 +48,17 @@ class RoutedVehicleGateway(
         // (adapter lifecycle is owned elsewhere), so re-selecting a link finds
         // it still up. See RoutedVehicleGatewayTest. Note this is the OPPOSITE
         // choice from RoutedLocationSource.select(), which stops the old source.
+        Timber.i("link: select %s -> %s", _selectedTransport.value, transportType)
         _selectedTransport.value = transportType
     }
 
     override suspend fun connect() {
+        Timber.i("link: connect %s", _selectedTransport.value)
         currentAdapter().connect()
     }
 
     override suspend fun disconnect() {
+        Timber.i("link: disconnect %s", _selectedTransport.value)
         currentAdapter().disconnect()
     }
 
