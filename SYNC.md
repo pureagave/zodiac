@@ -6,6 +6,59 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-07 — zvision audit: five latent failures that all showed a green service
+
+Deep audit of `jetson/` (Fable, high effort) plus independent verification here.
+**235 -> 282 tests**, nine commits. Every finding below was verified by probe or
+mutation, and I re-ran the top five mutations myself rather than take them on
+trust. The through-line is the same as every real failure this box has had: the
+bug was in arithmetic or configuration that had no test, and the *service stayed
+green while lying*.
+
+1. **A missing `/etc/default/zvision` broadcast phantom threats.** The unit used
+   `EnvironmentFile=-` (optional) and the CLI defaults to `--source fake`, so a
+   lost config ran the demo detector all night — three synthetic contacts, one a
+   recurring phantom collision, byte-identical on the wire to real people.
+   Config is now required: a loud failed unit instead of a lie on the HUD.
+   Checked the live box — the file is present with the real thermal config, so
+   this was latent, not active.
+2. **`install.sh` has been broken since I moved the install to a clone at
+   `/opt/zodiac` this morning** — it copied the tree onto itself, `cp` refused
+   "identical", and `set -e` killed the install before the unit or config were
+   written. My bug, from yesterday's DEPLOY.md change. Fixed and pinned.
+3. **The blind-arc report credited diagonal FOVs as widths.** `160°` diagonal on
+   a 4:3 sensor is truly `±64°` horizontal, not `±80°` — verified by hand
+   (`80 × 80/100`) and against the code. Three cameras 120° apart quoting 130°
+   diagonal really leave three 15° blind arcs; the old code printed "blind: none
+   — the ring closes". A confident all-clear aimed at exactly the person it
+   would miss. The *bearings* were always right, which is what made it worse.
+4. **`--check` passed configs that crash-loop or silently blind.** `az=nan`
+   passes every guard (NaN compares False) and puts the literal `"nan"` on the
+   wire, which the tablet drops — green service, blind arc. `farh=nan` makes
+   **every** contact read size 1.0, i.e. touching the vehicle and always past
+   the collision gate. `--hz inf` gives a zero period: a hot loop flooding the
+   vehicle network.
+5. **A lapped track-id counter reissued ids that were still alive**, splicing two
+   people into one track — the collision estimator then sees a teleporting
+   bearing, reads it as fast crossing, and *suppresses a real alarm*.
+
+Also: the olad wire contract had no test at all (renaming the endpoint and both
+parameters passed all 235), the DMX sink counted errors without ever logging one
+(an olad that dies at 23:00 = dark light, empty journal), `UvcCamera` had no
+`close()` so every RGB handle leaked, and mutating the collision rule's
+"strictly closing" to `>=` passed the whole suite — that mutant flags every
+stationary bystander beside a parked art car.
+
+Cross-check worth recording: the box now reports `blind: +81°..+280°` for the
+one-thermal rig, and the tablet's `SurroundRing.COVERED_ARCS` (±80°) yields the
+same 200°. The two ends of the system agree about what is not being watched.
+
+**Left undone, and it is the biggest remaining worry:** `MotionDetector` resets a
+track on a single-frame dropout, so a flickering blob gets a new id and a reset
+collision baseline — a systematic bias toward false *negatives* while driving.
+Fixing it changes detection behaviour and needs hardware validation, so it was
+deliberately not done blind.
+
 ## 2026-08-07 — DMX dongle live on the Jetson; surround DRIVER HUD shipped
 
 **DMX.** FTDI FT232R dongle (`BG03OCDS`) plugged into the Jetson; OLA installed
