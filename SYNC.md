@@ -6,6 +6,66 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — clearing the keyboard-only backlog, and M10 immediately paying for itself
+
+Five items, all verified on the S9+ rather than reasoned about. app **637**
+tests, main green.
+
+**The GPS source was rebinding on every cold launch — found by the new logs on
+their first run.** The permission launcher fired unconditionally at startup,
+and an already-granted permission comes back `true`, which is
+indistinguishable from a fresh grant. So `restartLocationSource()` ran every
+time: harmless on FAKE, but on **NET** it drops and rebinds the multicast
+socket, on every tablet, every launch. Now only *missing* permissions are
+requested, and nothing is launched when there are none.
+
+Verified **both directions**, which is the part worth keeping: revoking
+`ACCESS_FINE_LOCATION` and cold-launching still raises the system dialog and
+logs a single `gps: start FAKE`; granting it then produces exactly one
+`gps: stop FAKE` / `gps: start FAKE`. The restart fires when something actually
+changed and never otherwise. That second half only got checked because the
+first half changed a path the S9+ (already fully granted) never exercised.
+
+**M9 — GPS failures now say *why*.** The Error state has always carried a
+diagnostic and the screen never drew it; a failed source was simply silent.
+`LocationSourceError` splits by **what the operator would do about it** —
+PERMISSION_DENIED / ADAPTER_UNAVAILABLE / NO_DEVICE_FOUND / IO_ERROR / UNKNOWN
+— across all fourteen construction sites, defaulting to UNKNOWN so an
+uncategorised source says "ERROR" rather than something specific and wrong.
+Category on screen (it's the actionable half and the strip has room for two
+words), free-text detail to the log, once per error not once per fix. Selecting
+USB with no dongle on the S9+: `? NO DEVICE` in red, and
+`W/…: gps: NO_DEVICE_FOUND — No USB serial device found` in the file.
+
+**On-device log viewer** — hidden bottom-right long-press, taking the one
+corner the burn-in scaffold left free. Last 400 lines, read on IO, newest
+first-visible, size and dropped-line count in the header. `adb pull` answers
+"what happened two hours ago" at camp *with a laptop*; this answers it standing
+next to the vehicle with neither, which is the condition the log was built for.
+Severity colouring reads the priority letter out of the fixed prefix, so a
+message quoting " E/" can't repaint itself.
+
+**L2 — the no-fix wire format is now pinned.** The parser already handled it;
+the tests exist so a later change can't quietly break what a receiver with no
+sky actually sends (`$GPGGA,,,,,,0,,,,,,,,`, a void RMC, a truncated sentence
+from a dropped byte, a claimed fix quality with no coordinates). Plus a
+lat/lon round trip through ddmm.mmmm, which catches an encode/decode error that
+each half alone looks consistent through. Mutation-verified both ways.
+
+**L11 — the USB filter is vendor-wide** for the serial-bridge makers rather
+than vendor+product, covering FT232H / CH343 / CP2104 / MT3329 and their
+siblings, plus a USB CDC class filter for the many GNSS boards that expose a
+plain CDC-ACM port under their own vendor ID. The failure being guarded against
+is a dongle bought at the last minute that the app silently refuses to see.
+**Not verifiable without hardware** — checked only by the resource compiling.
+
+**Two backlog entries were stale, not broken:** the shock-alert banner has been
+drawn and tested all along, and M14's "RECENTER MAP" label was already
+shortened to "RECENTER" (still unconfirmed on the Fire, which is offline).
+
+**Now genuinely blocked at a keyboard:** the whole performance section, every
+item of which says "validate on a real Fire HD 10 before landing."
+
 ## 2026-08-08 — M10 shipped: the tablets can now be postmortem'd
 
 The longest-standing operational gap is closed. Two phased commits.

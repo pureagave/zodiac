@@ -70,12 +70,28 @@ Ranked by consequence on the playa.
       state, transport, map load path, uncaught exceptions. Verified on the
       S9+. Remaining: a debug screen over `RollingFileLog.tail(n)` (the method
       exists and is tested), and surfacing `droppedLines`.
-- [ ] **GPS source restarts once at startup.** The new logs show
-      `gps: start FAKE` → `stop` → `start` on every cold launch — that's
-      `restartLocationSource()` on the permission-result path. Harmless on
-      FAKE; on **NET** it drops and rebinds the multicast socket every launch.
-      Worth making conditional on an actual permission *change*.
-- [ ] The older M6/M8/M9/M14/M16 UI items below.
+- [x] **GPS source restarts once at startup — FIXED 2026-08-08.** Only missing
+      permissions are requested now. Verified both directions on the S9+: a
+      revoked permission still raises the dialog and logs one `gps: start`;
+      granting it produces exactly one stop/start.
+- [x] **M9 — `LocationSourceError` — SHIPPED 2026-08-08.** Five actionable
+      categories across all 14 sites; category on screen, detail to the log.
+- [x] **On-device log viewer — SHIPPED 2026-08-08.** Hidden bottom-right
+      long-press; last 400 lines, severity-coloured, with the dropped count.
+- [x] **L2 / L11 — SHIPPED 2026-08-08.** No-fix wire format + round-trip tests
+      (mutation-verified); USB filter widened to vendor-wide + CDC class.
+      L11 is unverifiable until a dongle is plugged in.
+- [x] ~~**M14**~~ — stale: the label is already `RECENTER`, not `RECENTER MAP`.
+      Still unconfirmed on the Fire (offline).
+- [ ] **M8** — permission rationale before the cold request. The real stake is
+      that two denials on Android 11+ latch to "don't ask again", which costs a
+      Settings trip on a tablet that then can't locate itself. The permission
+      path was just reworked and verified, so this is the natural next edit.
+- [ ] The older M6/M16 UI items, L1, the L3/L4/L6/L13 docs items, L7/L8 file
+      shape, and the A1/A2/A3/A5 architectural calls — all keyboard-only, none
+      with playa consequence.
+- [ ] **L13 needs Rob's decision, not a keyboard:** LICENSE at the repo root —
+      Apache-2.0, MIT, or explicitly closed-source?
 
 
 ## 2026 map migration — DONE in code 2026-07-30 (commit `ca74867`), pending on-device verify
