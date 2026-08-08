@@ -6,6 +6,59 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 (overnight) — FOV settled, alerts latched, alert path proven on hardware
+
+**The Lepton UW's 160 deg is the DIAGONAL, not the horizontal.** FLIR never
+states the axis anywhere we could find. Physics settles it: the board emits
+160x120, and 160 deg across the width of a 4:3 f-theta frame demands a ~200 deg
+diagonal — not a lens that exists (226 deg against the square 120x120 "usable"
+area FLIR quotes). Read as the diagonal it is an ordinary fisheye with a
+**64 deg horizontal half-angle**. Not cosmetic: `fov_ref` feeds
+`pixel_to_bearing`, so the wrong reading **mis-aimed every edge bearing by up to
+16 deg** — ~2.8 m of miss on someone 10 m away, which is where the tracker light
+points. Deployed `fovref=d`; the tablet's ring carries the matching +/-64.
+Both ends now report the same 232 deg unwatched. **Policy set: under genuine
+uncertainty, under-claim coverage.**
+
+**Zero false positives on real hardware.** A passive bus listener watched the
+live thermal against an empty room: **13,727 frames, 0 contacts, 0 collisions**
+over 15 clean minutes. That is the gain-floor fix validated in production
+conditions (pre-fix: 77 spurious detections in three minutes). A clean-baseline
+run is accumulating overnight in `~/nightwatch/fp.log` on the Jetson.
+
+**The alert path is proven end to end.** Injected a synthetic rear collision on
+the real bus and photographed the A54: `! CHECK REAR ! 3 CONTACTS` in red, no
+`! BRAKE !`, no centre banner, the count surviving the alert, the red collision
+blip astern on the ring with its spoke pointing outward, and no forward figure
+for contacts outside the +/-30 deg perspective arc. Every design decision
+behaved as specified against real wire data.
+
+Also confirmed incidentally: with `zvision` stopped the tablet falls back to the
+demo and **says `DEMO`** rather than `CLEAR`. Before this week that phantom
+collision figure was indistinguishable from a real person.
+
+**Alerts are now latched.** The edge box decides `collision` per frame from a
+noisy size estimate at ~9 fps, so the flag chatters while the hazard is
+continuous — nothing latched it, so `! BRAKE !` and the centre banner were
+painted as a strobe, and a driver reads a strobe as a glitch. `AlarmLatch` is
+deliberately asymmetric: **instant attack, slow release**. Raising is never
+delayed; clearing waits out a hold. The bench run then exposed that the *rear*
+callout was still unlatched — same signal, same failure — so both are latched
+now, independently.
+
+Clearing needs a timer rather than another frame (a passed hazard produces no
+more frames), which is why this is a flow operator: `transformLatest` gives
+supersede-and-reschedule for free and kept the ViewModel from growing two more
+methods. That mattered — it stayed under detekt's threshold **without** raising
+it, on a class already flagged as a god object.
+
+App **593 tests**, jetson **286**, all gates green, everything pushed.
+
+**Jetson operational notes:** reachable directly at `192.168.86.235` over
+Ethernet. `/opt/zodiac` is now the single git checkout (was two untracked copies
+four days stale). `pkill -f listen.py` over ssh **kills your own session** —
+use `"[l]isten.py"`.
+
 ## 2026-08-07 — zvision audit: five latent failures that all showed a green service
 
 Deep audit of `jetson/` (Fable, high effort) plus independent verification here.
