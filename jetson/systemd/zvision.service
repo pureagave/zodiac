@@ -15,7 +15,13 @@ StartLimitIntervalSec=0
 Type=simple
 # Config lives in /etc/default/zvision (see install.sh) so you can switch
 # fake<->thermal or tune --hz without editing this unit.
-EnvironmentFile=-/etc/default/zvision
+#
+# REQUIRED, deliberately — no leading "-". With no config the CLI defaults to
+# `--source fake`, so a silently-missing file would put three synthetic
+# contacts (one of them a recurring phantom collision) on the driver's HUD all
+# night, indistinguishable on the wire from real people. A loud failed start
+# is the honest outcome; install.sh always writes the file.
+EnvironmentFile=/etc/default/zvision
 WorkingDirectory=/opt/zodiac/jetson
 ExecStart=/usr/bin/python3 -m zvision $ZVISION_ARGS
 Restart=always
