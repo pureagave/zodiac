@@ -1,18 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Common consumer USB GPS dongles. Vendor IDs are decimal per Android spec. -->
-    <!-- u-blox AG (most generic GPS modules: 7, 8, 9 series) -->
+    <!--
+      USB GPS receivers we'll accept. Vendor IDs are decimal, per the Android spec.
+
+      Deliberately vendor-wide rather than vendor+product for the USB-serial
+      bridge makers: their whole catalogue is serial bridges, and the failure
+      mode we're guarding against is a dongle bought at the last minute that
+      the app silently refuses to see. Claiming too broadly costs nothing —
+      UsbSerialProber still has to find a driver, and the source reports
+      NO DEVICE if it can't. Claiming too narrowly costs an evening at camp
+      with no navigation.
+
+      Covers every chip named in the L11 task (FTDI FT232H, WCH CH343,
+      SiLabs CP2104, MediaTek MT3329) plus their siblings, since all four are
+      just other product IDs behind these same vendors.
+    -->
+
+    <!-- u-blox AG — 7/8/9 series modules, the roof-antenna receiver we plan on. -->
     <usb-device vendor-id="5446" />
 
-    <!-- Prolific Technology PL2303 (BU-353-S4 etc) -->
-    <usb-device vendor-id="1659" product-id="8963" />
+    <!-- Prolific PL2303 family (BU-353-S4, most GlobalSat/Holux pucks). -->
+    <usb-device vendor-id="1659" />
 
-    <!-- WCH CH340 / CH341 generic USB-serial -->
-    <usb-device vendor-id="6790" product-id="29987" />
+    <!-- WCH / QinHeng — CH340, CH341, CH343, CH9102. -->
+    <usb-device vendor-id="6790" />
 
-    <!-- Future Technology Devices (FTDI) FT232R generic USB-serial -->
-    <usb-device vendor-id="1027" product-id="24577" />
+    <!-- FTDI — FT232R, FT232H, FT2232/FT4232. -->
+    <usb-device vendor-id="1027" />
 
-    <!-- Silicon Labs CP210x family (CP2102, CP2104) -->
-    <usb-device vendor-id="4292" product-id="60000" />
+    <!-- Silicon Labs CP210x — CP2102, CP2104, CP2105, CP2108. -->
+    <usb-device vendor-id="4292" />
+
+    <!-- MediaTek — MT3329/MT3339 receivers that enumerate directly. -->
+    <usb-device vendor-id="3725" />
+
+    <!--
+      Anything presenting as USB CDC (Communications class). A great many
+      GNSS boards expose a plain CDC-ACM serial port under their own vendor
+      ID, which no vendor list can anticipate; the default UsbSerialProber
+      carries CdcAcmSerialDriver, so these work if we're allowed to see them.
+    -->
+    <usb-device class="2" />
 </resources>

@@ -179,6 +179,82 @@ class NmeaParserTest {
         assertNull(NmeaParser.parse(nmea("GPGGA,123519,4807.038,N,01131.000,E,-1,08,0.9,545.4,M,46.9,M,,")))
     }
 
+    // --- L2: what a receiver with no sky actually puts on the wire --------
+
+    @Test
+    fun a_cold_receiver_sending_empty_fields_yields_no_fix_rather_than_a_wrong_one() {
+        // This is the real no-fix wire format: everything blank but the fix
+        // quality. Nothing may be invented from it, and it must not throw —
+        // this arrives on every cold start under a roof.
+        val gga = NmeaParser.parse(nmea("GPGGA,,,,,,0,,,,,,,,"))
+        val rmc = NmeaParser.parse(nmea("GPRMC,,V,,,,,,,,,,N"))
+
+        assertNull("empty GGA must not synthesise a fix", gga)
+        assertNull("void RMC must not synthesise a fix", rmc)
+    }
+
+    @Test
+    fun a_truncated_sentence_is_rejected_not_indexed_past_its_end() {
+        // A dropped byte mid-burst shortens the sentence; an unguarded parser
+        // reads off the end and takes the whole GPS thread down with it.
+        listOf(
+            "GPGGA",
+            "GPGGA,123519",
+            "GPGGA,123519,4807.038,N",
+            "GPRMC,123519,A",
+            "GPRMC,123519,A,4807.038,N",
+        ).forEach { body ->
+            assertNull("truncated '$body' must parse to null", NmeaParser.parse(nmea(body)))
+        }
+    }
+
+    @Test
+    fun empty_position_with_a_claimed_fix_is_still_rejected() {
+        // Fix quality 1 but no coordinates — believing the quality flag over
+        // the absent position would put the ego at null island.
+        assertNull(NmeaParser.parse(nmea("GPGGA,123519,,,,,1,08,0.9,545.4,M,46.9,M,,")))
+    }
+
+    @Test
+    fun a_synthesised_fix_round_trips_back_to_itself() {
+        // Guards the coordinate maths in both directions at once: an error in
+        // the ddmm.mmmm encoding or the decode shows up as a mismatch here
+        // even though each half looks self-consistent.
+        val cases =
+            listOf(
+                // the 2025 Golden Spike
+                40.786963 to -119.203007,
+                // the 2026 Golden Spike
+                40.783247 to -119.207884,
+                // southern + eastern hemispheres
+                -33.856800 to 151.215300,
+                0.0 to 0.0,
+            )
+
+        cases.forEach { (lat, lon) ->
+            val latField = "${ddmm(lat, LAT_DEGREE_DIGITS)},${if (lat >= 0) "N" else "S"}"
+            val lonField = "${ddmm(lon, LON_DEGREE_DIGITS)},${if (lon >= 0) "E" else "W"}"
+            val sentence = nmea("GPGGA,123519,$latField,$lonField,1,08,0.9,545.4,M,46.9,M,,")
+
+            val fix = NmeaParser.parse(sentence)
+
+            assertNotNull("$sentence should parse", fix)
+            assertEquals(lat, fix!!.location.lat, ROUND_TRIP_TOLERANCE_DEG)
+            assertEquals(lon, fix.location.lon, ROUND_TRIP_TOLERANCE_DEG)
+        }
+    }
+
+    /** Encode a signed decimal degree as NMEA `(d)ddmm.mmmm`, [degreeDigits] wide. */
+    private fun ddmm(
+        decimalDegrees: Double,
+        degreeDigits: Int,
+    ): String {
+        val abs = kotlin.math.abs(decimalDegrees)
+        val degrees = abs.toInt()
+        val minutes = (abs - degrees) * MINUTES_PER_DEGREE
+        return "%0${degreeDigits}d%07.4f".format(degrees, minutes)
+    }
+
     /** Frame a body with a valid NMEA checksum. */
     private fun nmea(body: String): String {
         val cs = body.fold(0) { acc, c -> acc xor c.code }
@@ -512,6 +588,12 @@ class NmeaParserTest {
     }
 
     private companion object {
+        /** ~1 cm — well under the 4-decimal-minute resolution NMEA carries. */
+        const val ROUND_TRIP_TOLERANCE_DEG = 1e-6
+        const val MINUTES_PER_DEGREE = 60.0
+        const val LAT_DEGREE_DIGITS = 2
+        const val LON_DEGREE_DIGITS = 3
+
         const val COORD_TOLERANCE = 1e-4
         const val SPEED_TOLERANCE = 1e-3
         const val HDOP_TO_M = 5.0
