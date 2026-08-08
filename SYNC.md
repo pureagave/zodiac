@@ -6,6 +6,48 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — a full-burn breadcrumb, and the art feed answers "what IS that?"
+
+**Breadcrumb recorder is live on the Jetson and enabled at boot.**
+`jetson/zvision/tracklog.py` + `zodiac-track.service`. It joins the same fleet
+NMEA multicast group every tablet already listens to and appends one row per
+fix to a daily CSV. It sends nothing — the beacon does not know it exists — so
+recording can never affect navigation.
+
+**Rob asked whether to geogate it. The numbers say no:** a full fourteen-day
+burn at 1 Hz is ~66 MB raw, ~8 MB gzipped, against **434 GB free** on the
+Jetson. There is no storage argument for gating or for dropping stationary
+time, and every filter is a chance to lose the one stretch you wanted. Record
+everything; you cannot recover what you did not write down.
+
+**Durability drove the format**, because vehicle power comes and goes:
+append-only CSV, flushed *and fsynced* per row, so a power cut costs at most
+the row in flight. GPX or JSON would risk the whole file for want of a closing
+tag — convert afterwards, from a file that survived. Daily rotation bounds a
+corrupt tail to one day. Reopening appends rather than truncates, so a reboot
+mid-burn cannot erase the morning.
+
+Verified end to end: three fixes injected on the real bus produced three rows
+with correct decimal degrees and a written header. 13 tests, jetson **312**.
+
+**Why the Jetson is primary and a tablet can only ever be secondary:** it is
+always-on, has a real filesystem, and systemd restarts it forever. An Android
+app is *not* a reliable 24/7 recorder — doze, background limits and process
+death will punch holes in a track, and holes are exactly what this must not
+have. A second tablet recorder is still worth having for redundancy, but it
+should be understood as a partial copy, not a peer.
+
+**The BM art feed, answered by querying it rather than guessing.** 332 pieces
+for 2026, and **100% of them carry `artist`, `hometown` and a real prose
+`description`**. `location`/`location_string` are null on all 332 — so the
+embargo is precisely and only about *where*, never *what*. We were fetching
+`artist` and throwing the rest away; all three now flow through the client,
+cache, model and onto the passenger ART card. Still on the table once
+placements land: `images` (thumbnail URLs, 98% present — needs an image
+loader) and `url`/`donation_link`.
+
+app **698** tests.
+
 ## 2026-08-08 — a passenger display, and the BM 2026 art feed has started moving
 
 Built the passenger display Rob asked for: six cards on a self-running
