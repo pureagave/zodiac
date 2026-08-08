@@ -21,6 +21,7 @@ import org.pureagave.zodiac.control.core.connection.ConnectionPhase
 import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.sensor.gpsStatusLabel
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import org.pureagave.zodiac.control.ui.wrapHeading
@@ -88,6 +89,17 @@ fun conceptControlStrip(
                 )
             }
         }
+        // Until now a failed GPS source had no way to say so: the state carried
+        // an error the screen never drew. The category is what's shown, because
+        // it names the fix — PERMISSION vs ADAPTER OFF vs NO DEVICE are three
+        // different jobs at camp. The free-text detail goes to the rolling log.
+        val gpsStatus = gpsStatusLabel(state.locationState)
+        Text(
+            text = gpsStatus.text,
+            color = if (gpsStatus.fault) theme.error else theme.secondary,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+        )
 
         sectionLabel("> HDG ${state.headingDeg}°", theme.primary)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {

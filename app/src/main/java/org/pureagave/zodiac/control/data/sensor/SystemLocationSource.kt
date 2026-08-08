@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.pureagave.zodiac.control.core.geo.LatLon
 import org.pureagave.zodiac.control.core.sensor.GpsFix
+import org.pureagave.zodiac.control.core.sensor.LocationSourceError
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 
@@ -97,7 +98,7 @@ class SystemLocationSource(
     override suspend fun start() {
         if (listenerRegistered) return
         if (!managerHandle.hasFineLocationPermission()) {
-            _state.value = LocationSourceState.Error(detail = MISSING_PERMISSION_MSG)
+            _state.value = LocationSourceState.Error(MISSING_PERMISSION_MSG, LocationSourceError.PERMISSION_DENIED)
             return
         }
         _state.value = LocationSourceState.Searching
@@ -106,7 +107,7 @@ class SystemLocationSource(
         } catch (ex: Exception) {
             // GPS_PROVIDER may not exist (Fire tablets) or permission may have
             // been revoked — surface as Error rather than stalling in Searching.
-            _state.value = LocationSourceState.Error(detail = "GPS unavailable: ${ex.message}")
+            _state.value = LocationSourceState.Error("GPS unavailable: ${ex.message}", LocationSourceError.ADAPTER_UNAVAILABLE)
             return
         }
         listenerRegistered = true

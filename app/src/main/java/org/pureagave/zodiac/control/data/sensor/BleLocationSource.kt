@@ -20,6 +20,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.sensor.FixFreshness
+import org.pureagave.zodiac.control.core.sensor.LocationSourceError
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
@@ -57,7 +58,7 @@ class BleLocationSource(
 
     override suspend fun start() {
         if (!hasBluetoothConnectPermission()) {
-            _state.value = LocationSourceState.Error(detail = MISSING_PERMISSION_MSG)
+            _state.value = LocationSourceState.Error(MISSING_PERMISSION_MSG, LocationSourceError.PERMISSION_DENIED)
             return
         }
         job?.cancel()
@@ -97,12 +98,12 @@ class BleLocationSource(
         try {
             val adapter = bluetoothAdapter()
             if (adapter == null || !adapter.isEnabled) {
-                _state.value = LocationSourceState.Error(detail = ADAPTER_OFF_MSG)
+                _state.value = LocationSourceState.Error(ADAPTER_OFF_MSG, LocationSourceError.ADAPTER_UNAVAILABLE)
                 return
             }
             val device = adapter.bondedDevices.firstOrNull { deviceNamePattern.matches(it.name.orEmpty()) }
             if (device == null) {
-                _state.value = LocationSourceState.Error(detail = NO_DEVICE_MSG)
+                _state.value = LocationSourceState.Error(NO_DEVICE_MSG, LocationSourceError.NO_DEVICE_FOUND)
                 return
             }
             val sppSocket = device.createRfcommSocketToServiceRecord(SPP_UUID)
@@ -115,7 +116,7 @@ class BleLocationSource(
             // A read/close throwing after stop() cancelled this job is a normal
             // shutdown, not an error — stop() already set Disconnected.
             if (connectionScope.isActive) {
-                _state.value = LocationSourceState.Error(detail = "BT: ${ex.message}")
+                _state.value = LocationSourceState.Error("BT: ${ex.message}", LocationSourceError.IO_ERROR)
             }
         }
     }

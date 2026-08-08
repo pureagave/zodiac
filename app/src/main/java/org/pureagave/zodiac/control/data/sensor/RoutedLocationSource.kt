@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -37,6 +38,10 @@ class RoutedLocationSource(
     val state: StateFlow<LocationSourceState> =
         _selected
             .flatMapLatest { type -> registry.sourceFor(type).state }
+            // The screen only has room for the error *category*; the free-text
+            // detail is the part that says which port, which device, which
+            // exception — so it goes here, once per error, not once per fix.
+            .onEach { s -> if (s is LocationSourceState.Error) Timber.w("gps: %s — %s", s.kind, s.detail) }
             .stateIn(scope, SharingStarted.Eagerly, LocationSourceState.Disconnected)
 
     /**

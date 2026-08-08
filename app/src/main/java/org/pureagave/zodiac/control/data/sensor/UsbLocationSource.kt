@@ -15,6 +15,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.sensor.FixFreshness
+import org.pureagave.zodiac.control.core.sensor.LocationSourceError
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.sensor.NmeaLineAssembler
@@ -88,17 +89,17 @@ class UsbLocationSource(
         val manager = applicationContext.getSystemService(Context.USB_SERVICE) as UsbManager
         val driver = UsbSerialProber.getDefaultProber().findAllDrivers(manager).firstOrNull()
         if (driver == null) {
-            _state.value = LocationSourceState.Error(detail = NO_DEVICE_MSG)
+            _state.value = LocationSourceState.Error(NO_DEVICE_MSG, LocationSourceError.NO_DEVICE_FOUND)
             return
         }
         val connection = manager.openDevice(driver.device)
         if (connection == null) {
-            _state.value = LocationSourceState.Error(detail = NO_PERMISSION_MSG)
+            _state.value = LocationSourceState.Error(NO_PERMISSION_MSG, LocationSourceError.PERMISSION_DENIED)
             return
         }
         val sp = driver.ports.firstOrNull()
         if (sp == null) {
-            _state.value = LocationSourceState.Error(detail = NO_DEVICE_MSG)
+            _state.value = LocationSourceState.Error(NO_DEVICE_MSG, LocationSourceError.NO_DEVICE_FOUND)
             return
         }
         try {
@@ -112,7 +113,7 @@ class UsbLocationSource(
             // A read/close throwing after stop() cancelled this job is a normal
             // shutdown, not an error — stop() already set Disconnected.
             if (connectionScope.isActive) {
-                _state.value = LocationSourceState.Error(detail = "USB: ${ex.message}")
+                _state.value = LocationSourceState.Error("USB: ${ex.message}", LocationSourceError.IO_ERROR)
             }
         }
     }

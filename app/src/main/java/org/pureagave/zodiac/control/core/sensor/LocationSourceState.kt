@@ -11,5 +11,13 @@ sealed interface LocationSourceState {
 
     data class Active(val fix: GpsFix) : LocationSourceState
 
-    data class Error(val detail: String) : LocationSourceState
+    /**
+     * [detail] is the free-text diagnostic (goes to the rolling log); [kind]
+     * is the actionable category that reaches the screen — see
+     * [LocationSourceError] for why the two are separate.
+     */
+    data class Error(
+        val detail: String,
+        val kind: LocationSourceError = LocationSourceError.UNKNOWN,
+    ) : LocationSourceState
 }

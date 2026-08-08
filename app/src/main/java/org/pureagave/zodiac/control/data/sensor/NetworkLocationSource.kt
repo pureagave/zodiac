@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.sensor.GpsFix
+import org.pureagave.zodiac.control.core.sensor.LocationSourceError
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
@@ -183,7 +184,7 @@ class NetworkLocationSource(
                     runCatching { s.joinGroup(InetAddress.getByName(group)) }
                 }
             } catch (ex: Exception) {
-                _state.value = LocationSourceState.Error(detail = "NET: bind :$port failed — ${ex.message}")
+                _state.value = LocationSourceState.Error("NET: bind :$port failed — ${ex.message}", LocationSourceError.IO_ERROR)
                 return
             }
         socket = sock
@@ -201,7 +202,7 @@ class NetworkLocationSource(
         } catch (ex: Exception) {
             // A read throwing after stop() closed the socket is a normal shutdown.
             if (listenerScope.isActive) {
-                _state.value = LocationSourceState.Error(detail = "NET: ${ex.message}")
+                _state.value = LocationSourceState.Error("NET: ${ex.message}", LocationSourceError.IO_ERROR)
             }
         } finally {
             runCatching { sock.leaveGroup(InetAddress.getByName(group)) }
