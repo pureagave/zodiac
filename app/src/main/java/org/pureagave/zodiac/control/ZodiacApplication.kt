@@ -18,6 +18,7 @@ import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.log.RollingFileLog
+import org.pureagave.zodiac.control.core.passenger.DisplayRoleStore
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.data.FakeTelemetryRepository
 import org.pureagave.zodiac.control.data.RoutedVehicleGateway
@@ -140,6 +141,18 @@ class ZodiacApplication : Application() {
 
     val preferences: CockpitPreferences by lazy {
         DataStoreCockpitPreferences(preferencesDataStore)
+    }
+
+    /**
+     * Whether this tablet is a passenger display. Process-scoped rather than
+     * ViewModel state — it's a property of the device, not the session.
+     */
+    val displayRole: DisplayRoleStore by lazy {
+        DisplayRoleStore(
+            scope = applicationScope,
+            read = { preferences.read().passengerMode },
+            write = { preferences.setPassengerMode(it) },
+        )
     }
 
     /**

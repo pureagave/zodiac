@@ -17,6 +17,15 @@ data class CockpitPrefsSnapshot(
     val tiltDeg: Int,
     val pixelsPerMeter: Double,
     val concept: CockpitConcept,
+    /**
+     * This tablet is a passenger display: it shows the passenger carousel and
+     * hides the concept switcher entirely. Persisted per device (rather than
+     * being a runtime toggle) because the whole point is that a rider poking
+     * the screen can't wander into the driver's HUD — and because a passenger
+     * tablet that forgets its role after a power cycle is useless in a vehicle
+     * where nobody is going to reconfigure it.
+     */
+    val passengerMode: Boolean,
 ) {
     companion object {
         val DEFAULT =
@@ -26,6 +35,7 @@ data class CockpitPrefsSnapshot(
                 tiltDeg = CockpitUiState.DEFAULT_TILT_DEG,
                 pixelsPerMeter = DEFAULT_PIXELS_PER_METER,
                 concept = CockpitConcept.RADAR,
+                passengerMode = false,
             )
 
         const val DEFAULT_PIXELS_PER_METER: Double = 0.18
@@ -49,6 +59,8 @@ interface CockpitPreferences {
     suspend fun setPixelsPerMeter(zoom: Double)
 
     suspend fun setConcept(concept: CockpitConcept)
+
+    suspend fun setPassengerMode(enabled: Boolean)
 
     /**
      * Burn-in mitigation tuning, persisted as individual keys so each timeout /

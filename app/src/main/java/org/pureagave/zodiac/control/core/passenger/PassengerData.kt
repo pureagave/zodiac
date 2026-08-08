@@ -1,8 +1,12 @@
 package org.pureagave.zodiac.control.core.passenger
 
+import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.navigation.NavigationCue
 import org.pureagave.zodiac.control.core.navigation.streetLabel
+import org.pureagave.zodiac.control.core.ops.PlayaPoi
+import org.pureagave.zodiac.control.core.ops.PoiKind
 import org.pureagave.zodiac.control.core.telemetry.Odometer
+import kotlin.math.hypot
 
 /**
  * Which passenger cards currently have something real behind them.
@@ -58,3 +62,34 @@ fun passengerLocationLine(cue: NavigationCue): String =
             is NavigationCue.AwayFromClock -> "DEEP PLAYA OFF ${cue.clock.format()}"
             else -> "OPEN PLAYA"
         }
+
+/**
+ * Art pieces close enough to point at, nearest first.
+ *
+ * Three filters, and each one is load-bearing:
+ *  - **kind is ART** — the same feed carries theme camps, and a count that
+ *    silently includes them is not the number the card claims to show.
+ *  - **it has a position.** As of 2026-08-08 the BM API is serving 2026 art
+ *    *names* with no coordinates yet; those entries can't be placed, so a
+ *    display that counts them is inventing proximity it cannot know.
+ *  - **it's within [radiusM].** "Nearby" has to mean nearby, not "exists
+ *    somewhere in Black Rock City".
+ */
+fun artNearby(
+    pois: List<PlayaPoi>,
+    ego: PlayaPoint?,
+    radiusM: Double = ART_NEARBY_RADIUS_M,
+): List<PlayaPoi> {
+    if (ego == null) return emptyList()
+    return pois
+        .asSequence()
+        .filter { it.kind == PoiKind.ART }
+        .mapNotNull { poi -> poi.point?.let { poi to hypot(it.eastM - ego.eastM, it.northM - ego.northM) } }
+        .filter { (_, distance) -> distance <= radiusM }
+        .sortedBy { (_, distance) -> distance }
+        .map { (poi, _) -> poi }
+        .toList()
+}
+
+/** Roughly the far side of the city — far enough to be worth pointing out, close enough to matter. */
+const val ART_NEARBY_RADIUS_M: Double = 1_500.0

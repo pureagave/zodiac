@@ -1182,6 +1182,8 @@ private class NoOpCockpitPreferences : CockpitPreferences {
 
     override suspend fun setConcept(concept: CockpitConcept) = Unit
 
+    override suspend fun setPassengerMode(enabled: Boolean) = Unit
+
     override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
 
     override suspend fun setBurnInConfig(config: BurnInConfig) = Unit
@@ -1217,6 +1219,8 @@ private class RecordingCockpitPreferences(
     override suspend fun setConcept(concept: CockpitConcept) {
         concepts += concept
     }
+
+    override suspend fun setPassengerMode(enabled: Boolean) = Unit
 
     override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
 

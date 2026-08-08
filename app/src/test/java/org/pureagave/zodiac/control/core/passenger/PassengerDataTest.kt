@@ -4,8 +4,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.navigation.ClockTime
 import org.pureagave.zodiac.control.core.navigation.NavigationCue
+import org.pureagave.zodiac.control.core.ops.PlayaPoi
+import org.pureagave.zodiac.control.core.ops.PoiKind
 import org.pureagave.zodiac.control.core.telemetry.Odometer
 
 class PassengerDataTest {
@@ -86,4 +89,55 @@ class PassengerDataTest {
             passengerLocationLine(NavigationCue.AwayFromClock(ClockTime(2, 0), distanceM = 400.0)),
         )
     }
+
+    // --- art proximity -----------------------------------------------------
+
+    @Test
+    fun art_without_coordinates_is_not_counted_as_nearby() {
+        // Real case, 2026-08-08: the BM API is serving 2026 art names with no
+        // placements yet. Counting them would invent proximity we cannot know.
+        val unplaced = listOf(art("Electric Dandelion", point = null), art("Nova", point = null))
+
+        assertTrue(artNearby(unplaced, ego = PlayaPoint(0.0, 0.0)).isEmpty())
+    }
+
+    @Test
+    fun theme_camps_are_not_counted_as_art() {
+        val mixed = listOf(art("Nova", PlayaPoint(10.0, 0.0)), camp("Galactic Relay", PlayaPoint(20.0, 0.0)))
+
+        val nearby = artNearby(mixed, ego = PlayaPoint(0.0, 0.0))
+
+        assertEquals(listOf("Nova"), nearby.map { it.name })
+    }
+
+    @Test
+    fun nearby_means_nearby_and_is_ordered_by_distance() {
+        val pieces =
+            listOf(
+                art("Far", PlayaPoint(ART_NEARBY_RADIUS_M + 1.0, 0.0)),
+                art("Middle", PlayaPoint(500.0, 0.0)),
+                art("Close", PlayaPoint(50.0, 0.0)),
+            )
+
+        val nearby = artNearby(pieces, ego = PlayaPoint(0.0, 0.0))
+
+        assertEquals(listOf("Close", "Middle"), nearby.map { it.name })
+    }
+
+    @Test
+    fun without_a_fix_nothing_is_nearby() {
+        val pieces = listOf(art("Nova", PlayaPoint(10.0, 0.0)))
+
+        assertTrue(artNearby(pieces, ego = null).isEmpty())
+    }
+
+    private fun art(
+        name: String,
+        point: PlayaPoint?,
+    ) = PlayaPoi(uid = name, name = name, kind = PoiKind.ART, point = point, subtitle = "")
+
+    private fun camp(
+        name: String,
+        point: PlayaPoint?,
+    ) = PlayaPoi(uid = name, name = name, kind = PoiKind.CAMP, point = point, subtitle = "")
 }

@@ -37,6 +37,7 @@ class DataStoreCockpitPreferences(
                 (prefs[KEY_PIXELS_PER_METER] ?: default.pixelsPerMeter)
                     .coerceIn(MIN_ZOOM, MAX_ZOOM),
             concept = prefs[KEY_CONCEPT]?.toConceptOrNull() ?: default.concept,
+            passengerMode = prefs[KEY_PASSENGER_MODE] ?: default.passengerMode,
         )
     }
 
@@ -54,6 +55,10 @@ class DataStoreCockpitPreferences(
 
     override suspend fun setPixelsPerMeter(zoom: Double) {
         dataStore.edit { it[KEY_PIXELS_PER_METER] = zoom }
+    }
+
+    override suspend fun setPassengerMode(enabled: Boolean) {
+        dataStore.edit { it[KEY_PASSENGER_MODE] = enabled }
     }
 
     override suspend fun setConcept(concept: CockpitConcept) {
@@ -118,6 +123,7 @@ class DataStoreCockpitPreferences(
         val KEY_TILT_DEG = intPreferencesKey("tilt_deg")
         val KEY_PIXELS_PER_METER = doublePreferencesKey("pixels_per_meter")
         val KEY_CONCEPT = stringPreferencesKey("cockpit_concept")
+        val KEY_PASSENGER_MODE = booleanPreferencesKey("passenger_mode")
 
         val KEY_BI_SHIFT_ENABLED = booleanPreferencesKey("bi_shift_enabled")
         val KEY_BI_SHIFT_AMP = intPreferencesKey("bi_shift_amp_px")

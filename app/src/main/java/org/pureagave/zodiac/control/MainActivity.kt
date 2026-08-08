@@ -68,7 +68,16 @@ private fun zodiacApp() {
     val viewModel = rememberCockpitViewModel(app)
 
     autoDim(viewModel)
-    cockpitScreen(viewModel = viewModel, burnInManager = app.burnInManager, fileLog = app.fileLog)
+    val audio by app.networkLocationSource.audioLevel.collectAsStateWithLifecycle()
+    val passengerMode by app.displayRole.passengerMode.collectAsStateWithLifecycle()
+    cockpitScreen(
+        viewModel = viewModel,
+        burnInManager = app.burnInManager,
+        fileLog = app.fileLog,
+        audio = audio,
+        passengerMode = passengerMode,
+        onSetPassengerMode = app.displayRole::setPassengerMode,
+    )
     // Emitted *after* the cockpit deliberately: siblings at the root stack in
     // declaration order, so a gate declared first draws underneath the whole
     // UI and its panel is invisible. (It was — caught on device, not in review.)
