@@ -34,6 +34,7 @@ from .geometry import (
     LENS_EQUIDISTANT,
     LENS_MODELS,
     LENS_RECTILINEAR,
+    pixel_to_bearing,
     wrap180,
 )
 from .threat import DriverThreat
@@ -98,10 +99,25 @@ class CameraMount:
     fps: Optional[float] = None
     tuning: DetectorTuning = field(default_factory=DetectorTuning)
 
+    def half_h_fov_deg(self) -> float:
+        """The *horizontal* half-angle this camera actually covers, through its
+        lens model and FOV reference — i.e. the true bearing of the frame's
+        side edge on the centreline.
+
+        For a width-referenced FOV this is exactly ``fov/2`` for every lens
+        model. For a *diagonal*-referenced FOV it is materially narrower —
+        160° diagonal over a 4:3 sensor is only ±64° horizontal — and
+        crediting ``fov/2`` anyway made the bring-up banner print
+        "blind: none — the ring closes" over arcs no camera could see, which
+        is a confident all-clear pointed at exactly the person it would miss."""
+        aspect = self.height / self.width if self.width else 1.0
+        az, _ = pixel_to_bearing(1.0, 0.5, self.fov_deg, aspect, self.lens, self.fov_ref)
+        return abs(az)
+
     def arc(self) -> Tuple[float, float]:
         """The (left, right) global bearings this camera's frame spans — handy
         for checking a rig actually closes the circle."""
-        half = self.fov_deg / 2.0
+        half = self.half_h_fov_deg()
         return wrap180(self.mount_az_deg - half), wrap180(self.mount_az_deg + half)
 
 
@@ -482,8 +498,15 @@ def coverage_gaps(mounts: Sequence[CameraMount], step_deg: float = 1.0) -> List[
     def bearing(i: int) -> float:
         return wrap180(-180.0 + (i % steps) * step)
 
+    # Effective horizontal coverage, not the raw quoted FOV: a diagonal-
+    # referenced 160° is only ±64° wide on a 4:3 sensor, and overstating it
+    # here reported a closed ring around real blind arcs.
+    # The tolerance absorbs the float error of the lens round-trip (atan2 of
+    # sin/cos loses ~1e-14 deg), which otherwise reports a phantom 1° gap when
+    # two cameras meet exactly edge-to-edge.
+    spans = [(m.mount_az_deg, m.half_h_fov_deg() + 1e-9) for m in mounts]
     covered = [
-        any(abs(wrap180(bearing(i) - m.mount_az_deg)) <= m.fov_deg / 2.0 for m in mounts)
+        any(abs(wrap180(bearing(i) - az)) <= half for az, half in spans)
         for i in range(steps)
     ]
     if all(covered):

@@ -228,6 +228,22 @@ class ArcTest(unittest.TestCase):
         self.assertAlmostEqual(135.0, left)
         self.assertAlmostEqual(-135.0, right)
 
+    def test_a_diagonal_quoted_fov_covers_a_narrower_arc_than_its_number(self):
+        # 160° *diagonal* over the Lepton's 4:3 sensor reaches only ±64°
+        # horizontally. Crediting ±80° made the coverage report — the thing
+        # you check before trusting the ring — claim arcs no camera can see.
+        m = CameraMount("t", fov_deg=160.0, fov_ref=FOV_DIAGONAL, width=160, height=120)
+        left, right = m.arc()
+        self.assertAlmostEqual(64.0, right, places=3)
+        self.assertAlmostEqual(-64.0, left, places=3)
+
+    def test_a_width_quoted_fov_still_covers_exactly_its_number(self):
+        # The default path must be unchanged: every lens model puts the frame
+        # edge at fov/2 when the FOV is quoted across the width.
+        for lens in ("equidistant", "rectilinear", "equisolid", "linear"):
+            m = CameraMount("c", fov_deg=100.0, lens=lens, width=1280, height=720)
+            self.assertAlmostEqual(50.0, m.half_h_fov_deg(), places=3, msg=lens)
+
 
 class ToGlobalTest(unittest.TestCase):
     def test_forward_camera_is_a_passthrough(self):
@@ -428,6 +444,24 @@ class CoverageGapsTest(unittest.TestCase):
     def test_two_opposed_narrow_cameras_leave_two_gaps(self):
         mounts = [CameraMount("f", fov_deg=60.0), CameraMount("a", mount_az_deg=180.0, fov_deg=60.0)]
         self.assertEqual(2, len(coverage_gaps(mounts)))
+
+    def test_diagonal_quoted_fovs_do_not_fake_a_closed_ring(self):
+        # Quoted as widths this ring closes (160+120+120 with overlap); quoted
+        # as *diagonals* the same numbers leave real blind arcs between the
+        # cameras. Reporting "blind: none" here is a confident all-clear
+        # pointed at exactly the person standing in the gap.
+        ring = [
+            CameraMount("f", fov_deg=160.0, fov_ref=FOV_DIAGONAL, width=160, height=120),
+            CameraMount("s", mount_az_deg=120.0, fov_deg=120.0, fov_ref=FOV_DIAGONAL, width=1280, height=720),
+            CameraMount("p", mount_az_deg=-120.0, fov_deg=120.0, fov_ref=FOV_DIAGONAL, width=1280, height=720),
+        ]
+        self.assertNotEqual([], coverage_gaps(ring))
+        as_widths = [
+            CameraMount("f", fov_deg=160.0, width=160, height=120),
+            CameraMount("s", mount_az_deg=120.0, fov_deg=120.0, width=1280, height=720),
+            CameraMount("p", mount_az_deg=-120.0, fov_deg=120.0, width=1280, height=720),
+        ]
+        self.assertEqual([], coverage_gaps(as_widths))
 
 
 if __name__ == "__main__":
