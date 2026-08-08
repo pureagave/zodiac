@@ -5,10 +5,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
-import kotlin.math.atan2
-import kotlin.math.hypot
 
-private const val PINCH_FINGERS: Int = 2
 const val MAP_MIN_ZOOM: Double = 0.05
 const val MAP_MAX_ZOOM: Double = 5.0
 
@@ -49,48 +46,19 @@ fun Modifier.cockpitTouchInput(
         val zoomCb by rememberUpdatedState(onZoom)
         val rotateCb by rememberUpdatedState(onRotate)
         pointerInput(Unit) {
-            var pinchStartDist = 0f
-            var pinchStartZoom = zoomGetter()
-            var lastRotAngleRad = 0.0
-            var hadTwoFingers = false
-            var lastPanX = 0f
-            var lastPanY = 0f
-            var hadOneFinger = false
+            // All the decisions live in PinchSession (unit-tested); this loop
+            // only adapts pointer frames in and callbacks out.
+            val session = PinchSession { zoomGetter() }
             awaitPointerEventScope {
                 while (true) {
-                    val pressed = awaitPointerEvent().changes.filter { it.pressed }
-                    if (pressed.size < PINCH_FINGERS) {
-                        pinchStartDist = 0f
-                        hadTwoFingers = false
-                    }
-                    if (pressed.size != 1) hadOneFinger = false
-                    if (pressed.size == 1) {
-                        val pos = pressed[0].position
-                        if (hadOneFinger) panCb(pos.x - lastPanX, pos.y - lastPanY)
-                        lastPanX = pos.x
-                        lastPanY = pos.y
-                        hadOneFinger = true
-                    } else if (pressed.size >= PINCH_FINGERS) {
-                        val a = pressed[0].position
-                        val b = pressed[1].position
-                        val dx = b.x - a.x
-                        val dy = b.y - a.y
-                        val distance = hypot(dx, dy)
-                        val angleRad = atan2(dy.toDouble(), dx.toDouble())
-                        if (pinchStartDist == 0f) {
-                            pinchStartDist = distance
-                            pinchStartZoom = zoomGetter()
-                            lastRotAngleRad = angleRad
-                            hadTwoFingers = true
-                        } else {
-                            zoomCb(mapPinchZoom(pinchStartZoom, pinchStartDist, distance))
-                            if (hadTwoFingers) {
-                                val step = mapRotationStepDeg(lastRotAngleRad, angleRad)
-                                if (step != 0f) rotateCb(step)
-                            }
-                            lastRotAngleRad = angleRad
-                        }
-                    }
+                    val pressed =
+                        awaitPointerEvent().changes
+                            .filter { it.pressed }
+                            .map { TouchPoint(it.position.x, it.position.y) }
+                    val update = session.onPointers(pressed)
+                    if (update.panDx != 0f || update.panDy != 0f) panCb(update.panDx, update.panDy)
+                    update.zoom?.let(zoomCb)
+                    if (update.rotateStepDeg != 0f) rotateCb(update.rotateStepDeg)
                 }
             }
         }

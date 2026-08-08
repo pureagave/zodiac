@@ -1,5 +1,8 @@
 package org.pureagave.zodiac.control.ui.concepts
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -62,3 +65,25 @@ private val StandardCockpit =
 val ThemeCrtVector = StandardCockpit
 val ThemeTracker = StandardCockpit
 val ThemeInstrumentBay = StandardCockpit
+
+/**
+ * The active concept's palette, available to any composable below
+ * [ProvideCockpitTheme] without threading `theme` through every signature.
+ *
+ * Introduced for M6 and, more importantly, as the pattern A3 needs: once the
+ * night display / friend tracker / track replay become second consumers of the
+ * map stack, passing a palette down by hand stops scaling.
+ *
+ * Defaults to the standard cockpit skin so a preview or a composable used
+ * outside a provider still renders in the right colours rather than throwing.
+ */
+val LocalCockpitTheme = staticCompositionLocalOf { ThemeTracker }
+
+/** Scope [content] to a concept's palette. */
+@Composable
+fun provideCockpitTheme(
+    theme: ConceptTheme,
+    content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalCockpitTheme provides theme, content = content)
+}

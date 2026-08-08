@@ -13,13 +13,21 @@ import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.geo.PlayaViewport
 import org.pureagave.zodiac.control.core.model.PlayaMap
+import org.pureagave.zodiac.control.ui.concepts.DataPurple
+import org.pureagave.zodiac.control.ui.concepts.PhosphorGreen
+import org.pureagave.zodiac.control.ui.concepts.StatusBlue
 
-private val Fence = Color(0xFF00FF66)
+// The default (MAP concept) map skin. Four of these ARE the cockpit palette and
+// now say so rather than repeating its hex; the rest are deliberate map-only
+// shades — mid greens that have to sit *between* chrome and background so the
+// city reads as terrain, and the art pinks, which have no palette equivalent.
+// They are values in their own right, not literals waiting to be themed.
+private val Fence = PhosphorGreen
 private val Street = Color(0xFF1F8F46)
 private val Outline = Color(0xFF0F5C2D)
-private val Plaza = Color(0xFFC77DFF)
-private val Toilet = Color(0xFF00BFFF)
-private val Cpn = Color(0xFF00FF66)
+private val Plaza = DataPurple
+private val Toilet = StatusBlue
+private val Cpn = PhosphorGreen
 private val ArtMajor = Color(0xFFFF66CC)
 private val ArtMinor = Color(0xFF80366A)
 private val GridGreen = Color(0xFF1F6E37)
