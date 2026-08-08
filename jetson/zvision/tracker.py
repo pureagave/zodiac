@@ -129,17 +129,27 @@ def select_best(
 class TrackerConfig:
     """Fixture wiring + az→pan/size→tilt calibration + slew limits.
 
-    Defaults describe a generic 540°/270° moving head with 16-bit pan/tilt and a
-    master dimmer on the first four channels. Calibrate ``pan_center_deg`` /
-    ``pan_gain`` once on the vehicle (aim it dead-ahead, then at a known bearing)."""
+    Defaults are the **11-channel mode** of the vehicle's moving head — see
+    ``jetson/MOVING-HEAD.md``, transcribed from the fixture manual. 11-channel
+    is 9-channel plus 16-bit pan/tilt, and a tracker that follows people wants
+    the fine channels: 8-bit pan over 540° is ~2.1° per step, which is visibly
+    steppy on a slow follow.
 
-    # DMX channels, 1-based. Set a *_fine to None for an 8-bit-only fixture, and
-    # dimmer_channel to None if the head has no master dimmer.
+    Calibrate ``pan_center_deg`` / ``pan_gain`` once on the vehicle (aim dead
+    ahead, then at a known bearing)."""
+
+    # DMX channels, 1-based, for 11-channel mode. Set a *_fine to None for an
+    # 8-bit-only fixture, and dimmer_channel to None if there's no master dimmer.
+    #
+    # The dimmer is channel 8, NOT 5. Channel 5 is the colour wheel, where
+    # 140-255 means "auto colour change, fast" — so writing a brightness there
+    # spins colours at full tilt while the real dimmer stays at 0 and the head
+    # looks dead. Caught by reading the manual against this table.
     pan_channel: int = 1
     pan_fine_channel: Optional[int] = 2
     tilt_channel: int = 3
     tilt_fine_channel: Optional[int] = 4
-    dimmer_channel: Optional[int] = 5
+    dimmer_channel: Optional[int] = 8
 
     # Mechanical spans that DMX full-scale covers.
     pan_range_deg: float = 540.0
@@ -193,6 +203,26 @@ class TrackerConfig:
     # from the aim center / far tilt in __post_init__ when left at NaN sentinels.
     park_pan_deg: float = float("nan")
     park_tilt_deg: float = float("nan")
+
+    # Channels this fixture defines that we must never drive off zero, because
+    # doing so hijacks the head away from explicit control (MOVING-HEAD.md 3.2):
+    #   ch10 auto/sound programs — anything above 59 fights our pan/tilt writes
+    #   ch11 mode select — 250-255 held for 5 s triggers a MOTOR RESET mid-show
+    # The universe starts zeroed and we never write them, so this is a statement
+    # of intent that ``test_tracker`` locks in rather than a runtime action.
+    forbidden_channels: tuple = (10, 11)
+
+
+#: 9-channel mode from the same manual, for a fixture set to the shorter
+#: personality: no fine pan/tilt, and the dimmer moves to channel 6. Slower,
+#: coarser follow — prefer 11-channel unless the head is stuck in 9.
+NINE_CHANNEL_OVERRIDES = {
+    "pan_channel": 1,
+    "pan_fine_channel": None,
+    "tilt_channel": 2,
+    "tilt_fine_channel": None,
+    "dimmer_channel": 6,
+}
 
 
 @dataclass(frozen=True)

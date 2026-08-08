@@ -85,12 +85,33 @@ class TrackerAimTest(unittest.TestCase):
         self.assertAlmostEqual(290.0, held, places=3)  # stays where it last aimed
 
     def test_park_recenters_and_blacks_out(self):
-        trk = Tracker(TrackerConfig())
+        cfg = TrackerConfig()
+        trk = Tracker(cfg)
         trk.update([DriverThreat(rel_az_deg=25.0, size=0.9, id=1)], dt=1.0e9)
         p = trk.park()
         self.assertEqual(128, p.channels[1])  # back to pan center
-        self.assertEqual(0, p.channels[5])    # dimmer off
+        # Read the channel from the config rather than hardcoding it. This test
+        # asserted channel 5 and so agreed with a wiring bug: on this fixture 5
+        # is the colour wheel and the dimmer is 8 (see MOVING-HEAD.md).
+        self.assertEqual(0, p.channels[cfg.dimmer_channel])
         self.assertIsNone(p.target_id)
+
+    def test_the_dimmer_is_not_wired_to_the_colour_wheel(self):
+        # Channel 5 on this head is Colour, where 140-255 means "auto colour
+        # change, fast". Writing brightness there spins colours at full speed
+        # while the real dimmer sits at 0 and the fixture looks dead.
+        self.assertEqual(8, TrackerConfig().dimmer_channel)
+
+    def test_the_reset_and_auto_program_channels_are_never_driven(self):
+        # ch11 held at 250-255 for 5 s triggers a motor reset; ch10 above 59
+        # hands the head to its internal programs. Either mid-show is a
+        # fixture that stops obeying us.
+        cfg = TrackerConfig()
+        trk = Tracker(cfg)
+        frame = trk.update([DriverThreat(rel_az_deg=10.0, size=0.5, id=1)], dt=1.0e9)
+        for channel in cfg.forbidden_channels:
+            self.assertNotIn(channel, frame.channels)
+            self.assertNotIn(channel, trk.park().channels)
 
 
 class TrackerHysteresisTest(unittest.TestCase):

@@ -11,6 +11,7 @@ from unittest import mock
 from zvision.app import _mounts_from_args, _parse_args, main
 from zvision.geometry import FOV_DIAGONAL, LENS_EQUIDISTANT, LENS_RECTILINEAR
 from zvision.threat_protocol import parse_frame
+from zvision.tracker import TrackerConfig
 
 
 def _run_once(extra_args):
@@ -115,11 +116,13 @@ class DmxRunTest(unittest.TestCase):
         self.assertNotEqual(0, self.sink.frame[0])   # pan coarse: it pointed somewhere
 
     def test_exit_parks_the_head_and_blacks_it_out(self):
-        # Channel 5 (default master dimmer) must end dark: mid-run it was 255
-        # (the fake scene has a live contact), so a nonzero here means the
-        # park-on-exit frame never went out.
-        self.assertEqual(0, self.sink.frame[4])
-        self.assertEqual(0, self.sink.last_channels.get(5))
+        # The master dimmer must end dark: mid-run it was 255 (the fake scene
+        # has a live contact), so a nonzero here means the park-on-exit frame
+        # never went out. Channel comes from the config — hardcoding it is how
+        # this test previously agreed with the colour-wheel wiring bug.
+        dimmer = TrackerConfig().dimmer_channel
+        self.assertEqual(0, self.sink.frame[dimmer - 1])
+        self.assertEqual(0, self.sink.last_channels.get(dimmer))
 
 
 class CheckModeTest(unittest.TestCase):
