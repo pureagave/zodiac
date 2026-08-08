@@ -6,6 +6,57 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-08 — the 2026 map migration silently disabled the whole nav stack
+
+**The on-device address check was the right gate to be worried about, and it
+found something much bigger than a mis-placed pin.**
+
+The 2026 Innovate GIS renamed its street properties: `type` → `source`/`kind`,
+`width` → `width_ft`. `GeoJsonParser` still read the 2025 keys, so **every**
+`StreetLine` parsed with `kind = null`. `PlayaCityModel` drops kind-less
+streets, so the city model was **empty**: no arcs, no radials,
+`cityOuterRadiusM = Double.MAX_VALUE`. That silently took out street-crossing
+cues (`NAV · 3:00 ← ESPLANADE`), "what street am I on", and every address route
+— since 2026-07-30, through a green CI and a "renders on the S9+" check.
+
+**The map drew perfectly the whole time**, because the renderer only needs
+geometry. Same failure signature the zvision audit kept turning up: a green
+service that is lying. Geometry is not semantics; drawing is not working.
+
+Same drift in `plazas` (`Name` → `name`), so all twelve plaza names were null
+and `plazaLabelSeeds` dropped every label.
+
+**Measured against the bundled assets, not reasoned about:**
+- Every lettered ring matches `StreetRingRadiiM` within **0.7 m** — the radii
+  really are stable year over year, as assumed.
+- **Except the Esplanade: coded 752.0 m, measured 761.5 m.** And the *2025*
+  data measures 761.1 m, so that number was never right — it just had never
+  been checked against the thing it claimed to come from.
+- `addressTarget(2:15, "H")` now lands **3.1 m** from the true GIS intersection
+  of the H ring and the 2:15 radial. `Camp.GALACTIC_RELAY` is 2.4 m off. Both
+  are far inside a street width — **the home-camp address gate is closed.**
+
+`BundledGisTest` re-measures all of it against the shipped GeoJSON every build,
+so the next rename fails a test instead of quietly disabling navigation. All
+five assertions were confirmed failing before the fix; the ring-radius check
+was mutation-verified with a deliberate 10 m error on H.
+
+`PlayaMapBinaryCache` bumped to **v2** — a v1 cache on a tablet holds the
+kind-less parse and would have survived the upgrade untouched.
+
+**Verified on the S9+** with the new build: the nav line reads
+`NAV · 3:00 ← ESPLANADE  OUTBOUND` (dead before this), and the keypad resolves
+`2:15 & H` → `HEADING 112°`, `1.6km` — identical to the hard-coded HOME preset,
+which is an independent cross-check that the typed address and the camp
+constant land on the same spot.
+
+**Lesson worth keeping:** a yearly third-party dataset has no compatibility
+promise, and a parser that reads a missing key gets `null`, not an error. Any
+"we migrated to the new data" claim needs a test that asserts against the new
+data's *content*, not just that it loads.
+
+app **599** tests.
+
 ## 2026-08-08 — HANDOFF: fresh context starts here
 
 Rob is restarting the assistant with clean context. Everything needed to pick up

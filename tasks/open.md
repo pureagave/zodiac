@@ -44,12 +44,17 @@ Ranked by consequence on the playa.
 
 ## 🟢 Doable without Rob — I ran out of session, not options
 
-- [ ] **Shock-alert banner.** `CockpitUiState` carries the shock state and
-      nothing draws it. Self-contained UI + testable logic. Listed twice and
-      skipped twice; no good reason.
-- [ ] **2026 map on-device address check.** Type our camp (**2:15 & H**) via
-      `adb input` on the S9+/A54 and confirm it lands on the right corner. The
-      one gate before trusting nav. Fiddly UI navigation, not hard.
+- [x] ~~**Shock-alert banner.**~~ Already shipped — `opsReadout` draws
+      `◆ SHOCK n.ng` in the beacon line (red, faults-only palette), the
+      ViewModel clears it after 2 s, and `CockpitViewModelTest` covers the
+      re-arm. The backlog entry was stale, not the code.
+- [x] **2026 map on-device address check — DONE 2026-08-08, and it found a
+      real bug.** The 2026 GIS renamed its street schema, so every street
+      parsed kind-less and the whole city model was empty: no street cues, no
+      routes. Fixed + `BundledGisTest` now measures the parse, the ring radii,
+      and `2:15 & H` against the shipped GeoJSON. Verified on the S9+:
+      `2:15 & H → HEADING 112°, 1.6km`, matching the HOME preset exactly. See
+      the SYNC entry.
 - [ ] **Confirm the FFC fix over a long run.** `~/nightwatch/fp2.log` on the
       Jetson is accumulating. Pre-fix baseline: **104 contact-frames and 10
       phantom collisions per 7.7 h** in an empty room, arriving in 9 bursts.
@@ -73,8 +78,15 @@ The 2026 Innovate GIS went live; **the city moved ~583 m SW** (axis unchanged at
 - [x] `NavTarget.MAN`→ACTIVE, `TEMPLE`→2026 CPN; `Camp` HOME re-projected on the 2026 grid.
 - [x] Ring radii **verified unchanged** vs 2026 street data (B=979 m, G=1470 m match exactly).
 - [x] art/camps hidden until release (`DiscoveryRepository` year 2026 + `BmApiClient` projection on ACTIVE).
-- [ ] **On-device verify** the rendered 2026 city + type a known address (e.g. our camp 2:15 & H) and confirm it lands on the right corner — the one gate before trusting nav.
+- [x] **On-device verify — DONE 2026-08-08.** Typing `2:15 & H` on the S9+ gives
+      `HEADING 112°, 1.6km`, identical to the HOME preset. Getting there exposed
+      that the 2026 GIS renamed `type`→`source`/`kind`, `width`→`width_ft` and
+      `Name`→`name`, which had left every street kind-less (empty city model:
+      no cues, no routes) and every plaza label null. Fixed; `BundledGisTest`
+      guards it. Esplanade radius corrected 752.0 → 761.5 m (measured).
 - [ ] *(optional)* render the new `dmz` layer; final re-pull of the GIS closer to the event (dataset still being edited).
+- [ ] *(watch)* when the GIS is re-pulled, run `BundledGisTest` first — it is
+      now the acceptance gate on a new dataset drop.
 
 ## Surround vision — zvision rig DONE 2026-08-03, HUD + calibration open
 
