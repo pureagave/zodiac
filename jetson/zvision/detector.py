@@ -19,7 +19,7 @@ from .geometry import (
     bbox_height_to_size,
     pixel_to_bearing,
 )
-from .normalize import assign_track_id
+from .normalize import ReBaselineGuard, assign_track_id
 from .threat import DriverThreat
 
 
@@ -124,6 +124,7 @@ class MotionDetector:
         self._min_area_frac = self._tuning.min_area_frac
         self._match_dist = self._tuning.match_dist
         self._bg = cv2.createBackgroundSubtractorMOG2(detectShadows=False)
+        self._rebaseline = ReBaselineGuard()
         self._collision = CollisionEstimator(
             az_rate_thresh_dps=self._tuning.collision_az_rate_dps,
             min_size=self._tuning.collision_min_size,
@@ -140,6 +141,11 @@ class MotionDetector:
         h, w = frame.shape[:2]
         mask = self._bg.apply(frame)
         _, mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)
+        # A flat-field correction steps every pixel at once and the subtractor
+        # calls the whole frame foreground. Report nothing rather than a scene
+        # full of people — see ReBaselineGuard.
+        if self._rebaseline.suppress(float(mask.mean()) / 255.0):
+            return []
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel())
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 

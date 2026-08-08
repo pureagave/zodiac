@@ -152,3 +152,64 @@ def assign_track_id(
     if following >= id_limit:
         following = 1
     return tid, following
+
+
+# A flat-field correction re-baselines every pixel at once. Measured on the real
+# board 2026-08-08: each FFC moved **100% of pixels** by more than 40 counts,
+# stepping the frame median by 128-232 counts, roughly every 3 minutes. A
+# background subtractor reads that as movement everywhere.
+#
+# A person is a few percent of the frame even at close range, so the two are
+# nowhere near each other and the threshold does not need to be delicate.
+REBASELINE_FG_FRACTION = 0.5
+
+# MOG2 needs a few frames to absorb the new baseline; the frames immediately
+# after a step still carry large residual foreground.
+REBASELINE_SETTLE_FRAMES = 3
+
+
+class ReBaselineGuard:
+    """Drops detections across a sensor re-baseline, so an FFC is not reported
+    as a scene full of people.
+
+    This is what the overnight empty-room run was really measuring: 421,309
+    frames produced 104 frames with contacts and **10 phantom collision flags**,
+    arriving in short bursts rather than uniformly — the signature of a discrete
+    sensor event, not noise. One false ``! BRAKE !`` every 45 minutes is exactly
+    the alarm fatigue that teaches a driver to ignore the real one.
+
+    Deliberately *suppression*, not correction: there is no way to recover what
+    the scene was doing during the step, and inventing contacts is worse than
+    briefly having none. The cost is a ~0.4 s blind window every few minutes,
+    against a hazard that takes far longer than that to become dangerous.
+    """
+
+    def __init__(
+        self,
+        fg_fraction: float = REBASELINE_FG_FRACTION,
+        settle_frames: int = REBASELINE_SETTLE_FRAMES,
+    ) -> None:
+        self._fg_fraction = fg_fraction
+        self._settle_frames = settle_frames
+        self._settling = 0
+
+    def suppress(self, fg_fraction: float) -> bool:
+        """True when this frame's detections should be discarded.
+
+        ``fg_fraction`` is the share of the frame the background subtractor
+        called foreground, which is free — the mask is already computed.
+        """
+        if fg_fraction != fg_fraction:  # NaN, from an empty or corrupt frame
+            return True
+        if fg_fraction >= self._fg_fraction:
+            self._settling = self._settle_frames
+            return True
+        if self._settling > 0:
+            self._settling -= 1
+            return True
+        return False
+
+    @property
+    def settling(self) -> bool:
+        """Whether the guard is still riding out a step — for logging."""
+        return self._settling > 0

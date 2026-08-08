@@ -9,6 +9,9 @@ import unittest
 
 from zvision.normalize import (
     DEFAULT_MIN_SPREAD,
+    REBASELINE_FG_FRACTION,
+    REBASELINE_SETTLE_FRAMES,
+    ReBaselineGuard,
     TRACK_ID_LIMIT,
     assign_track_id,
     image_rows,
@@ -248,3 +251,78 @@ class TrackIdWrapTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReBaselineGuardTest(unittest.TestCase):
+    """A flat-field correction re-baselines every pixel at once, and the
+    background subtractor calls the whole frame foreground. Measured on the real
+    board 2026-08-08: 100% of pixels moving, median stepping 128-232 counts,
+    about every 3 minutes. The overnight empty-room run turned that into 10
+    phantom collision flags in 7.7 hours — one false "! BRAKE !" every 45
+    minutes, which is how a driver learns to ignore the real one."""
+
+    def test_an_ordinary_scene_passes_straight_through(self):
+        g = ReBaselineGuard()
+        for fg in (0.0, 0.01, 0.05, 0.2):
+            self.assertFalse(g.suppress(fg), f"{fg} is a scene, not a re-baseline")
+
+    def test_a_whole_frame_step_is_suppressed(self):
+        self.assertTrue(ReBaselineGuard().suppress(1.0))
+
+    def test_a_person_close_to_the_camera_is_not_mistaken_for_one(self):
+        # The gap is enormous — a body fills a few percent of a 160x120 frame,
+        # an FFC fills all of it — so this threshold never has to be delicate.
+        self.assertFalse(ReBaselineGuard().suppress(0.25))
+
+    def test_the_frames_after_a_step_are_suppressed_too(self):
+        # MOG2 needs a few frames to absorb the new baseline; the residual
+        # foreground right after a step is still large.
+        g = ReBaselineGuard(settle_frames=3)
+        self.assertTrue(g.suppress(1.0))
+        for _ in range(3):
+            self.assertTrue(g.suppress(0.02), "still settling")
+        self.assertFalse(g.suppress(0.02), "back to normal")
+
+    def test_detection_resumes_promptly(self):
+        # The blind window is the cost of this guard; it must stay short. At
+        # ~9 fps, three frames is about a third of a second.
+        g = ReBaselineGuard()
+        g.suppress(1.0)
+        frames = 0
+        while g.suppress(0.0):
+            frames += 1
+            self.assertLess(frames, 10, "guard must not latch open")
+        self.assertLessEqual(frames, REBASELINE_SETTLE_FRAMES)
+
+    def test_a_second_step_while_settling_restarts_the_window(self):
+        g = ReBaselineGuard(settle_frames=2)
+        g.suppress(1.0)
+        g.suppress(0.01)
+        self.assertTrue(g.suppress(1.0), "another step")
+        self.assertTrue(g.suppress(0.01))
+        self.assertTrue(g.suppress(0.01))
+        self.assertFalse(g.suppress(0.01))
+
+    def test_back_to_back_steps_do_not_leave_it_stuck(self):
+        g = ReBaselineGuard()
+        for _ in range(50):
+            g.suppress(1.0)
+        frames = 0
+        while g.suppress(0.0):
+            frames += 1
+            self.assertLess(frames, 10)
+
+    def test_a_corrupt_frame_is_suppressed_rather_than_trusted(self):
+        self.assertTrue(ReBaselineGuard().suppress(float("nan")))
+
+    def test_the_threshold_sits_far_from_both_real_cases(self):
+        # Guards the constant itself: well above any plausible body, well below
+        # the measured 100%.
+        self.assertGreater(REBASELINE_FG_FRACTION, 0.3)
+        self.assertLess(REBASELINE_FG_FRACTION, 0.9)
+
+    def test_settling_is_visible_for_logging(self):
+        g = ReBaselineGuard()
+        self.assertFalse(g.settling)
+        g.suppress(1.0)
+        self.assertTrue(g.settling)
