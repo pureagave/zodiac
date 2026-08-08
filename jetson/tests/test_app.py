@@ -91,7 +91,10 @@ class DmxRunTest(unittest.TestCase):
     service stop can't leave a spotlight frozen mid-sky on the last person it
     tracked."""
 
-    def _run_with_dmx(self):
+    @classmethod
+    def setUpClass(cls):
+        # One shared --once run: each loopback run costs a 2 s socket drain,
+        # and both tests assert on the same captured sink.
         import zvision.dmx as dmx
 
         captured = {}
@@ -103,22 +106,20 @@ class DmxRunTest(unittest.TestCase):
             return sink
 
         with mock.patch.object(dmx, "build_sink", capturing):
-            rc, _ = _run_once(["--source", "fake", "--dmx", "fake", "--dmx-no-sound"])
-        return rc, captured["sink"]
+            cls.rc, _ = _run_once(["--source", "fake", "--dmx", "fake", "--dmx-no-sound"])
+        cls.sink = captured["sink"]
 
     def test_the_sink_is_driven_and_the_head_aims_at_the_scene(self):
-        rc, sink = self._run_with_dmx()
-        self.assertEqual(0, rc)
-        self.assertGreaterEqual(sink.sends, 2)  # at least one aim + the park
-        self.assertNotEqual(0, sink.frame[0])   # pan coarse: it pointed somewhere
+        self.assertEqual(0, self.rc)
+        self.assertGreaterEqual(self.sink.sends, 2)  # at least one aim + the park
+        self.assertNotEqual(0, self.sink.frame[0])   # pan coarse: it pointed somewhere
 
     def test_exit_parks_the_head_and_blacks_it_out(self):
-        _, sink = self._run_with_dmx()
         # Channel 5 (default master dimmer) must end dark: mid-run it was 255
         # (the fake scene has a live contact), so a nonzero here means the
         # park-on-exit frame never went out.
-        self.assertEqual(0, sink.frame[4])
-        self.assertEqual(0, sink.last_channels.get(5))
+        self.assertEqual(0, self.sink.frame[4])
+        self.assertEqual(0, self.sink.last_channels.get(5))
 
 
 class CheckModeTest(unittest.TestCase):
