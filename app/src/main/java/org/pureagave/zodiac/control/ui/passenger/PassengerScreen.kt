@@ -29,7 +29,6 @@ import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.ops.campGuidance
-import org.pureagave.zodiac.control.core.passenger.ART_NEARBY_RADIUS_M
 import org.pureagave.zodiac.control.core.passenger.CardReason
 import org.pureagave.zodiac.control.core.passenger.CardRotation
 import org.pureagave.zodiac.control.core.passenger.PassengerCard
