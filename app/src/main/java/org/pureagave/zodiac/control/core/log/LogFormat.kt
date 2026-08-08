@@ -43,3 +43,24 @@ fun formatLogLine(
 
 /** Continuation lines get two spaces so one entry still reads as one entry. */
 private fun String.indentContinuations(): String = replace("\n", "\n  ")
+
+/** How a log line should read at a glance in the on-device viewer. */
+enum class LogSeverity { NORMAL, WARN, ERROR }
+
+/**
+ * Recover the severity of a line written by [formatLogLine], for colouring the
+ * viewer. Reads the priority letter out of the fixed `<date> <time> L/Tag:`
+ * prefix rather than searching the whole line, so a message that happens to
+ * contain " E/" can't recolour itself. Continuation lines (indented stack
+ * traces) and anything unparseable come back [LogSeverity.NORMAL] — the entry
+ * they belong to already carries the colour.
+ */
+fun logLineSeverity(line: String): LogSeverity {
+    val parts = line.split(' ', limit = 4)
+    val priority = parts.getOrNull(2)?.takeIf { it.length >= 2 && it[1] == '/' } ?: return LogSeverity.NORMAL
+    return when (priority[0]) {
+        'W' -> LogSeverity.WARN
+        'E', 'A' -> LogSeverity.ERROR
+        else -> LogSeverity.NORMAL
+    }
+}

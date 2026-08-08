@@ -98,7 +98,7 @@ private fun zodiacApp() {
     }
 
     autoDim(viewModel)
-    cockpitScreen(viewModel = viewModel, burnInManager = app.burnInManager)
+    cockpitScreen(viewModel = viewModel, burnInManager = app.burnInManager, fileLog = app.fileLog)
 }
 
 /**

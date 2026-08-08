@@ -75,11 +75,42 @@ class LogFormatTest {
         assertEquals("2026-08-08 21:03:21.123 I/T: m", line)
     }
 
+    @Test
+    fun severity_is_read_from_the_priority_field_not_the_message() {
+        // A message quoting " E/" must not repaint itself as an error.
+        val info = formatLogLine(EPOCH_MILLIS, PRIORITY_INFO, "T", "saw E/Foo in the logs", zone = utc)
+
+        assertEquals(LogSeverity.NORMAL, logLineSeverity(info))
+    }
+
+    @Test
+    fun warnings_and_errors_are_recoverable_for_the_viewer() {
+        assertEquals(LogSeverity.WARN, logLineSeverity(formatLogLine(EPOCH_MILLIS, PRIORITY_WARN, "T", "m", zone = utc)))
+        assertEquals(
+            LogSeverity.ERROR,
+            logLineSeverity(formatLogLine(EPOCH_MILLIS, PRIORITY_ERROR, "T", "m", zone = utc)),
+        )
+        assertEquals(
+            LogSeverity.ERROR,
+            logLineSeverity(formatLogLine(EPOCH_MILLIS, PRIORITY_ASSERT, "T", "m", zone = utc)),
+        )
+    }
+
+    @Test
+    fun continuation_and_junk_lines_do_not_claim_a_severity() {
+        // Stack-trace continuations are indented; the entry above them already
+        // carries the colour, so they must stay neutral rather than guess.
+        assertEquals(LogSeverity.NORMAL, logLineSeverity("  \tat Foo.bar(Foo.kt:1)"))
+        assertEquals(LogSeverity.NORMAL, logLineSeverity(""))
+        assertEquals(LogSeverity.NORMAL, logLineSeverity("not a log line at all"))
+    }
+
     private companion object {
         /** 2026-08-08T21:03:21.123Z — a fixed instant, so the format is deterministic. */
         const val EPOCH_MILLIS = 1_786_223_001_123L
         const val PRIORITY_VERBOSE = 2
         const val PRIORITY_INFO = 4
+        const val PRIORITY_WARN = 5
         const val PRIORITY_ERROR = 6
         const val PRIORITY_ASSERT = 7
     }
