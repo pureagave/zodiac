@@ -2,6 +2,7 @@ package org.pureagave.zodiac.beacon
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
@@ -32,6 +33,34 @@ class NmeaTest {
     fun hdt_normalizes_out_of_range_headings() {
         assertTrue(Nmea.hdt(365.0).startsWith("\$GPHDT,5.0,T*")) // 365 wraps to 5
         assertTrue(Nmea.hdt(-90.0).startsWith("\$GPHDT,270.0,T*"))
+    }
+
+    @Test
+    fun checksum_matches_published_nmea_reference_vectors() {
+        // The checksum was effectively UNTESTED: the only coverage validated
+        // Nmea.checksum against itself, so replacing `xor` with `or` passed all
+        // 35 beacon tests. Every sentence the fleet receives is gated on this
+        // byte, and a receiver that rejects bad checksums would have dropped
+        // the lot. These vectors come from the NMEA 0183 examples, not from our
+        // own implementation -- that independence is the entire point.
+        assertEquals(
+            "47",
+            Nmea.checksum("GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,"),
+        )
+        assertEquals(
+            "6A",
+            Nmea.checksum("GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W"),
+        )
+        assertEquals("31", Nmea.checksum("GPGLL,4916.45,N,12311.12,W,225444,A"))
+    }
+
+    @Test
+    fun checksum_is_order_dependent_and_not_a_bitwise_or() {
+        // `or` is monotonic -- it can only set bits -- so it saturates toward FF
+        // and is insensitive to repeats. XOR is neither. This kills the exact
+        // mutant that survived the whole suite.
+        assertEquals("00", Nmea.checksum("AA"))          // xor of equal chars cancels
+        assertNotEquals(Nmea.checksum("AB"), Nmea.checksum("ABAB"))
     }
 
     @Test
