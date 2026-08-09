@@ -8,6 +8,97 @@ What's worth doing next. Critical and High audit items are all done — see `don
 >
 > **app 719 / beacon 35 / jetson 362 tests, main green.**
 
+## 🔬 Android audit 2026-08-09 — full findings in [`docs/AUDIT-2026-08-09.md`](../docs/AUDIT-2026-08-09.md)
+
+Four Fable reviews (beacon / GPS+fallback / telemetry pipeline / offline
+resilience). ✅ = verified against the code by hand. Evidence and `file:line`
+for every item are in the audit doc; this is the work list.
+
+### P0 — safety-critical
+
+- [ ] **A1 ✅ The forward BRAKE alert is dead on a real drive.** The speed gate
+      reads `uiState.speedKph`, whose only writer is the debug SPD chip
+      (`CockpitViewModel.kt:262,446`). GPS speed never reaches it, so on a real
+      drive it is 0 and `! BRAKE !` / `! COLLISION COURSE !` can never fire. The
+      rear alert has no speed gate, which is why the bench test passed. Fix
+      needs a **single owner for vehicle speed** (GPS fix → `$ZTLM` → debug).
+- [ ] **A2 ✅ The deployed build shows fabricated contacts when the Jetson dies.**
+      `ZodiacApplication.kt:237` never passes `demoEnabled`, which defaults true,
+      so a dead feed silently becomes three invented moving people on the
+      driver's HUD — one cycling `collision=true`. **Fix with A1**: fixing the
+      brake gate alone makes demo mode flash braking imperatives at phantoms.
+- [ ] **A3 ✅ The S9+ GPS fallback can freeze `Active` forever.** `FixFreshness`
+      appears 4× in BLE and USB and **0× in `SystemLocationSource`** — the
+      failover target. A frozen fix satisfies the failover's liveness check
+      indefinitely, and the no-badge decision means nothing on screen says you
+      are on backup.
+
+### P1 — crash loops and unattended recovery
+
+- [ ] **B1 Corrupt DataStore prefs → boot crash-loop**, unrecoverable on a
+      kiosked tablet (no Settings). One line: `ReplaceFileCorruptionHandler`.
+- [ ] **B2 `BurnInConfig.coerced()` throws at the timeout ceiling** — a second
+      boot crash-loop path, reachable from persisted values.
+- [ ] **B3 ✅ Beacon has no boot receiver** — a brownout leaves the fleet with no
+      GPS until a human taps START.
+- [ ] **B4 ✅ `WAKE_LOCK` declared, never acquired** — Doze stalls the beacon's
+      tick loop; heading freezes and `$ZBCN` gaps read as a dead beacon.
+- [ ] **B5 Beacon FGS types vs permissions** — location-type FGS restarted while
+      backgrounded gets no fixes; mic type on Android 14+ throws when denied.
+- [ ] **B6 One exception kills every synthesized beacon channel, silently.**
+
+### P2 — silently wrong data
+
+- [ ] **C1 ✅ Beacon lux defaults to 0.0 and broadcasts it** → no light sensor
+      pins the whole fleet to 5% brightness in daylight.
+- [ ] **C2 Auto-dim and burn-in fight over screen brightness**; auto-dim wins, so
+      burn-in mitigation is defeated whenever the beacon is live. Needs an
+      arbiter — one write site.
+- [ ] **C3 Burn-in animation clock is an accumulating `Float`** — pixel shift
+      silently freezes after ~3 days (S9+) during a 14-day burn.
+- [ ] **C4 NET `stop()` freezes beacon sensors as live-looking state** — stale
+      night lux holds the screen at 5% through the next day.
+- [ ] **C5 ViewModel init double-starts the persisted source and leaks a
+      `MulticastLock`** — on every fleet launch.
+- [ ] **C6 `VTG`/`HDG` parsed as compass heading**, and a test asserts it.
+- [ ] **C7 Shock events double-count** (multicast + broadcast both received);
+      `ShockDetector` reports first crossing, not peak.
+- [ ] **C8 Odometer counts multipath teleports** and persists them permanently.
+- [ ] **C9 Discovery cache** in purgeable `cacheDir`, non-atomic write, clobbered
+      by a partial fetch, no plausibility gate, zero logging.
+- [ ] **C10 `mapLoadError` is dead state** — a failed map load is a blank
+      viewport with no message and no retry.
+
+### P3 — hygiene, and the structural items
+
+- [ ] Log overflow silently uncounted; `rotate()` ignores rename failures.
+- [ ] **`ThreatProtocol` drift is enforced socially** — two hand-mirrored
+      implementations, zero shared artifacts. A checked-in golden corpus read by
+      both suites is an afternoon and removes the category.
+- [ ] NET/BLE `Error` states are terminal; no multicast rejoin after a router
+      reboot.
+- [ ] Beacon network targets computed once; socket never bound to the WiFi
+      `Network`, so traffic can leave the wrong interface silently.
+- [ ] Kiosk: provisioning with a debug APK is a signature trap and the documented
+      escape hatch likely does not work; `ota_disable_automatic_update` is not an
+      allowed key on API 34.
+- [ ] **Beacon is exempt from the lint gate** (`abortOnError = false`) — on the
+      one module where manifest/permission mistakes are fleet-fatal.
+- [ ] **Seams worth extracting**: `SystemLocationSource` clock,
+      `NetworkLocationSource.ingest()`, a BLE/USB `SppHandle`, and continuing the
+      `BeaconNet` extraction out of the 408-line `TelemetryBroadcaster` object.
+
+### Tests that agree with the code they test
+
+- [x] **`Nmea.checksum` validated against itself** — `xor` → `or` passed all 35
+      beacon tests. FIXED 2026-08-09 with published NMEA 0183 vectors.
+- [ ] `NmeaParserTest.kt:74-78` asserts VTG parses as compass — locks in C6.
+- [ ] `PlayaMapBinaryCacheTest.kt:79` reads a different filename than it writes,
+      so the header/magic/truncation checks are entirely unverified.
+- [ ] `NavTargetTest.kt:22-26` repeats the Temple coordinate literal.
+- [ ] `SystemLocationSourceTest` never delivers a `Location` — which is how A3
+      survives 719 green tests.
+
 ## ⛔ Blocked on Rob / hardware
 
 Ranked by consequence on the playa.
