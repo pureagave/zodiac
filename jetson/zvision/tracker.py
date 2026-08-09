@@ -210,19 +210,54 @@ class TrackerConfig:
     #   ch11 mode select — 250-255 held for 5 s triggers a MOTOR RESET mid-show
     # The universe starts zeroed and we never write them, so this is a statement
     # of intent that ``test_tracker`` locks in rather than a runtime action.
+    #
+    # These numbers are the 11-channel map. A 9-channel head shifts them down to
+    # (8, 9) — see ``NINE_CHANNEL_OVERRIDES``, and always go through
+    # ``config_for_channel_mode`` so the map and its guard move together.
     forbidden_channels: tuple = (10, 11)
 
 
-#: 9-channel mode from the same manual, for a fixture set to the shorter
-#: personality: no fine pan/tilt, and the dimmer moves to channel 6. Slower,
-#: coarser follow — prefer 11-channel unless the head is stuck in 9.
+#: 9-channel mode from the same manual (MOVING-HEAD.md 3.1), for a fixture set
+#: to the shorter personality: no fine pan/tilt, and the dimmer moves to
+#: channel 6. Slower, coarser follow — prefer 11-channel unless the head is
+#: stuck in 9.
+#:
+#: **``forbidden_channels`` moves too, and that is the easy half to forget.**
+#: Dropping the two fine channels shifts everything above pan down by two, so
+#: the auto/sound programs land on ch8 and mode-select — the MOTOR RESET — lands
+#: on ch9. Leaving the guard at the 11-channel (10, 11) would protect two
+#: channels a 9-channel fixture does not even read, while the reset sat
+#: unguarded. Apply this via :func:`config_for_channel_mode`, never by hand.
 NINE_CHANNEL_OVERRIDES = {
     "pan_channel": 1,
     "pan_fine_channel": None,
     "tilt_channel": 2,
     "tilt_fine_channel": None,
     "dimmer_channel": 6,
+    "forbidden_channels": (8, 9),
 }
+
+#: DMX personalities this fixture family offers (MOVING-HEAD.md 3.1 / 3.2).
+CHANNEL_MODES = (9, 11)
+
+
+def config_for_channel_mode(mode: int, **overrides: object) -> "TrackerConfig":
+    """Build a :class:`TrackerConfig` for the fixture's DMX personality.
+
+    The dataclass defaults *are* the 11-channel map, so this is a no-op for 11
+    and applies :data:`NINE_CHANNEL_OVERRIDES` for 9. It exists so the channel
+    map and its matching ``forbidden_channels`` guard can never be applied
+    separately — the whole point of the overrides dict is that those two are one
+    decision, and before this existed the dict was unreachable from any call
+    site and shipped without the guard half at all.
+
+    ``overrides`` (aim, slew, dimmer levels…) are applied last and win.
+    """
+    if mode not in CHANNEL_MODES:
+        raise ValueError(f"channel mode must be one of {CHANNEL_MODES}, got {mode!r}")
+    fields = dict(NINE_CHANNEL_OVERRIDES) if mode == 9 else {}
+    fields.update(overrides)
+    return TrackerConfig(**fields)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True)

@@ -2,6 +2,8 @@ import unittest
 
 from zvision.threat import DriverThreat
 from zvision.tracker import (
+    NINE_CHANNEL_OVERRIDES,
+    config_for_channel_mode,
     nearest_equivalent_pan,
     reachable,
     Tracker,
@@ -9,6 +11,9 @@ from zvision.tracker import (
     deg_to_dmx16,
     select_best,
 )
+
+ONE_CONTACT = [DriverThreat(rel_az_deg=10.0, size=0.5, id=1)]
+SNAP = 1.0e9  # dt large enough to defeat the slew limiter and land on target
 
 
 class SelectBestTest(unittest.TestCase):
@@ -112,6 +117,199 @@ class TrackerAimTest(unittest.TestCase):
         for channel in cfg.forbidden_channels:
             self.assertNotIn(channel, frame.channels)
             self.assertNotIn(channel, trk.park().channels)
+
+
+class ChannelModeConfigTest(unittest.TestCase):
+    """9-channel is not "11-channel minus the fine channels". Dropping the two
+    fine channels shifts everything above pan down by two, which moves the
+    dimmer *and* the channels we must never drive. MOVING-HEAD.md 3.1 / 3.2."""
+
+    def test_eleven_channel_is_the_dataclass_default(self):
+        cfg, default = config_for_channel_mode(11), TrackerConfig()
+        for field in (
+            "pan_channel",
+            "pan_fine_channel",
+            "tilt_channel",
+            "tilt_fine_channel",
+            "dimmer_channel",
+            "forbidden_channels",
+        ):
+            self.assertEqual(getattr(default, field), getattr(cfg, field), field)
+
+    def test_nine_channel_moves_the_dimmer_to_six(self):
+        self.assertEqual(6, config_for_channel_mode(9).dimmer_channel)
+
+    def test_nine_channel_drops_the_fine_channels(self):
+        cfg = config_for_channel_mode(9)
+        self.assertEqual(1, cfg.pan_channel)
+        self.assertEqual(2, cfg.tilt_channel)
+        self.assertIsNone(cfg.pan_fine_channel)
+        self.assertIsNone(cfg.tilt_fine_channel)
+
+    def test_nine_channel_moves_the_reset_guard_down_to_eight_and_nine(self):
+        # The regression this pins. NINE_CHANNEL_OVERRIDES used to leave
+        # forbidden_channels at the 11-channel (10, 11). A 9-channel fixture
+        # does not read ch10/ch11 at all, so the guard protected two channels
+        # that do not exist while ch9 -- the MOTOR RESET -- and ch8 -- the auto
+        # programs -- sat completely unguarded.
+        self.assertEqual((8, 9), config_for_channel_mode(9).forbidden_channels)
+
+    def test_the_two_modes_do_not_share_a_guard(self):
+        self.assertNotEqual(
+            config_for_channel_mode(9).forbidden_channels,
+            config_for_channel_mode(11).forbidden_channels,
+        )
+
+    def test_overrides_are_applied_on_top_of_the_channel_map(self):
+        cfg = config_for_channel_mode(9, pan_gain=-1.0, pan_center_deg=90.0)
+        self.assertEqual(-1.0, cfg.pan_gain)
+        self.assertEqual(90.0, cfg.pan_center_deg)
+        self.assertEqual(6, cfg.dimmer_channel)  # map survives the overrides
+
+    def test_an_unknown_channel_mode_is_rejected(self):
+        # Silently falling back to 11 on a typo would drive tilt onto the
+        # colour wheel of a 9-channel head and look like a dead fixture.
+        for bad in (0, 1, 10, 12, "9", None):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                config_for_channel_mode(bad)
+
+
+class ForbiddenChannelsHoldInEitherModeTest(unittest.TestCase):
+    def test_neither_mode_ever_drives_its_own_forbidden_channels(self):
+        for mode in (9, 11):
+            with self.subTest(mode=mode):
+                cfg = config_for_channel_mode(mode)
+                trk = Tracker(cfg)
+                frame = trk.update(
+                    [DriverThreat(rel_az_deg=10.0, size=0.5, id=1)], dt=1.0e9
+                )
+                for channel in cfg.forbidden_channels:
+                    self.assertNotIn(channel, frame.channels)
+                    self.assertNotIn(channel, trk.park().channels)
+
+    def test_the_dimmer_is_never_itself_a_forbidden_channel(self):
+        # If the guard and the dimmer ever collided the head could never light.
+        for mode in (9, 11):
+            with self.subTest(mode=mode):
+                cfg = config_for_channel_mode(mode)
+                self.assertNotIn(cfg.dimmer_channel, cfg.forbidden_channels)
+
+    def test_nine_channel_writes_stay_inside_the_nine_channel_footprint(self):
+        # A 9-channel fixture reads ch1-9. Anything we emit above that is
+        # landing on a channel the head does not have.
+        cfg = config_for_channel_mode(9)
+        trk = Tracker(cfg)
+        frame = trk.update([DriverThreat(rel_az_deg=10.0, size=0.5, id=1)], dt=1.0e9)
+        for channel in list(frame.channels) + list(trk.park().channels):
+            self.assertLessEqual(channel, 9, f"ch{channel} is outside 9-channel mode")
+
+
+class FrameEmissionTest(unittest.TestCase):
+    """``_frame`` is where the config's channel map becomes actual DMX. Every
+    test here asserts on *which channel carries what*, because a map that is
+    correct in the dataclass and wrong in the emission looks identical from the
+    config's point of view — and on the fixture it looks like a dead head."""
+
+    def test_eleven_channel_emits_exactly_its_five_channels(self):
+        trk = Tracker(config_for_channel_mode(11))
+        f = trk.update(ONE_CONTACT, dt=SNAP)
+        self.assertEqual({1, 2, 3, 4, 8}, set(f.channels))
+
+    def test_nine_channel_emits_exactly_its_three_channels(self):
+        trk = Tracker(config_for_channel_mode(9))
+        f = trk.update(ONE_CONTACT, dt=SNAP)
+        self.assertEqual({1, 2, 6}, set(f.channels))
+
+    def test_nine_channel_puts_tilt_on_channel_two_not_pan_fine(self):
+        # The single most consequential difference between the two maps. If the
+        # 11-channel emission leaked into 9-channel, ch2 would carry pan's low
+        # byte and the head's tilt would jerk around with sub-degree pan motion.
+        cfg = config_for_channel_mode(9)
+        trk = Tracker(cfg)
+        f = trk.update(ONE_CONTACT, dt=SNAP)
+        tilt_coarse, _ = deg_to_dmx16(f.tilt_deg, cfg.tilt_range_deg)
+        _, pan_fine = deg_to_dmx16(f.pan_deg, cfg.pan_range_deg)
+        self.assertEqual(tilt_coarse, f.channels[2])
+        self.assertNotEqual(pan_fine, f.channels[2], "ch2 is carrying pan fine, not tilt")
+
+    def test_the_fine_channel_is_the_low_byte_of_the_same_angle(self):
+        # Wiring check, not a formula check: coarse and fine must describe one
+        # 16-bit quantity. A fine channel fed from a different value would still
+        # look plausible per-channel and aim wrong.
+        trk = Tracker(config_for_channel_mode(11))
+        f = trk.update([DriverThreat(rel_az_deg=17.3, size=0.37, id=1)], dt=SNAP)
+        self.assertEqual(
+            round(f.pan_deg / 540.0 * 65535), f.channels[1] * 256 + f.channels[2]
+        )
+        self.assertEqual(
+            round(f.tilt_deg / 270.0 * 65535), f.channels[3] * 256 + f.channels[4]
+        )
+
+    def test_the_fine_channel_is_what_buys_sub_coarse_resolution(self):
+        # Why 11-channel exists at all: 8-bit pan over 540 deg is ~2.11 deg per
+        # step, so two contacts 1 deg apart are the *same* coarse byte. In 11ch
+        # the fine channel separates them; in 9ch the frames are identical.
+        near = [DriverThreat(rel_az_deg=0.0, size=0.5, id=1)]
+        far = [DriverThreat(rel_az_deg=1.0, size=0.5, id=1)]
+        eleven = [Tracker(config_for_channel_mode(11)).update(t, dt=SNAP) for t in (near, far)]
+        nine = [Tracker(config_for_channel_mode(9)).update(t, dt=SNAP) for t in (near, far)]
+        self.assertEqual(eleven[0].channels[1], eleven[1].channels[1])  # same coarse
+        self.assertNotEqual(eleven[0].channels[2], eleven[1].channels[2])  # fine separates
+        self.assertEqual(nine[0].channels, nine[1].channels)  # 9ch cannot tell them apart
+
+    def test_a_fixture_with_no_master_dimmer_emits_no_dimmer_channel(self):
+        # dimmer_channel=None is documented as supported. The level must still be
+        # reported on the frame so callers can log it.
+        trk = Tracker(TrackerConfig(dimmer_channel=None))
+        f = trk.update(ONE_CONTACT, dt=SNAP)
+        self.assertEqual({1, 2, 3, 4}, set(f.channels))
+        self.assertEqual(255, f.dimmer)
+
+    def test_channel_numbers_come_from_the_config_not_from_constants(self):
+        # Guards against anyone re-hardcoding channel numbers into _frame, which
+        # is exactly how the dimmer ended up on the colour wheel once already.
+        cfg = TrackerConfig(
+            pan_channel=21, pan_fine_channel=22, tilt_channel=23,
+            tilt_fine_channel=24, dimmer_channel=28,
+        )
+        f = Tracker(cfg).update(ONE_CONTACT, dt=SNAP)
+        self.assertEqual({21, 22, 23, 24, 28}, set(f.channels))
+
+    def test_park_blacks_out_the_configured_dimmer_in_either_mode(self):
+        for mode, expected in ((9, 6), (11, 8)):
+            with self.subTest(mode=mode):
+                trk = Tracker(config_for_channel_mode(mode))
+                trk.update(ONE_CONTACT, dt=SNAP)
+                self.assertEqual(0, trk.park().channels[expected])
+
+    def test_every_emitted_value_is_a_legal_dmx_byte_across_the_arc(self):
+        # Sweep the reachable arc and both size extremes; nothing may leave 0-255
+        # or land outside a real DMX slot.
+        for mode in (9, 11):
+            trk = Tracker(config_for_channel_mode(mode))
+            for az in range(-90, 91, 5):
+                for size in (0.0, 0.5, 1.0):
+                    f = trk.update(
+                        [DriverThreat(rel_az_deg=float(az), size=size, id=1)], dt=SNAP
+                    )
+                    for channel, value in f.channels.items():
+                        self.assertTrue(1 <= channel <= 512, f"ch{channel} mode={mode}")
+                        self.assertTrue(0 <= value <= 255, f"ch{channel}={value} mode={mode}")
+
+
+class ChannelModeIsolationTest(unittest.TestCase):
+    def test_building_a_config_does_not_mutate_the_shared_overrides(self):
+        # config_for_channel_mode merges caller overrides into the module-level
+        # dict; if it did so in place, the first caller's aim would leak into
+        # every later 9-channel config in the process.
+        before = dict(NINE_CHANNEL_OVERRIDES)
+        config_for_channel_mode(9, pan_center_deg=123.0, dimmer_channel=99)
+        self.assertEqual(before, NINE_CHANNEL_OVERRIDES)
+        self.assertEqual(6, config_for_channel_mode(9).dimmer_channel)
+
+    def test_eleven_channel_never_consults_the_nine_channel_map(self):
+        self.assertEqual(8, config_for_channel_mode(11).dimmer_channel)
+        self.assertEqual(2, config_for_channel_mode(11).pan_fine_channel)
 
 
 class TrackerHysteresisTest(unittest.TestCase):

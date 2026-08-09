@@ -165,6 +165,14 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
         default="none",
         help="drive a moving-head tracker light: fake=log only, ola=send to local olad",
     )
+    p.add_argument(
+        "--dmx-channels",
+        type=int,
+        choices=[9, 11],
+        default=11,
+        help="fixture DMX personality (MOVING-HEAD.md 3.1/3.2). 11 = 16-bit "
+        "pan/tilt, the vehicle's head is set to this; 9 = coarse fallback",
+    )
     p.add_argument("--dmx-universe", type=int, default=0, help="OLA universe id")
     p.add_argument("--dmx-url", default="http://127.0.0.1:9090", help="olad HTTP API base URL")
     p.add_argument("--dmx-pan-center", type=float, default=270.0, help="fixture pan (deg) for az=0")
@@ -331,10 +339,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     zaud = None
     if args.dmx != "none":
         from .dmx import build_sink
-        from .tracker import Tracker, TrackerConfig
+        from .tracker import Tracker, config_for_channel_mode
 
         tracker = Tracker(
-            TrackerConfig(pan_center_deg=args.dmx_pan_center, pan_gain=args.dmx_pan_gain)
+            config_for_channel_mode(
+                args.dmx_channels,
+                pan_center_deg=args.dmx_pan_center,
+                pan_gain=args.dmx_pan_gain,
+            )
         )
         dmx_sink = build_sink(args.dmx, universe=args.dmx_universe, base_url=args.dmx_url)
         if not args.dmx_no_sound:
