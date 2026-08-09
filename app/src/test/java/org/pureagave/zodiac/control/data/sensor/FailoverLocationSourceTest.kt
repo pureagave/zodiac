@@ -201,6 +201,31 @@ class FailoverLocationSourceTest {
         }
 
     @Test
+    fun a_fallback_that_goes_stale_stops_being_reported() =
+        runTest {
+            // A3: SYSTEM (the fallback here) now demotes a frozen fix to
+            // Searching on its own. The failover must react to that honestly
+            // instead of continuing to report a fallback that no longer has
+            // a real position — see SystemLocationSourceTest for the source
+            // half of this fix.
+            val r = rig()
+            r.failover.start()
+            r.net.active(1.0)
+            r.sys.active(2.0)
+            settle(1_000)
+
+            r.net.searching()
+            settle(DROP_MS + 1_000)
+            assertTrue(r.failover.usingFallback.value)
+
+            r.sys.searching()
+            settle(1_500)
+
+            assertFalse(r.failover.usingFallback.value)
+            assertEquals(LocationSourceState.Searching, r.failover.state.value)
+        }
+
+    @Test
     fun stop_stops_both_and_clears_the_badge() =
         runTest {
             val r = rig()

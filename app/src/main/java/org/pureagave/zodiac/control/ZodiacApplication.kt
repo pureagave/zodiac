@@ -194,7 +194,7 @@ class ZodiacApplication : Application() {
     val networkWithFailover: FailoverLocationSource by lazy {
         FailoverLocationSource(
             primary = networkLocationSource,
-            fallback = SystemLocationSource(applicationContext = this),
+            fallback = SystemLocationSource(applicationContext = this, scope = applicationScope),
             scope = applicationScope,
             fallbackArmed = hasOwnGnss,
         )
@@ -206,7 +206,7 @@ class ZodiacApplication : Application() {
                 sources =
                     listOf(
                         fakeLocationSource,
-                        SystemLocationSource(applicationContext = this),
+                        SystemLocationSource(applicationContext = this, scope = applicationScope),
                         BleLocationSource(
                             applicationContext = this,
                             scope = applicationScope,

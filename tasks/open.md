@@ -37,11 +37,20 @@ for every item are in the audit doc; this is the work list.
       Fixed by **removing the default** from `demoEnabled` so no call site can
       forget to decide; production passes `false`, and the six demo-behaviour
       tests now say `demoEnabled = true` explicitly. The compiler enforces it.
-- [ ] **A3 ✅ The S9+ GPS fallback can freeze `Active` forever.** `FixFreshness`
+- [x] **A3 FIXED 2026-08-09. The S9+ GPS fallback could freeze `Active` forever.** `FixFreshness`
       appears 4× in BLE and USB and **0× in `SystemLocationSource`** — the
       failover target. A frozen fix satisfies the failover's liveness check
       indefinitely, and the no-badge decision means nothing on screen says you
-      are on backup.
+      are on backup. Fixed: `SystemLocationSource` now carries `FixFreshness`
+      plus a watchdog on the `BleLocationSource` pattern, with an injectable
+      clock. Provider-disabled is surfaced distinctly as
+      `Error(ADAPTER_UNAVAILABLE)` rather than as staleness — staleness is
+      transient and may self-heal, a switched-off provider will not — which the
+      existing `gpsStatusLabel` already renders, so no UI change. The handle seam
+      was reshaped to speak `GpsFix` instead of `android.location.Location`,
+      because that type is unconstructible in these JVM tests, which is exactly
+      why the previous eight tests never delivered a fix and how this survived
+      719 green tests.
 
 ### P1 — crash loops and unattended recovery
 
