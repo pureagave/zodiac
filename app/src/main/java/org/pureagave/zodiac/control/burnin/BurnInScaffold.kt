@@ -15,7 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.pureagave.zodiac.control.ui.state.luxToBrightness
 import timber.log.Timber
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -39,7 +40,7 @@ import kotlin.math.sin
 /** Corner hot-zone size for the park / tuning long-press gestures. */
 private val HOT_ZONE = 72.dp
 
-private const val TWO_PI = 2f * Math.PI.toFloat()
+private const val TWO_PI = 2.0 * Math.PI
 
 /** Distinct y-rate so the shift traces a slow Lissajous path, not a line. */
 private const val SHIFT_Y_RATE = 0.5f
@@ -54,9 +55,9 @@ private const val SHIFT_Y_RATE = 0.5f
  *    and dims in idle phases (skipped on LCD via [BurnInDeviceProfile]);
  *  - per-phase window backlight + a held `FLAG_KEEP_SCREEN_ON`.
  *
- * The frame ticker [tSec] is read only inside the `offset`/`graphicsLayer`
- * lambdas, never in the composable body, so the 60–120 fps animation
- * invalidates the layout/draw phase only — matching the codebase's
+ * The frame ticker (`elapsedNanos`) is read only inside the `offset`/
+ * `graphicsLayer` lambdas, never in the composable body, so the 60–120 fps
+ * animation invalidates the layout/draw phase only — matching the codebase's
  * recomposition-storm avoidance (see the Concept-C sweep).
  */
 @Composable
@@ -68,6 +69,13 @@ fun burnInScaffold(
      * burning is the same pixels the whole time it's displayed.
      */
     zone: String = "cockpit",
+    /**
+     * Current ambient lux from the beacon's `$ZENV` (null when no beacon feed).
+     * Burn-in is the single writer of `window.attributes.screenBrightness`; this
+     * is folded into that write via [effectiveBacklight] rather than left to a
+     * second, uncoordinated writer (see [effectiveBacklight] for why).
+     */
+    ambientLux: Double?,
     content: @Composable () -> Unit,
 ) {
     val phase by manager.phase.collectAsStateWithLifecycle()
@@ -92,12 +100,16 @@ fun burnInScaffold(
         }
     }
 
-    // Per-phase backlight. Cheap window attribute, applied on every device
-    // (the LCD Fire still benefits from idle backlight stepping for power).
-    LaunchedEffect(phase, config) {
+    // The single write site for window.attributes.screenBrightness: burn-in's
+    // per-phase ceiling folded with the beacon's ambient-lux curve via
+    // effectiveBacklight (see its kdoc). A second writer — e.g. an auto-dim
+    // effect keyed on ambientLux alone — would re-fire on every lux tick and
+    // override DIM/DEEP_IDLE/SLEEP straight back to the lux curve, which is
+    // exactly the bug this replaces.
+    LaunchedEffect(phase, config, ambientLux) {
         val window = context.findActivity()?.window ?: return@LaunchedEffect
         window.attributes =
-            window.attributes.apply { screenBrightness = backlightFor(phase, config) }
+            window.attributes.apply { screenBrightness = effectiveBacklight(phase, config, ambientLux) }
     }
 
     var tuningOpen by remember { mutableStateOf(false) }
@@ -111,15 +123,21 @@ fun burnInScaffold(
         Timber.i(ledger.report())
     }
 
-    val tSec = remember { mutableFloatStateOf(0f) }
+    // Long-nanos baseline, not a Float-seconds accumulator: a Float's ULP
+    // exceeds a frame delta at t ~ 2^19 s (~6.1 days), so `+=` would round to
+    // zero every frame and the animation would freeze partway through a 14-day
+    // burn. elapsedNanos is derived (now - startNanos) rather than summed, and
+    // each consumer takes its own modulo (phaseFraction) before narrowing to
+    // Double/Float, so precision never depends on uptime.
+    val startNanos = remember { mutableLongStateOf(0L) }
+    val elapsedNanos = remember { mutableLongStateOf(0L) }
     val animating = phase != BurnInPhase.SLEEP
     LaunchedEffect(animating) {
         if (!animating) return@LaunchedEffect
-        var last = 0L
         while (true) {
             withFrameNanos { now ->
-                if (last != 0L) tSec.floatValue += (now - last) / 1e9f
-                last = now
+                if (startNanos.longValue == 0L) startNanos.longValue = now
+                elapsedNanos.longValue = now - startNanos.longValue
             }
         }
     }
@@ -137,7 +155,7 @@ fun burnInScaffold(
         val shifted =
             Modifier
                 .fillMaxSize()
-                .offset { if (shiftEnabled) pixelShift(tSec.floatValue, config) else IntOffset.Zero }
+                .offset { if (shiftEnabled) pixelShift(elapsedNanos.longValue, config) else IntOffset.Zero }
 
         if (phase == BurnInPhase.DEEP_IDLE) {
             standbyScreen(modifier = shifted)
@@ -147,7 +165,7 @@ fun burnInScaffold(
                     shifted.then(
                         if (visualEnabled) {
                             Modifier.graphicsLayer {
-                                alpha = contentAlpha(phase, tSec.floatValue, config)
+                                alpha = contentAlpha(phase, elapsedNanos.longValue, config)
                                 compositingStrategy = CompositingStrategy.ModulateAlpha
                             }
                         } else {
@@ -191,13 +209,30 @@ private fun Modifier.burnInActivityObserver(onInteraction: () -> Unit): Modifier
         }
     }
 
-private fun pixelShift(
-    tSec: Float,
+/**
+ * Fraction of one [periodSec] cycle elapsed at [elapsedNanos], always in
+ * `[0, 1)`. The modulo is taken in nanos (Long, exact for any uptime up to
+ * 292 years) before narrowing to Double, so the value fed to trig downstream
+ * stays small regardless of how long the process has been running — that's
+ * what fixes the freeze in [pixelShift]/[breathe] (see kdoc on the caller in
+ * [burnInScaffold]). Each consumer has its own period, so a single shared
+ * modulo across pixel-shift and breathe would be wrong.
+ */
+internal fun phaseFraction(
+    elapsedNanos: Long,
+    periodSec: Int,
+): Double {
+    val periodNanos = periodSec.coerceAtLeast(1).toLong() * 1_000_000_000L
+    return (elapsedNanos % periodNanos).toDouble() / periodNanos
+}
+
+internal fun pixelShift(
+    elapsedNanos: Long,
     config: BurnInConfig,
 ): IntOffset {
     val amp = config.pixelShiftAmplitudePx
     if (amp <= 0) return IntOffset.Zero
-    val angle = tSec / config.pixelShiftPeriodSec.coerceAtLeast(1) * TWO_PI
+    val angle = phaseFraction(elapsedNanos, config.pixelShiftPeriodSec) * TWO_PI
     return IntOffset(
         x = (amp * sin(angle)).roundToInt(),
         y = (amp * cos(angle * SHIFT_Y_RATE)).roundToInt(),
@@ -206,20 +241,20 @@ private fun pixelShift(
 
 /** Subtle downward brightness breathe in [BurnInPhase.ACTIVE]: oscillates (1−amp)..1. */
 private fun breathe(
-    tSec: Float,
+    elapsedNanos: Long,
     config: BurnInConfig,
 ): Float {
-    val s = 0.5f - 0.5f * cos(tSec / config.breathePeriodSec.coerceAtLeast(1) * TWO_PI)
-    return 1f - config.breatheAmplitude * s
+    val s = 0.5 - 0.5 * cos(phaseFraction(elapsedNanos, config.breathePeriodSec) * TWO_PI)
+    return (1.0 - config.breatheAmplitude * s).toFloat()
 }
 
-private fun contentAlpha(
+internal fun contentAlpha(
     phase: BurnInPhase,
-    tSec: Float,
+    elapsedNanos: Long,
     config: BurnInConfig,
 ): Float =
     when (phase) {
-        BurnInPhase.ACTIVE -> breathe(tSec, config)
+        BurnInPhase.ACTIVE -> breathe(elapsedNanos, config)
         BurnInPhase.DIM -> config.dimContentAlpha
         // DEEP_IDLE / SLEEP never reach this layer — the scaffold routes them to
         // the standby screen / pure black before applying content alpha.
@@ -237,6 +272,36 @@ private fun backlightFor(
         BurnInPhase.DEEP_IDLE -> config.deepIdleBacklight
         BurnInPhase.SLEEP -> config.sleepBacklight
     }
+
+/**
+ * The single arbiter for `window.attributes.screenBrightness`: burn-in's
+ * per-phase ceiling (from [backlightFor]) folded with the beacon's ambient-lux
+ * curve ([luxToBrightness]). Burn-in is a *ceiling* that can only reduce
+ * brightness below what auto-dim would otherwise pick; auto-dim governs
+ * outright in ACTIVE, where [backlightFor] already returns
+ * `BRIGHTNESS_OVERRIDE_NONE`.
+ *
+ * - **Burn-in never brightens.** In DIM/DEEP_IDLE/SLEEP the result is the
+ *   `min` of the two, so a dark room (lux floor 0.05) still wins over DIM's
+ *   larger backlight, and SLEEP's 0.01 can never be raised by a lux tick.
+ * - **ACTIVE defers to auto-dim** entirely.
+ * - **No beacon feed → burn-in alone.** A tablet with no `$ZENV` still gets
+ *   its phase backlight rather than falling back to system brightness.
+ */
+internal fun effectiveBacklight(
+    phase: BurnInPhase,
+    config: BurnInConfig,
+    ambientLux: Double?,
+): Float {
+    val burnIn = backlightFor(phase, config) // NONE (-1f) in ACTIVE
+    val lux = ambientLux?.let { luxToBrightness(it) } // null when no beacon feed
+    return when {
+        burnIn == WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE ->
+            lux ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        lux == null -> burnIn
+        else -> minOf(lux, burnIn)
+    }
+}
 
 private tailrec fun Context.findActivity(): Activity? =
     when (this) {

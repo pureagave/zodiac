@@ -7,7 +7,10 @@ import kotlin.math.log10
  * (0..1) for the auto-dim. Perceptual log curve between a night floor and a day
  * ceiling: pitch dark clamps to [MIN_BRIGHTNESS] (never fully black — the driver
  * still needs to read the HUD), bright daylight clamps to full. Pure + testable;
- * `MainActivity` applies the result to `window.attributes.screenBrightness`.
+ * `burnInScaffold` folds the result into `effectiveBacklight` and is the single
+ * writer of `window.attributes.screenBrightness`. It used to be applied here by
+ * `MainActivity` as well, and the two writers fought: whichever ran last won,
+ * so a lux tick would undo the burn-in phase backlight within seconds.
  */
 fun luxToBrightness(lux: Double): Float {
     if (!lux.isFinite() || lux <= NIGHT_LUX) return MIN_BRIGHTNESS

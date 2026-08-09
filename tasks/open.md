@@ -123,8 +123,12 @@ API contract, not real OS scheduling.
 - [ ] **C2 Auto-dim and burn-in fight over screen brightness**; auto-dim wins, so
       burn-in mitigation is defeated whenever the beacon is live. Needs an
       arbiter — one write site.
-- [ ] **C3 Burn-in animation clock is an accumulating `Float`** — pixel shift
-      silently freezes after ~3 days (S9+) during a 14-day burn.
+- [x] **C3 FIXED 2026-08-09. Burn-in animation clock was an accumulating `Float`** — pixel shift
+      silently froze after ~3 days (S9+) during a 14-day burn. Widening to
+      `Double` would NOT have fixed it — the problem is the magnitude of the
+      value, not the increment. Now derived from a Long-nanos baseline with each
+      consumer taking its own modulo (`phaseFraction`), so precision no longer
+      depends on uptime at all.
 - [ ] **C4 NET `stop()` freezes beacon sensors as live-looking state** — stale
       night lux holds the screen at 5% through the next day.
 - [ ] **C5 ViewModel init double-starts the persisted source and leaks a

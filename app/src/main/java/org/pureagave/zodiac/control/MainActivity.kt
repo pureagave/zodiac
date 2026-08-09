@@ -3,7 +3,6 @@ package org.pureagave.zodiac.control
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -30,7 +29,6 @@ import org.pureagave.zodiac.control.core.permission.requiredCockpitPermissions
 import org.pureagave.zodiac.control.kiosk.KioskController
 import org.pureagave.zodiac.control.ui.concepts.ThemeTracker
 import org.pureagave.zodiac.control.ui.ops.permissionRationalePanel
-import org.pureagave.zodiac.control.ui.state.luxToBrightness
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModelFactory
 
@@ -78,7 +76,6 @@ private fun zodiacApp() {
     val app = LocalContext.current.applicationContext as ZodiacApplication
     val viewModel = rememberCockpitViewModel(app)
 
-    autoDim(viewModel)
     val audio by app.networkLocationSource.audioLevel.collectAsStateWithLifecycle()
     val passengerMode by app.displayRole.passengerMode.collectAsStateWithLifecycle()
     cockpitScreen(
@@ -170,27 +167,5 @@ private fun cockpitPermissionGate(onNewGrant: () -> Unit) {
             // synthetic and network GPS sources without this permission.
             onDismiss = { showRationale = false },
         )
-    }
-}
-
-/**
- * Ambient-light auto-dim: map the beacon's `$ZENV` lux to a window-brightness
- * fraction and apply it to the Activity window. No UI of its own — a cheap
- * effect-only composable, so its recomposition on each lux update doesn't touch
- * the cockpit tree. Null lux (no beacon) restores the system brightness.
- */
-@Composable
-private fun autoDim(viewModel: CockpitViewModel) {
-    val lux by viewModel.uiState.collectAsStateWithLifecycle()
-    val window = (LocalContext.current as? ComponentActivity)?.window
-    val ambientLux = lux.ambientLux
-    LaunchedEffect(ambientLux, window) {
-        val target = window ?: return@LaunchedEffect
-        target.attributes =
-            target.attributes.apply {
-                screenBrightness =
-                    ambientLux?.let { luxToBrightness(it) }
-                        ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-            }
     }
 }

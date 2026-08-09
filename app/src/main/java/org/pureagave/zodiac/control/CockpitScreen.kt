@@ -73,7 +73,7 @@ fun cockpitScreen(
     // share a palette today, so this changes no pixels — it's the seam that
     // lets one diverge, and what the second map consumer (A3) will need.
     val zone = if (passengerMode) "PASSENGER" else state.concept.name
-    burnInScaffold(manager = burnInManager, zone = zone) {
+    burnInScaffold(manager = burnInManager, zone = zone, ambientLux = state.ambientLux) {
         provideCockpitTheme(ThemeTracker) {
             Box(Modifier.fillMaxSize()) {
                 if (passengerMode) {
