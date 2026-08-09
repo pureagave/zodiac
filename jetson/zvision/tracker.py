@@ -80,12 +80,22 @@ def nearest_equivalent_pan(
 
     So consider the +/-360 equivalents too and take whichever is nearest the
     current position, provided it is inside the fixture's travel.
+
+    Only *reachable* equivalents are considered. The earlier version seeded its
+    search with ``target_deg`` itself and kept it whenever no in-range candidate
+    was strictly nearer — so an out-of-travel target could be returned even
+    though a reachable equivalent existed, and the caller's clamp then pinned
+    the head to an end stop pointing at nothing. That is a live bug the moment
+    ``pan_center_deg`` is calibrated away from mid-travel; see the caller.
     """
-    best = target_deg
-    for candidate in (target_deg - FULL_TURN_DEG, target_deg, target_deg + FULL_TURN_DEG):
-        if 0.0 <= candidate <= pan_range_deg and abs(candidate - current_deg) < abs(best - current_deg):
-            best = candidate
-    return best
+    candidates = [
+        c
+        for c in (target_deg - FULL_TURN_DEG, target_deg, target_deg + FULL_TURN_DEG)
+        if 0.0 <= c <= pan_range_deg
+    ]
+    if not candidates:
+        return target_deg  # nothing reachable; the caller clamps
+    return min(candidates, key=lambda c: abs(c - current_deg))
 
 
 # Default fixture coverage: the head lights forward and to both sides — a 180°
@@ -306,13 +316,17 @@ class Tracker:
                 else self.cfg.dimmer_idle
             )
         else:
-            tgt_pan = _clamp(
-                self.cfg.pan_center_deg + target.rel_az_deg * self.cfg.pan_gain,
-                0.0,
-                self.cfg.pan_range_deg,
-            )
-            # Take the short way round the stern seam — see nearest_equivalent_pan.
-            tgt_pan = nearest_equivalent_pan(tgt_pan, self._pan_deg, self.cfg.pan_range_deg)
+            # Seam equivalence FIRST, then clamp. The other order clamps the
+            # information away before the equivalence can use it: at a
+            # calibrated pan_center of 60, az -80 computes to -20, clamps to 0,
+            # and the head parks on its end stop pointing at nothing — while
+            # the reachable equivalent 340 was sitting right there. Masked at
+            # the default centre of 270, where +/-90 of reach never leaves
+            # [180, 360], so it would first appear on the vehicle and read as a
+            # bad mount rather than a bug.
+            raw_pan = self.cfg.pan_center_deg + target.rel_az_deg * self.cfg.pan_gain
+            tgt_pan = nearest_equivalent_pan(raw_pan, self._pan_deg, self.cfg.pan_range_deg)
+            tgt_pan = _clamp(tgt_pan, 0.0, self.cfg.pan_range_deg)
             tgt_tilt = _clamp(
                 _lerp(self.cfg.tilt_far_deg, self.cfg.tilt_near_deg, _clamp(target.size, 0.0, 1.0)),
                 0.0,

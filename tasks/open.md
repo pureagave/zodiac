@@ -6,7 +6,7 @@ What's worth doing next. Critical and High audit items are all done — see `don
 > picture. Everything under them is older backlog. Read the top of `SYNC.md`
 > first — it carries the *why*.
 >
-> **app 719 / beacon 35 / jetson 322 tests, main green.**
+> **app 719 / beacon 35 / jetson 362 tests, main green.**
 
 ## ⛔ Blocked on Rob / hardware
 
@@ -57,37 +57,23 @@ Ranked by consequence on the playa.
             the manual doesn't say which end is fast.** We send 0. Try it first
             if the head lags a walking contact.
 
-- [x] **⚠️ P0 — FIXED IN CODE 2026-08-09, NOT YET DEPLOYED.** `zvision/dmxpark.py`
+- [x] **⚠️ P0 — FIXED AND DEPLOYED 2026-08-09.** `zvision/dmxpark.py`
       zeroes all 512 slots and is wired as `ExecStopPost=-...` on the zvision
       unit, which systemd runs on crash and kill — not just a clean stop. Same
       module doubles as the **software operator kill**:
       `python3 -m zvision.dmxpark`. 5 tests; the "zero everything" behaviour is
       mutation-verified (zeroing only 8 slots fails).
-      - [ ] **Deploy it**: `/opt/zodiac` pull + `systemctl daemon-reload` +
-            restart zvision. Not done yet because it bounces the vision service.
+      - [x] **Deployed and proven 2026-08-09.** Unit copied by hand (not
+            `install.sh`, which also rewrites `/etc/default/zvision` and would
+            have clobbered the live camera config — md5 verified unchanged).
+            End-to-end test: hot universe (3 slots, dimmer 255) → `systemctl
+            kill -s SIGKILL zvision` → **0 slots hot**, beam out, service back
+            up 2 s later. The crash path is real, not just wired.
       - [ ] **Hardware kill switch** — a labelled inline switch on the fixture
             within the driver's reach. The software kill and `BLnd=blac` cover
             *different* failures (zvision dead vs DMX stopped); neither covers a
             wedged Jetson still streaming a valid universe. Only a switch does.
             Document it in `MOVING-HEAD.md` §1 once fitted.
-
-- [ ] ~~**P0 — A FROZEN FULL-BRIGHT BEAM SURVIVES A zvision CRASH.**~~ Found by
-      a Fable design review 2026-08-08, and it holes the "fixed in hardware"
-      claim below. `BLnd = blac` only fires when **DMX stops**. If `zvision`
-      dies while `olad` lives — segfault, OOM-kill, SIGKILL, anything that skips
-      the `finally` park at `app.py:400` — `olad` owns the frame timing
-      (`dmx.py:15`) and keeps streaming the last universe at 30 Hz forever. The
-      fixture sees *valid* DMX and holds its last command: full brightness,
-      frozen in the fixture's frame, while the vehicle turns. Empirically
-      confirmed today — a universe set by hand stayed lit for many minutes with
-      no client connected. `jetson/systemd/zvision.service` has **no
-      `ExecStopPost=`**, so nothing zeroes the universe on abnormal exit.
-      **Fix before `--dmx ola` is ever enabled** (harmless today only because
-      zvision runs with `--dmx none`): add `ExecStopPost=` to the unit to POST a
-      zeroed universe — it runs on crash and kill, not just clean stop — and
-      consider a watchdog timer that zeroes whenever the unit isn't active.
-      Note a failed *start* (e.g. camera missing, `app.py` exits 3) never
-      touches DMX at all, so a hot universe would persist across a crash-loop.
 
 - [x] **DMX signal-loss fallback — fixed in hardware 2026-08-08, but see the P0
       above for the case it does NOT cover.** Measured:
@@ -121,13 +107,17 @@ defect list. Each is verified against the code, with `file:line`.
 
 **Latent bugs (no behaviour change to decide — just wrong):**
 
-- [ ] **Pan seam equivalence is applied AFTER the clamp** (`tracker.py:309-315`).
+- [x] **DONE 2026-08-09 — pan seam equivalence was applied AFTER the clamp.**
       Masked at the shipped `pan_center_deg = 270`, where every azimuth lands
       mid-range. **It bites the moment the head is calibrated** — a mount that
       puts centre at 60 clamps az −80 to 0 and aims 20° wrong, when the
       mechanically correct equivalent 340 is well inside travel. Compute
       unclamped, take the ±360 equivalent into `[0, pan_range]`, *then* clamp.
-      Fix this before the on-vehicle calibration session, not after.
+      Fixed in both halves (the caller's order *and* the seeded search in
+      `nearest_equivalent_pan`, which alone still returned the unreachable
+      value); 2 tests, both mutation-verified. **`pan_range_deg = 540` also
+      physically verified** — end-stop to end-stop is one full turn plus a half.
+      See `MOVING-HEAD.md` §8.6b/§8.6c.
 - [ ] **`select_best` is dead code** (`tracker.py:111`) — no production caller;
       the shipped selector is `Tracker._pick` (`tracker.py:348`), a parallel
       reimplementation with extra rules. **~12 tests certify a function the

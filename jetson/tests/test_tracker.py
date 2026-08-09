@@ -517,6 +517,24 @@ class SternSeamTest(unittest.TestCase):
     def test_an_unambiguous_aim_is_unchanged(self):
         self.assertAlmostEqual(270.0, nearest_equivalent_pan(270.0, 265.0, 540.0), places=6)
 
+    def test_an_out_of_travel_aim_uses_its_reachable_equivalent(self):
+        # -20 is not reachable on a 0..540 fixture, but 340 is the same physical
+        # direction and is. Returning -20 (as the old seeded search did) let the
+        # caller's clamp pin the head to 0 -- an end stop pointing at nothing.
+        self.assertAlmostEqual(340.0, nearest_equivalent_pan(-20.0, 60.0, 540.0), places=6)
+
+    def test_a_calibrated_pan_centre_near_an_end_stop_still_aims_correctly(self):
+        # The bug in its physical form, and the reason it stayed hidden: at the
+        # default centre of 270, +/-90 of reach never leaves [180, 360] and this
+        # can never fire. Mount the head so forward sits near an end of travel
+        # -- entirely plausible once bodywork dictates the bracket -- and a
+        # contact off that side clamps to the stop instead of using the
+        # equivalent angle. On the vehicle it reads as a bad mount, not a bug.
+        cfg = TrackerConfig(pan_center_deg=60.0)
+        f = Tracker(cfg).update([DriverThreat(rel_az_deg=-80.0, size=0.5, id=1)], dt=SNAP)
+        self.assertAlmostEqual(340.0, f.pan_deg, places=3)
+        self.assertNotAlmostEqual(0.0, f.pan_deg, places=3)  # the old behaviour
+
     def test_the_head_does_not_sweep_the_vehicle_when_a_contact_crosses_astern(self):
         # The behaviour that matters is *cumulative travel*, not step size: the
         # slew limiter caps every individual step, so a single-step assertion

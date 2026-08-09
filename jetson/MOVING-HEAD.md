@@ -389,6 +389,43 @@ open white** (`ch5=0`, which is `TrackerConfig`'s behaviour today, since it neve
 writes ch5) — a spotlight following a person at night wants every lumen. Colour
 belongs to the idle/show state, not to tracking.
 
+### 8.6b Pan travel physically verified — 540° confirmed
+
+`pan_range_deg = 540` and `tilt_range_deg = 270` came from the manual (§5), and
+the entire DMX↔angle mapping rests on them: get the pan span wrong and every
+commanded aim is off by the ratio, which on the vehicle would read as a bad
+`pan_gain` or a crooked mount and cost a calibration session to find.
+
+Measured 2026-08-09 by driving pan end-stop to end-stop as a smooth 16-bit ramp
+and counting rotations of the head: **one full turn plus a half**, finishing
+facing opposite the start. That is 540°, so the manual is trustworthy here and
+nothing downstream changes.
+
+Cheap discriminator worth reusing on any replacement fixture: it is the *final
+facing* that identifies the range, not the count. 360° ends facing the way it
+started, 540° ends facing backwards, 450°/630° end at right angles.
+
+At `pan = 0` this fixture faces its **LED-config-button side** — i.e. the button
+side is one mechanical end stop, not the middle. **Mount the head so the
+vehicle's forward direction sits near the middle of pan travel** (~270). That
+leaves the full swing available either way before a stop, and keeps the seam
+equivalence in §8.6c out of the picture entirely.
+
+### 8.6c A calibrated pan centre used to aim at an end stop (fixed)
+
+`update` clamped the pan target into `[0, pan_range]` *before* asking for the
+mechanically-equivalent angle, and `nearest_equivalent_pan` seeded its search
+with the raw target and kept it unless an in-range candidate was strictly
+nearer. Together: at a calibrated `pan_center_deg` of 60, a contact at az −80
+computes to −20, is clamped to **0**, and the head parks on its end stop
+pointing at nothing — while the reachable equivalent **340** (the same physical
+direction) was available the whole time.
+
+Invisible at the shipped centre of 270, where ±90° of reach never leaves
+[180, 360]. It would have first appeared during on-vehicle calibration and read
+as a bad mount. Both halves were needed — reordering alone does not fix it,
+because the seeded search still returns the unreachable value.
+
 ### 8.7 Gobo wheel, mapped the same way
 
 `ch6` 0–63 are the fixed patterns (64–127 is shake, 128+ is auto-change — both
