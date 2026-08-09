@@ -30,7 +30,13 @@ data class CockpitPrefsSnapshot(
     companion object {
         val DEFAULT =
             CockpitPrefsSnapshot(
-                locationSource = LocationSourceType.FAKE,
+                // NET (real fleet GPS / beacon), not FAKE. Recovery from a
+                // corrupt prefs file lands here (see DataStoreCockpitPreferences'
+                // corruptionHandler): a kiosked tablet that silently renders a
+                // plausible synthetic map parked at Golden Spike is worse than
+                // one that comes back on real GPS, or visibly SEARCHING /
+                // failed-over to the S9+'s own GNSS. FAKE is one chip tap away.
+                locationSource = LocationSourceType.NET,
                 mapMode = MapMode.TOP,
                 tiltDeg = CockpitUiState.DEFAULT_TILT_DEG,
                 pixelsPerMeter = DEFAULT_PIXELS_PER_METER,

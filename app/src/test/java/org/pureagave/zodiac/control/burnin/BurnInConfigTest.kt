@@ -41,4 +41,41 @@ class BurnInConfigTest {
             c.dimTimeoutSec < c.deepIdleTimeoutSec && c.deepIdleTimeoutSec < c.sleepTimeoutSec,
         )
     }
+
+    @Test
+    fun ceiling_values_do_not_throw_and_stay_ordered() {
+        // All three timeouts pinned at the persisted/tuning-panel ceiling used to
+        // make deepIdleTimeoutSec.coerceIn(dim + 1, MAX) an empty range and throw.
+        val c =
+            BurnInConfig(
+                dimTimeoutSec = 86_400L,
+                deepIdleTimeoutSec = 86_400L,
+                sleepTimeoutSec = 86_400L,
+            ).coerced()
+        assertTrue("dim < deep", c.dimTimeoutSec < c.deepIdleTimeoutSec)
+        assertTrue("deep < sleep", c.deepIdleTimeoutSec < c.sleepTimeoutSec)
+        assertTrue("sleep <= ceiling", c.sleepTimeoutSec <= 86_400L)
+    }
+
+    @Test
+    fun every_edge_combination_of_timeouts_is_total_and_ordered() {
+        val edges = listOf(Long.MIN_VALUE, -1L, 0L, 1L, 2L, 86_398L, 86_399L, 86_400L, 86_401L, Long.MAX_VALUE)
+        for (dimIn in edges) {
+            for (deepIn in edges) {
+                for (sleepIn in edges) {
+                    val c =
+                        BurnInConfig(
+                            dimTimeoutSec = dimIn,
+                            deepIdleTimeoutSec = deepIn,
+                            sleepTimeoutSec = sleepIn,
+                        ).coerced()
+                    val case = "dimIn=$dimIn deepIn=$deepIn sleepIn=$sleepIn -> $c"
+                    assertTrue("dim >= 1 ($case)", c.dimTimeoutSec >= 1L)
+                    assertTrue("dim < deep ($case)", c.dimTimeoutSec < c.deepIdleTimeoutSec)
+                    assertTrue("deep < sleep ($case)", c.deepIdleTimeoutSec < c.sleepTimeoutSec)
+                    assertTrue("sleep <= 86_400 ($case)", c.sleepTimeoutSec <= 86_400L)
+                }
+            }
+        }
+    }
 }

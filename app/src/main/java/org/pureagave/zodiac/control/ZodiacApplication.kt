@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +32,7 @@ import org.pureagave.zodiac.control.data.playa.PlayaMapBinaryCache
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
 import org.pureagave.zodiac.control.data.prefs.CockpitPreferences
 import org.pureagave.zodiac.control.data.prefs.DataStoreCockpitPreferences
+import org.pureagave.zodiac.control.data.prefs.cockpitPrefsDataStore
 import org.pureagave.zodiac.control.data.sensor.BleLocationSource
 import org.pureagave.zodiac.control.data.sensor.FailoverLocationSource
 import org.pureagave.zodiac.control.data.sensor.FakeLocationSource
@@ -138,7 +138,7 @@ class ZodiacApplication : Application() {
     }
 
     private val preferencesDataStore: DataStore<Preferences> by lazy {
-        PreferenceDataStoreFactory.create(scope = applicationScope) {
+        cockpitPrefsDataStore(scope = applicationScope) {
             applicationContext.preferencesDataStoreFile("cockpit_prefs")
         }
     }

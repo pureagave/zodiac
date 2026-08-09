@@ -45,10 +45,21 @@ for every item are in the audit doc; this is the work list.
 
 ### P1 — crash loops and unattended recovery
 
-- [ ] **B1 Corrupt DataStore prefs → boot crash-loop**, unrecoverable on a
-      kiosked tablet (no Settings). One line: `ReplaceFileCorruptionHandler`.
-- [ ] **B2 `BurnInConfig.coerced()` throws at the timeout ceiling** — a second
-      boot crash-loop path, reachable from persisted values.
+- [x] **B1 FIXED 2026-08-09. Corrupt DataStore prefs → boot crash-loop**, unrecoverable on a
+      kiosked tablet (no Settings). Fixed with a `ReplaceFileCorruptionHandler`
+      behind an extracted `cockpitPrefsDataStore()` factory (the test seam), plus
+      an `IOException` catch in `read()`/`readBurnInConfig()` for disk errors that
+      are not corruption. **Recovery default changed FAKE → NET**: a kiosked
+      tablet that comes back silently rendering a plausible synthetic map parked
+      at Golden Spike is worse than one that comes back on real GPS or visibly
+      SEARCHING. Note: recovery also resets `passengerMode`, so a corrupted
+      passenger tablet returns as a driver cockpit — it comes back *running*, and
+      the role flip is one hidden-panel action.
+- [x] **B2 FIXED 2026-08-09. `BurnInConfig.coerced()` threw at the ceiling** —
+      `coerceIn(MAX+1, MAX)` is an empty range. Fixed by reserving headroom
+      (`MAX_DIM = MAX-2`, `MAX_DEEP = MAX-1`) so the invariant
+      `1 <= dim < deep < sleep <= 86_400` holds across all of `Long`, with the
+      totality argument in a comment. Pinned by a 1000-case edge grid.
 - [ ] **B3 ✅ Beacon has no boot receiver** — a brownout leaves the fleet with no
       GPS until a human taps START.
 - [ ] **B4 ✅ `WAKE_LOCK` declared, never acquired** — Doze stalls the beacon's

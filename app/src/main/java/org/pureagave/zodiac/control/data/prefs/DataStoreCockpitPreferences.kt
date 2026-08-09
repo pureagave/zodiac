@@ -5,16 +5,20 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import org.pureagave.zodiac.control.burnin.BurnInConfig
 import org.pureagave.zodiac.control.core.model.CockpitConcept
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
+import timber.log.Timber
+import java.io.IOException
 
 /**
  * DataStore-backed implementation. Enums are stored by name so renaming an
@@ -25,7 +29,7 @@ class DataStoreCockpitPreferences(
     private val dataStore: DataStore<Preferences>,
 ) : CockpitPreferences {
     override suspend fun read(): CockpitPrefsSnapshot {
-        val prefs = dataStore.data.first()
+        val prefs = currentPrefs()
         val default = CockpitPrefsSnapshot.DEFAULT
         return CockpitPrefsSnapshot(
             locationSource = prefs[KEY_LOCATION_SOURCE]?.toLocationSourceOrNull() ?: default.locationSource,
@@ -69,7 +73,7 @@ class DataStoreCockpitPreferences(
     // the cyclomatic count is a mechanical artefact of the field count.
     @Suppress("CyclomaticComplexMethod")
     override suspend fun readBurnInConfig(): BurnInConfig {
-        val prefs = dataStore.data.first()
+        val prefs = currentPrefs()
         val d = BurnInConfig()
         return BurnInConfig(
             pixelShiftEnabled = prefs[KEY_BI_SHIFT_ENABLED] ?: d.pixelShiftEnabled,
@@ -110,6 +114,29 @@ class DataStoreCockpitPreferences(
             it[KEY_BI_MOVE_METERS] = c.movementMeters
         }
     }
+
+    /**
+     * The corruption handler installed on the DataStore (see
+     * [cockpitPrefsDataStore]) covers `CorruptionException` only — a torn
+     * *readable* file that fails to parse. A plain [IOException] (disk full,
+     * permission denied, unmounted external storage mid-read) is a different
+     * failure and still propagates from `dataStore.data` by default. On a
+     * kiosked tablet that is the same crash-loop this file exists to avoid,
+     * so it is caught here and treated the same way: log, fall back to empty
+     * (= documented defaults), keep running. Anything else is a programming
+     * error and stays loud.
+     */
+    private suspend fun currentPrefs(): Preferences =
+        dataStore.data
+            .catch { e ->
+                if (e is IOException) {
+                    Timber.e(e, "prefs: read failed, using defaults")
+                    emit(emptyPreferences())
+                } else {
+                    throw e
+                }
+            }
+            .first()
 
     private fun String.toLocationSourceOrNull(): LocationSourceType? = runCatching { LocationSourceType.valueOf(this) }.getOrNull()
 

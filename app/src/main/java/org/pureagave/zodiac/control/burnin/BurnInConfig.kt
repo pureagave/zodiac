@@ -62,8 +62,14 @@ data class BurnInConfig(
         val breathe = breatheAmplitude.coerceIn(0f, MAX_BREATHE_AMPLITUDE)
         val breathePeriod = breathePeriodSec.coerceIn(MIN_PERIOD_SEC, MAX_PERIOD_SEC)
 
-        val dim = dimTimeoutSec.coerceIn(MIN_TIMEOUT_SEC, MAX_TIMEOUT_SEC)
-        val deep = deepIdleTimeoutSec.coerceIn(dim + 1, MAX_TIMEOUT_SEC)
+        // Headroom is reserved so every coerceIn range below is non-empty for all
+        // of Long: dim <= MAX_DIM_TIMEOUT_SEC (86_398) => dim + 1 <= 86_399 ==
+        // MAX_DEEP_TIMEOUT_SEC; deep <= MAX_DEEP_TIMEOUT_SEC (86_399) =>
+        // deep + 1 <= 86_400 == MAX_TIMEOUT_SEC. No overflow, since inputs are
+        // clamped first. Invariant 1 <= dim < deep < sleep <= 86_400 holds
+        // everywhere, so coerced() never throws.
+        val dim = dimTimeoutSec.coerceIn(MIN_TIMEOUT_SEC, MAX_DIM_TIMEOUT_SEC)
+        val deep = deepIdleTimeoutSec.coerceIn(dim + 1, MAX_DEEP_TIMEOUT_SEC)
         val sleep = sleepTimeoutSec.coerceIn(deep + 1, MAX_TIMEOUT_SEC)
 
         return copy(
@@ -104,6 +110,8 @@ data class BurnInConfig(
         const val MAX_PERIOD_SEC: Int = 600
         const val MIN_TIMEOUT_SEC: Long = 1
         const val MAX_TIMEOUT_SEC: Long = 86_400
+        const val MAX_DEEP_TIMEOUT_SEC: Long = MAX_TIMEOUT_SEC - 1
+        const val MAX_DIM_TIMEOUT_SEC: Long = MAX_TIMEOUT_SEC - 2
         const val MIN_BACKLIGHT: Float = 0.01f
     }
 }

@@ -1271,7 +1271,13 @@ private fun routableMap(): PlayaMap {
 }
 
 private class NoOpCockpitPreferences : CockpitPreferences {
-    override suspend fun read(): CockpitPrefsSnapshot = CockpitPrefsSnapshot.DEFAULT
+    // Tests below build their RoutedLocationSource fixtures with FAKE as the
+    // registered/initial source (matching the pre-B1 production default), not
+    // NET (the corrupt-prefs recovery default post-B1, see CockpitPreferences.kt)
+    // — most of these fixture registries never register a NET stub at all.
+    // This stub's whole point is "sane, VM-decoupled-from-production defaults",
+    // so it pins locationSource explicitly rather than following DEFAULT.
+    override suspend fun read(): CockpitPrefsSnapshot = CockpitPrefsSnapshot.DEFAULT.copy(locationSource = LocationSourceType.FAKE)
 
     override suspend fun setLocationSource(type: LocationSourceType) = Unit
 
@@ -1291,7 +1297,9 @@ private class NoOpCockpitPreferences : CockpitPreferences {
 }
 
 private class RecordingCockpitPreferences(
-    private val snapshot: CockpitPrefsSnapshot = CockpitPrefsSnapshot.DEFAULT,
+    // See NoOpCockpitPreferences: pinned to FAKE, independent of the production
+    // DEFAULT, because most call sites' registry fixtures don't register NET.
+    private val snapshot: CockpitPrefsSnapshot = CockpitPrefsSnapshot.DEFAULT.copy(locationSource = LocationSourceType.FAKE),
 ) : CockpitPreferences {
     val locationSources = mutableListOf<LocationSourceType>()
     val mapModes = mutableListOf<MapMode>()

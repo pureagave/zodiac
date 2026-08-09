@@ -4,8 +4,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -170,6 +172,67 @@ class DataStoreCockpitPreferencesTest {
 
             assertEquals(cfg, prefs.readBurnInConfig())
         }
+
+    @Test
+    fun corruption_handler_alone_replaces_a_corrupt_file_with_empty_preferences() =
+        runTest(UnconfinedTestDispatcher()) {
+            // Isolates change (a) — the corruptionHandler installed on the
+            // DataStore itself — from change (b), DataStoreCockpitPreferences'
+            // own IOException catch in currentPrefs(). androidx.datastore.core.
+            // CorruptionException extends IOException, so change (b) alone
+            // would also mask a missing corruptionHandler and let that mutation
+            // survive undetected if this test went through the CockpitPreferences
+            // wrapper like the others below. Reading straight off the DataStore
+            // returned by cockpitPrefsDataStore() keeps this test honest about
+            // which change is doing the work.
+            val file = tmp.newFile("corrupt_direct_${nextFileId++}.preferences_pb")
+            file.writeBytes(byteArrayOf(0x00, 0x01, 0x02, 0x7f, -1, -2, -3, 0x55, 0x2a, 0x00))
+            val store = cockpitPrefsDataStore(scope = this.backgroundScope) { file }
+
+            assertEquals(emptyPreferences(), store.data.first())
+        }
+
+    @Test
+    fun corrupt_prefs_file_recovers_to_defaults_instead_of_throwing() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefsOverCorruptFile()
+
+            assertEquals(CockpitPrefsSnapshot.DEFAULT, prefs.read())
+        }
+
+    @Test
+    fun corrupt_prefs_recovery_never_selects_synthetic_gps() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefsOverCorruptFile()
+
+            val snapshot = prefs.read()
+            assertEquals(LocationSourceType.NET, snapshot.locationSource)
+            assert(snapshot.locationSource != LocationSourceType.FAKE) {
+                "corrupt-prefs recovery must never select synthetic GPS"
+            }
+        }
+
+    @Test
+    fun corrupt_prefs_file_recovers_burn_in_defaults() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefsOverCorruptFile()
+
+            assertEquals(BurnInConfig().coerced(), prefs.readBurnInConfig())
+        }
+
+    /**
+     * A file torn by a mid-write power cut: present on disk, non-empty, but
+     * not a valid serialized `Preferences` proto. Constructed through the
+     * production [cockpitPrefsDataStore] factory (not a bare
+     * `PreferenceDataStoreFactory.create`) so these tests exercise the same
+     * corruption handler wiring `ZodiacApplication` uses.
+     */
+    private fun TestScope.newPrefsOverCorruptFile(): DataStoreCockpitPreferences {
+        val file = tmp.newFile("corrupt_${nextFileId++}.preferences_pb")
+        file.writeBytes(byteArrayOf(0x00, 0x01, 0x02, 0x7f, -1, -2, -3, 0x55, 0x2a, 0x00))
+        val store = cockpitPrefsDataStore(scope = this.backgroundScope) { file }
+        return DataStoreCockpitPreferences(store)
+    }
 
     private fun TestScope.newStore(): DataStore<Preferences> =
         PreferenceDataStoreFactory.create(scope = this.backgroundScope) { tmp.newFile("prefs_${nextFileId++}.preferences_pb") }
