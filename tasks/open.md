@@ -75,7 +75,14 @@ for every item are in the audit doc; this is the work list.
       tick loop; heading freezes and `$ZBCN` gaps read as a dead beacon.
 - [ ] **B5 Beacon FGS types vs permissions** — location-type FGS restarted while
       backgrounded gets no fixes; mic type on Android 14+ throws when denied.
-- [ ] **B6 One exception kills every synthesized beacon channel, silently.**
+- [x] **B6 FIXED 2026-08-09.** One exception killed every synthesized beacon
+      channel, silently, while GNSS passthrough kept flowing and the phone still
+      said "Broadcasting". Guarded via an extracted `TickLoop` (rethrows
+      `CancellationException`, lets `Error` propagate to a process restart), plus
+      a pure `tickHealthLine` and a second watchdog coroutine — because the loop
+      must not be the only thing able to report the loop's death. Honest limit:
+      a Doze stall freezes the watchdog too (that is B4), so the banner appears
+      on wake. 7 tests, all mutation-verified.
 
 ### P2 — silently wrong data
 

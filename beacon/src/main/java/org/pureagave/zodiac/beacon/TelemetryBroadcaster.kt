@@ -24,6 +24,7 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +88,8 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val PREFS_NAME = "zodiac_beacon"
     private const val PREF_TOTAL_METERS = "odometer_total_m"
 
+    private const val TAG = "ZodiacBeacon"
+
     // Mic capture: 16 kHz mono 16-bit, 1024-sample frames → ~15 Hz $ZAUD frames,
     // fast enough for sound-reactive lighting. Only a level/beat number leaves the
     // phone — no audio is stored or transmitted.
@@ -135,6 +138,18 @@ object TelemetryBroadcaster : SensorEventListener {
 
     @Volatile private var audioActive: Boolean = false
 
+    // Tick-loop health (B6): the loop's own last-run timestamp/error tally, and
+    // the most recent full readout it managed to compute — so the watchdog
+    // coroutine can report the loop's death even though the dead thing can't
+    // report on itself.
+    @Volatile private var lastTickAtMs: Long = 0L
+
+    @Volatile private var tickErrors: Long = 0L
+
+    @Volatile private var lastTickError: String? = null
+
+    @Volatile private var lastGoodStatus: String = ""
+
     private var startElapsedMs: Long = 0
     private var appContext: Context? = null
     private var prefs: SharedPreferences? = null
@@ -148,6 +163,10 @@ object TelemetryBroadcaster : SensorEventListener {
         val app = context.applicationContext
         appContext = app
         startElapsedMs = SystemClock.elapsedRealtime()
+        lastTickAtMs = 0L
+        tickErrors = 0L
+        lastTickError = null
+        lastGoodStatus = ""
         val store = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = store
         val seededTotal = store.getFloat(PREF_TOTAL_METERS, 0f).toDouble()
@@ -193,19 +212,38 @@ object TelemetryBroadcaster : SensorEventListener {
         startAudioCapture(app, running)
 
         running.launch {
-            var tick = 0L
+            TickLoop(
+                body = { tick ->
+                    lastTickAtMs = SystemClock.elapsedRealtime()
+                    send(Nmea.hdt(headingDeg))
+                    send(Nmea.ztlm(pitchDeg, rollDeg, speedKph()))
+                    if (tick % ENV_EVERY_TICKS == 0L) send(Nmea.zenv(luxValue))
+                    if (tick % ODO_EVERY_TICKS == 0L) send(Nmea.zodo(tripMeters, totalMeters))
+                    if (tick % HEALTH_EVERY_TICKS == 0L) {
+                        send(Nmea.zbcn(batteryPct(), fixQuality, satellites, uptimeSec()))
+                        persistTotal()
+                    }
+                    if (tick % STATUS_EVERY_TICKS == 0L) _status.value = statusText()
+                },
+                onError = { t ->
+                    tickErrors++
+                    lastTickError = t.message ?: t::class.simpleName
+                    Log.e(TAG, "tick loop error (tick errors so far: $tickErrors)", t)
+                },
+            ).run(HDT_INTERVAL_MS)
+        }
+        // The loop above is the only thing that can report its own death, which is
+        // exactly what makes that reporting untrustworthy when it dies. This
+        // second, independent coroutine is the one that actually screams —
+        // straight to _status, bypassing statusText()'s normal cadence. Note the
+        // honest limitation: a Doze stall freezes this coroutine too (B4's
+        // territory); the banner appears on wake.
+        running.launch {
             while (isActive) {
-                send(Nmea.hdt(headingDeg))
-                send(Nmea.ztlm(pitchDeg, rollDeg, speedKph()))
-                if (tick % ENV_EVERY_TICKS == 0L) send(Nmea.zenv(luxValue))
-                if (tick % ODO_EVERY_TICKS == 0L) send(Nmea.zodo(tripMeters, totalMeters))
-                if (tick % HEALTH_EVERY_TICKS == 0L) {
-                    send(Nmea.zbcn(batteryPct(), fixQuality, satellites, uptimeSec()))
-                    persistTotal()
+                delay(TICK_DEAD_MS / 2)
+                tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)?.let { health ->
+                    _status.value = "$health\n$lastGoodStatus"
                 }
-                if (tick % STATUS_EVERY_TICKS == 0L) _status.value = statusText()
-                tick++
-                delay(HDT_INTERVAL_MS)
             }
         }
         _running.value = true
@@ -248,21 +286,25 @@ object TelemetryBroadcaster : SensorEventListener {
         val loc = lastLocation
         val up = uptimeSec()
         val mic = if (audioActive) "rms %.2f%s".format(audioRms, if (audioBeat) "  ♪BEAT" else "") else "off (grant mic → \$ZAUD)"
-        return buildString {
-            append(if (loc != null) "GPS    %.5f, %.5f".format(loc.latitude, loc.longitude) else "GPS    acquiring…")
-            append("\nHDG    ${headingDeg.toInt()}°   TILT p${pitchDeg.toInt()} r${rollDeg.toInt()}   SPD ${speedKph().toInt()} kph")
-            append("\nLIGHT  ${luxValue.toInt()} lx    SHOCK %.1f g peak".format(lastShockG))
-            append(
-                "\nHEALTH ${batteryPct()}%%  fix q$fixQuality/$satellites sat  up %02d:%02d:%02d".format(
-                    up / 3600,
-                    (up % 3600) / 60,
-                    up % 60,
-                ),
-            )
-            append("\nODO    %.2f km trip / %.1f km total".format(tripMeters / 1000.0, totalMeters / 1000.0))
-            append("\nMIC    $mic")
-            append("\n→ $GROUP:$PORT   ·   sent $sentences")
-        }
+        val body =
+            buildString {
+                append(if (loc != null) "GPS    %.5f, %.5f".format(loc.latitude, loc.longitude) else "GPS    acquiring…")
+                append("\nHDG    ${headingDeg.toInt()}°   TILT p${pitchDeg.toInt()} r${rollDeg.toInt()}   SPD ${speedKph().toInt()} kph")
+                append("\nLIGHT  ${luxValue.toInt()} lx    SHOCK %.1f g peak".format(lastShockG))
+                append(
+                    "\nHEALTH ${batteryPct()}%%  fix q$fixQuality/$satellites sat  up %02d:%02d:%02d".format(
+                        up / 3600,
+                        (up % 3600) / 60,
+                        up % 60,
+                    ),
+                )
+                append("\nODO    %.2f km trip / %.1f km total".format(tripMeters / 1000.0, totalMeters / 1000.0))
+                append("\nMIC    $mic")
+                append("\n→ $GROUP:$PORT   ·   sent $sentences")
+            }
+        lastGoodStatus = body
+        val health = tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)
+        return if (health != null) "$health\n$body" else body
     }
 
     private fun send(line: String) {
