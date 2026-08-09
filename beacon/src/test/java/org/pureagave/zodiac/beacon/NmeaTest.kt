@@ -59,7 +59,7 @@ class NmeaTest {
         // `or` is monotonic -- it can only set bits -- so it saturates toward FF
         // and is insensitive to repeats. XOR is neither. This kills the exact
         // mutant that survived the whole suite.
-        assertEquals("00", Nmea.checksum("AA"))          // xor of equal chars cancels
+        assertEquals("00", Nmea.checksum("AA")) // xor of equal chars cancels
         assertNotEquals(Nmea.checksum("AB"), Nmea.checksum("ABAB"))
     }
 
