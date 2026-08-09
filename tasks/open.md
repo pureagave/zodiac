@@ -109,9 +109,15 @@ Ranked by consequence on the playa.
       at full brightness, uncommanded, and reads as purposeful. No software
       keepalive was written — the hardware setting also covers the case where
       the Jetson itself is what died, which a keepalive cannot.
-      - [ ] **Add `BLnd = blac` + `CHnd = 11` to a pre-burn checklist.** Both
-            silently revert on a factory reset and neither would be noticed
-            until the next outage.
+      - [x] **Both settings VERIFIED to survive a power cycle 2026-08-09**
+            (`MOVING-HEAD.md` §8.6a2), re-derived by measurement rather than by
+            reading the menu back. So this stays a checklist item and **not** a
+            software concern — zvision does not need to detect the fixture's
+            mode at startup. Blackout latency reproduced exactly (lit at 1.5 s,
+            dark by 3.0 s).
+      - [ ] **Add `BLnd = blac` + `CHnd = 11` to a pre-burn checklist** anyway —
+            a *factory reset* is a different operation from a power cut and was
+            not tested.
 - [ ] **Rig azimuth calibration** per camera against the vehicle nose.
 - [ ] **Pod assembly** — waiting on the germanium D20 window.
 - [ ] **Cross-camera dedup** with two cameras on one moving target.

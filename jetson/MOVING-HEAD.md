@@ -418,6 +418,30 @@ the right behaviour, and worth keeping in anything that measures the light. A
 first pass also mislabelled `[lit, 0, 0, ...]` as "intermittent"; a single
 leading lit sample is the timeout, not a flicker.
 
+### 8.6a2 Both menu settings survive a power cycle
+
+The worry was logged before it was tested: if `CHnd` and `BLnd` reset on power
+loss, every conclusion here has a shelf life and `zvision` would have to
+*detect* the fixture's mode at startup rather than assume it.
+
+Power-cycled at the wall 2026-08-09 and both re-derived from scratch by
+measurement — not by reading the menu back, which would only confirm what the
+menu thinks:
+
+```
+CHnd:  ch8 -> 8203 px lit,  ch6 -> 0 px    => still 11-channel
+BLnd:  [8183, 0, 0, 0, 0, 0, 0, 0, 0]      => still blackout
+```
+
+**Both persisted**, and the blackout latency reproduced exactly (lit at 1.5 s,
+dark by 3.0 s). So this stays a **pre-burn checklist item**, not a design
+constraint on the software. Still worth re-checking after any *factory reset*,
+which is a different operation from a power cut.
+
+Method note: identity is re-derived by lighting `ch8` alone and then `ch6`
+alone. Whichever produces a beam *is* the dimmer, so the mode is measured rather
+than trusted — the same discipline that caught the head arriving in 9-channel.
+
 ### 8.6b Pan travel physically verified — 540° confirmed
 
 `pan_range_deg = 540` and `tilt_range_deg = 270` came from the manual (§5), and
