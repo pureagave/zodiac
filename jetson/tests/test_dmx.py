@@ -79,6 +79,25 @@ class FakeDmxSinkTest(unittest.TestCase):
         self.assertEqual(42, sink.frame[0])
         self.assertEqual(512, len(sink.frame))  # frame stays exactly one universe
 
+    def test_channel_zero_does_not_alias_onto_the_last_channel(self):
+        # A mutation review proved the test above blind: relax the guard to
+        # `0 <= ch` and frame[ch-1] becomes frame[-1], so channel 0 silently
+        # writes channel 512 -- and both assertions above still pass. On this
+        # fixture the high channels are the auto-program and motor-reset slots,
+        # so a stray write there is the difference between a spotlight and a
+        # head that resets itself mid-track.
+        sink = FakeDmxSink()
+        sink.send({0: 200})
+        self.assertEqual(0, sink.frame[511])
+        self.assertTrue(all(b == 0 for b in sink.frame))
+
+    def test_channel_512_is_inside_the_universe(self):
+        # The other half of the boundary: tightening `ch <= 512` to `<` would
+        # silently drop a legal channel, and nothing would have noticed.
+        sink = FakeDmxSink()
+        sink.send({512: 7})
+        self.assertEqual(7, sink.frame[511])
+
     def test_float_values_truncate_toward_zero(self):
         # The tracker's slewed dimmer/pan can be fractional; _merge int()-truncates.
         sink = FakeDmxSink()

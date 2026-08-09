@@ -115,6 +115,37 @@ class DmxRunTest(unittest.TestCase):
         self.assertGreaterEqual(self.sink.sends, 2)  # at least one aim + the park
         self.assertNotEqual(0, self.sink.frame[0])   # pan coarse: it pointed somewhere
 
+    def test_the_channel_mode_flag_actually_reaches_the_fixture(self):
+        # config_for_channel_mode is well covered in isolation, but nothing
+        # proved the CLI flag reaches it: hardcoding `11` at the call site in
+        # app.py passed the entire suite. On a 9-channel head that mutant sends
+        # pan-fine to tilt, tilt to the colour wheel, and a dimmer write of 255
+        # to ch8 -- which in 9-channel mode is the AUTO-PROGRAM channel, so the
+        # head is handed to its internal show at full brightness.
+        import zvision.dmx as dmx
+
+        captured = {}
+        real = dmx.build_sink
+
+        def capturing(kind, universe=0, base_url=""):
+            sink = real(kind, universe=universe, base_url=base_url)
+            captured["sink"] = sink
+            return sink
+
+        with mock.patch.object(dmx, "build_sink", capturing):
+            rc, _ = _run_once(
+                ["--source", "fake", "--dmx", "fake", "--dmx-no-sound",
+                 "--dmx-channels", "9"]
+            )
+        sink = captured["sink"]
+        self.assertEqual(0, rc)
+        self.assertGreaterEqual(sink.sends, 2)
+        # 9-channel map is pan 1 / tilt 2 / dimmer 6 -- nothing else may be driven.
+        self.assertLessEqual(set(sink.last_channels), {1, 2, 6})
+        # ch8 (auto programs) and ch9 (mode select / motor reset) stay untouched.
+        self.assertEqual(0, sink.frame[7])
+        self.assertEqual(0, sink.frame[8])
+
     def test_exit_parks_the_head_and_blacks_it_out(self):
         # The master dimmer must end dark: mid-run it was 255 (the fake scene
         # has a live contact), so a nonzero here means the park-on-exit frame

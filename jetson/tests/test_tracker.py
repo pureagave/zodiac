@@ -312,6 +312,110 @@ class ChannelModeIsolationTest(unittest.TestCase):
         self.assertEqual(2, config_for_channel_mode(11).pan_fine_channel)
 
 
+class TiltAxisTest(unittest.TestCase):
+    """The tilt axis had NO test at all until a mutation review found it: far/near
+    could be swapped, or the tilt slew limiter deleted outright, and the whole
+    suite stayed green. Swapped tilt puts the beam over the head of someone
+    approaching and on the horizon for someone distant -- a night lost to
+    calibrating around it, blaming the mount."""
+
+    def test_tilt_tracks_size_between_the_configured_far_and_near_angles(self):
+        # Expectations come from the CONFIG FIELDS, never from f.tilt_deg -- a
+        # test that reads back the value it is checking agrees with any aim bug.
+        cfg = TrackerConfig()
+        for size, expected in ((0.0, cfg.tilt_far_deg), (1.0, cfg.tilt_near_deg)):
+            with self.subTest(size=size):
+                f = Tracker(cfg).update(
+                    [DriverThreat(rel_az_deg=0.0, size=size, id=1)], dt=SNAP
+                )
+                self.assertAlmostEqual(expected, f.tilt_deg, places=3)
+
+    def test_a_closer_contact_tilts_further_than_a_distant_one(self):
+        near = Tracker(TrackerConfig()).update(
+            [DriverThreat(rel_az_deg=0.0, size=0.9, id=1)], dt=SNAP)
+        far = Tracker(TrackerConfig()).update(
+            [DriverThreat(rel_az_deg=0.0, size=0.1, id=1)], dt=SNAP)
+        self.assertGreater(near.tilt_deg, far.tilt_deg)
+
+    def test_tilt_slew_limits_movement_per_frame(self):
+        # Mirror of the pan slew test, which was the only slewing test that
+        # existed. 90 deg/s * 0.1 s = 9 deg; 135 -> 160 cannot complete.
+        cfg = TrackerConfig(tilt_slew_dps=90.0)
+        f = Tracker(cfg).update([DriverThreat(rel_az_deg=0.0, size=1.0, id=1)], dt=0.1)
+        self.assertAlmostEqual(cfg.tilt_far_deg + 9.0, f.tilt_deg, places=3)
+
+
+class ConfiguredKnobsAreHonouredTest(unittest.TestCase):
+    """Config added after the channel map was never wired into a test, so these
+    knobs were settable but inert -- the config equivalent of dead code."""
+
+    def test_a_narrowed_reach_arc_is_honoured_by_the_tracker(self):
+        # reachable() was tested only as a free function; the Tracker always ran
+        # the default arc. Re-mount the head with a narrower throw and it would
+        # still have chased contacts into its own clamp.
+        cfg = TrackerConfig(reach_half_deg=60.0)
+        f = Tracker(cfg).update([DriverThreat(rel_az_deg=75.0, size=0.5, id=1)], dt=SNAP)
+        self.assertIsNone(f.target_id)
+        self.assertEqual(cfg.dimmer_idle, f.dimmer)
+
+    def test_a_configured_park_position_is_used(self):
+        cfg = TrackerConfig(park_pan_deg=10.0, park_tilt_deg=20.0)
+        trk = Tracker(cfg)
+        trk.update([DriverThreat(rel_az_deg=40.0, size=0.8, id=1)], dt=SNAP)
+        p = trk.park()
+        self.assertAlmostEqual(10.0, p.pan_deg, places=3)
+        self.assertAlmostEqual(20.0, p.tilt_deg, places=3)
+
+    def test_collision_burns_at_its_own_dimmer_level(self):
+        # Both defaults are 255, so this branch was indistinguishable from dead
+        # code. It stops being dead the moment collisions get their own look.
+        cfg = TrackerConfig(dimmer_track=180, dimmer_collision=255)
+        trk = Tracker(cfg)
+        normal = trk.update([DriverThreat(rel_az_deg=0.0, size=0.5, id=1)], dt=SNAP)
+        self.assertEqual(180, normal.dimmer)
+        hot = trk.update(
+            [DriverThreat(rel_az_deg=0.0, size=0.5, id=1, collision=True)], dt=SNAP)
+        self.assertEqual(255, hot.dimmer)
+
+
+class SlewGuardTest(unittest.TestCase):
+    def test_a_zero_or_negative_dt_holds_the_head_still(self):
+        # app.py derives dt from a wall clock; a repeated or non-monotonic tick
+        # must not become "snap straight to target", which would silently switch
+        # the slew limiter off on exactly the frames the clock misbehaves.
+        trk = Tracker(TrackerConfig())
+        trk.update([DriverThreat(rel_az_deg=0.0, size=0.5, id=1)], dt=SNAP)
+        settled = trk.update([DriverThreat(rel_az_deg=0.0, size=0.5, id=1)], dt=SNAP)
+        for bad_dt in (0.0, -1.0):
+            with self.subTest(dt=bad_dt):
+                moved = trk.update(
+                    [DriverThreat(rel_az_deg=40.0, size=0.5, id=1)], dt=bad_dt)
+                self.assertAlmostEqual(settled.pan_deg, moved.pan_deg, places=6)
+
+
+class AdHocIdTest(unittest.TestCase):
+    def test_an_ad_hoc_id_zero_contact_never_takes_the_latch(self):
+        # tracker.py documents that id 0 is an ad-hoc, non-stable id and must
+        # never take the hysteresis latch -- the comment had no test.
+        #
+        # The contest has to be id-0 vs a STABLE id. Two id-0 contacts cannot
+        # detect the bug: the switch-suppression test is `best.id != held.id`,
+        # which is 0 != 0 -> False, so the larger contact wins either way and a
+        # two-zero test passes against the missing guard. (It did. Mutation
+        # testing caught it; the first version of this test was vacuous.)
+        trk = Tracker(TrackerConfig())
+        trk.update([DriverThreat(rel_az_deg=-20.0, size=0.5, id=0)], dt=SNAP)
+        f = trk.update(
+            [DriverThreat(rel_az_deg=-20.0, size=0.5, id=0),
+             DriverThreat(rel_az_deg=20.0, size=0.6, id=2)],
+            dt=SNAP,
+        )
+        # Without the guard the id-0 contact latches and its 0.15 switch margin
+        # holds the beam at 250. Correct behaviour follows the larger contact.
+        self.assertAlmostEqual(290.0, f.pan_deg, places=3)
+        self.assertEqual(2, f.target_id)
+
+
 class TrackerHysteresisTest(unittest.TestCase):
     def test_sticks_to_current_target_within_margin(self):
         trk = Tracker(TrackerConfig(switch_margin=0.15))

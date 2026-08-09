@@ -57,7 +57,40 @@ Ranked by consequence on the playa.
             the manual doesn't say which end is fast.** We send 0. Try it first
             if the head lags a walking contact.
 
-- [x] **DMX signal-loss fallback — FIXED IN HARDWARE 2026-08-08.** Measured:
+- [x] **⚠️ P0 — FIXED IN CODE 2026-08-09, NOT YET DEPLOYED.** `zvision/dmxpark.py`
+      zeroes all 512 slots and is wired as `ExecStopPost=-...` on the zvision
+      unit, which systemd runs on crash and kill — not just a clean stop. Same
+      module doubles as the **software operator kill**:
+      `python3 -m zvision.dmxpark`. 5 tests; the "zero everything" behaviour is
+      mutation-verified (zeroing only 8 slots fails).
+      - [ ] **Deploy it**: `/opt/zodiac` pull + `systemctl daemon-reload` +
+            restart zvision. Not done yet because it bounces the vision service.
+      - [ ] **Hardware kill switch** — a labelled inline switch on the fixture
+            within the driver's reach. The software kill and `BLnd=blac` cover
+            *different* failures (zvision dead vs DMX stopped); neither covers a
+            wedged Jetson still streaming a valid universe. Only a switch does.
+            Document it in `MOVING-HEAD.md` §1 once fitted.
+
+- [ ] ~~**P0 — A FROZEN FULL-BRIGHT BEAM SURVIVES A zvision CRASH.**~~ Found by
+      a Fable design review 2026-08-08, and it holes the "fixed in hardware"
+      claim below. `BLnd = blac` only fires when **DMX stops**. If `zvision`
+      dies while `olad` lives — segfault, OOM-kill, SIGKILL, anything that skips
+      the `finally` park at `app.py:400` — `olad` owns the frame timing
+      (`dmx.py:15`) and keeps streaming the last universe at 30 Hz forever. The
+      fixture sees *valid* DMX and holds its last command: full brightness,
+      frozen in the fixture's frame, while the vehicle turns. Empirically
+      confirmed today — a universe set by hand stayed lit for many minutes with
+      no client connected. `jetson/systemd/zvision.service` has **no
+      `ExecStopPost=`**, so nothing zeroes the universe on abnormal exit.
+      **Fix before `--dmx ola` is ever enabled** (harmless today only because
+      zvision runs with `--dmx none`): add `ExecStopPost=` to the unit to POST a
+      zeroed universe — it runs on crash and kill, not just clean stop — and
+      consider a watchdog timer that zeroes whenever the unit isn't active.
+      Note a failed *start* (e.g. camera missing, `app.py` exits 3) never
+      touches DMX at all, so a hot universe would persist across a crash-loop.
+
+- [x] **DMX signal-loss fallback — fixed in hardware 2026-08-08, but see the P0
+      above for the case it does NOT cover.** Measured:
       cut the DMX and the head resets, then runs its internal auto program —
       sweeping, cycling gobos/colours, full brightness — until signal returns.
       On the playa a Jetson reboot, an `olad` crash or a knocked XLR would turn
@@ -79,6 +112,72 @@ Ranked by consequence on the playa.
 - [ ] **XCover Pro** — needs USB for the Beacon's one-time STOP→START so
       `$ZAUD` picks up the mic grant.
 - [ ] **Beacon channels + auto-dim** end-to-end on the tablets.
+
+## 🔦 Tracker-light backlog — from the Fable design review, 2026-08-09
+
+Deliberately **not** built: Rob scoped that session to the P0 + tests. These are
+behaviour changes to how the light reads to people, and that is his call, not a
+defect list. Each is verified against the code, with `file:line`.
+
+**Latent bugs (no behaviour change to decide — just wrong):**
+
+- [ ] **Pan seam equivalence is applied AFTER the clamp** (`tracker.py:309-315`).
+      Masked at the shipped `pan_center_deg = 270`, where every azimuth lands
+      mid-range. **It bites the moment the head is calibrated** — a mount that
+      puts centre at 60 clamps az −80 to 0 and aims 20° wrong, when the
+      mechanically correct equivalent 340 is well inside travel. Compute
+      unclamped, take the ±360 equivalent into `[0, pan_range]`, *then* clamp.
+      Fix this before the on-vehicle calibration session, not after.
+- [ ] **`select_best` is dead code** (`tracker.py:111`) — no production caller;
+      the shipped selector is `Tracker._pick` (`tracker.py:348`), a parallel
+      reimplementation with extra rules. **~12 tests certify a function the
+      light never runs.** Either delete it or have `_pick` delegate its
+      stateless core to it. Until then the two can silently diverge, which is
+      the "test agrees with the bug" shape this project keeps getting bitten by.
+
+**Behaviour changes (Rob's call):**
+
+- [ ] **Hysteresis is keyed on track id, and ids churn** (`tracker.py:364`).
+      With `MotionDetector` resetting tracks on a single-frame dropout, the held
+      id vanishes routinely and `_pick` falls through to a stateless `max(size)`
+      — so `switch_margin` never votes and the beam ping-pongs between two
+      similar-sized people. Fix without breaking the no-coasting rule:
+      re-associate by **bearing** (nearest live contact to the current commanded
+      azimuth, ~10-15° gate). Chooses only among contacts that exist this frame,
+      so it cannot draw one person as two.
+- [ ] **Douse while slewing.** Dimmer goes to 255 the same frame a target is
+      picked (`tracker.py:323`) while the slew takes seconds, dragging open
+      white across the crowd *and* across the driving axis. Hold dark above
+      ~10-15° of pan error, fade up on arrival.
+- [ ] **The "idle" sound show runs at the last tracked aim** (`tracker.py:300-307`),
+      so it beat-flashes full brightness at the person it was just tracking.
+      Needs a dimmer grace period on target loss, then slew to park *before*
+      pulsing.
+- [ ] **No dwell limit and no crowd gate.** `_pick` will pin the nearest
+      bystander indefinitely, and at every stop the car will be surrounded.
+      Suggested: max dwell ~8-10 s then suppress that *bearing sector* (not id),
+      and above ~5 reachable contacts stop singling anyone out.
+- [ ] **No reach-boundary hysteresis** (`tracker.py:108`) — someone orbiting the
+      vehicle at ±90° gets dropped and re-acquired per frame. Acquire ≤85°,
+      release ≥95°.
+- [ ] **Rate limiting is not smoothing** (`tracker.py:39-49`) — 12°/frame at
+      10 Hz passes bbox jitter straight through to a 3 kg head. Alpha-beta on
+      the selected contact's azimuth, reset on target switch.
+- [ ] **Tilt aims a size proxy at an unverified height** (`tracker.py:316-320`)
+      with `dimmer_track == dimmer_collision == 255`, i.e. brightest at closest
+      range. Consider aiming at the *feet* and derating the dimmer as size → 1.
+- [ ] **Observability**: nothing distinguishes "idle, correctly dark" from
+      "olad dead" from "tracking someone behind the vehicle". A rate-limited
+      state line to the journal, and/or a `$ZDMX` sentence on the telemetry
+      group so the cockpit can grow a tracker-light health tile. The sink
+      already counts `sends`/`errors` and nothing reads them.
+- [ ] **Calibration knobs have no flags** — only `--dmx-pan-center` /
+      `--dmx-pan-gain` exist (`app.py:178-179`). `reach_half_deg`,
+      `tilt_far/near`, park position, slew rates and `switch_margin` are all
+      field numbers that currently require editing `tracker.py`. Route them
+      through `config_for_channel_mode(**overrides)`, which already accepts
+      them. A `--dmx-aim az=X` one-shot would make the on-vehicle calibration a
+      two-number job.
 
 ## 🟡 Waiting on the world
 

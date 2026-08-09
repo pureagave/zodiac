@@ -24,6 +24,13 @@ Type=simple
 EnvironmentFile=/etc/default/zvision
 WorkingDirectory=/opt/zodiac/jetson
 ExecStart=/usr/bin/python3 -m zvision $ZVISION_ARGS
+# Fail-safe: zero the DMX universe on ANY exit, including crash and SIGKILL,
+# which the finally-park in app.py cannot reach. olad owns the frame timing and
+# would otherwise keep streaming the last universe at 30 Hz forever -- a
+# full-bright beam frozen in the fixture's frame while the vehicle turns. The
+# head's own BLnd=blac cannot help: from its side the signal never stopped.
+# Leading '-' so a dead olad cannot mask the real reason the service stopped.
+ExecStopPost=-/usr/bin/python3 -m zvision.dmxpark --quiet
 Restart=always
 RestartSec=2
 
