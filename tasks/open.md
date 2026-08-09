@@ -69,10 +69,19 @@ for every item are in the audit doc; this is the work list.
       (`MAX_DIM = MAX-2`, `MAX_DEEP = MAX-1`) so the invariant
       `1 <= dim < deep < sleep <= 86_400` holds across all of `Long`, with the
       totality argument in a comment. Pinned by a 1000-case edge grid.
-- [ ] **B3 ✅ Beacon has no boot receiver** — a brownout leaves the fleet with no
-      GPS until a human taps START.
-- [ ] **B4 ✅ `WAKE_LOCK` declared, never acquired** — Doze stalls the beacon's
-      tick loop; heading freezes and `$ZBCN` gaps read as a dead beacon.
+- [x] **B3 FIXED 2026-08-09.** Boot receiver for `BOOT_COMPLETED` +
+      `MY_PACKAGE_REPLACED` (a sideloaded update also kills the service), gated
+      on an auto-start flag `BeaconActivity.onToggle` writes on both branches —
+      boot restores the operator's last expressed intent rather than starting
+      unconditionally, which would make the STOP button a lie.
+- [x] **B4 FIXED 2026-08-09.** `PARTIAL_WAKE_LOCK` held for the service
+      lifetime, released *after* the odometer persist. Paired with a one-time
+      battery-optimization exemption prompt, because in deep Doze (stationary,
+      screen off, **unplugged** — the flaky-charger case) the platform ignores
+      app wake locks entirely. Both halves are required. Ops cost: ~2-4 days on
+      battery if vehicle power dies, versus weeks asleep — correct trade, since a
+      sleeping beacon is operationally identical to a dead one and `$ZBCN`'s
+      battery percentage gives hours of warning.
 - [ ] **B5 Beacon FGS types vs permissions** — location-type FGS restarted while
       backgrounded gets no fixes; mic type on Android 14+ throws when denied.
 - [x] **B6 FIXED 2026-08-09.** One exception killed every synthesized beacon
@@ -83,6 +92,29 @@ for every item are in the audit doc; this is the work list.
       must not be the only thing able to report the loop's death. Honest limit:
       a Doze stall freezes the watchdog too (that is B4), so the banner appears
       on wake. 7 tests, all mutation-verified.
+
+### On-device verification still owed (beacon P1s)
+
+None of these can be proven in CI; the phone is API 29 and Robolectric models the
+API contract, not real OS scheduling.
+
+- [ ] **Reboot test** — start beacon, `adb reboot`, confirm `$ZBCN` reaches a
+      tablet within ~90 s with zero phone interaction. This is the acceptance
+      test for B3.
+- [ ] **Sideloaded update** — install a new signed APK over a running beacon,
+      confirm `MY_PACKAGE_REPLACED` restarts it.
+- [ ] **No lock-screen credential on the beacon phone** — `BOOT_COMPLETED` only
+      fires after first unlock on file-based-encryption devices. Add to the
+      provisioning notes.
+- [ ] **Battery-optimization prompt** appears once and never re-nags after a
+      decline.
+- [ ] **Doze / charger-loss soak** — confirm the wake lock actually prevents the
+      tick-loop stall B4 targets. Cannot be simulated.
+- [ ] **API 30+ two-step background-location grant** — the follow-up request
+      after fine location. Untestable on API 29.
+- [ ] **When a replacement phone (API 34/35) exists**: verify the typed
+      `startForeground` calls succeed/degrade as `safeForegroundTypes` predicts.
+      **Biggest untested-on-hardware risk in this batch.**
 
 ### P2 — silently wrong data
 

@@ -31,6 +31,17 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // Robolectric needs the real android.jar resources (manifest, etc.) rather
+    // than the "throws on any call" unit-test stub — required from B5 on, since
+    // TelemetryBroadcaster.start()/TelemetryService need a working Context
+    // (SharedPreferences, SensorManager, WifiManager) to be exercised at all in a
+    // JVM test, and B4/B3 share the same harness for ShadowPowerManager /
+    // service-start assertions.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
     // A small utility app — don't let cosmetic lint warnings (e.g. hardcoded
     // strings in the debug UI) fail the shared gate.
     lint {
@@ -57,4 +68,13 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // Pulled forward from the original B4 plan into B5: safeForegroundTypes stays
+    // a pure/no-Android-import function, but TelemetryBroadcaster.start() itself
+    // touches real Context system services (SharedPreferences, SensorManager,
+    // WifiManager) and needs a working Context to be testable at all — the
+    // android.jar unit-test stub throws on every call. Robolectric + a fake
+    // BeaconGpsHandle (never a real LocationManager) is the harness. Shared by
+    // B4 (ShadowPowerManager) and B3 (Robolectric BroadcastReceiver dispatch).
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("androidx.test:core:1.6.1")
 }

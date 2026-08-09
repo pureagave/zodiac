@@ -44,6 +44,69 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
+ * Seam over the location-manager calls that actually need `ACCESS_FINE_LOCATION`,
+ * so [TelemetryBroadcaster.start] can be exercised in a plain JVM test without a
+ * real `LocationManager` and without risking an unguarded `SecurityException`
+ * escaping `onCreate`/`onStartCommand` (see AUDIT-2026-08-09 B5 — that exact
+ * unguarded call was the crash-loop).
+ */
+internal interface BeaconGpsHandle {
+    fun hasFineLocation(): Boolean
+
+    @Throws(SecurityException::class)
+    fun wire(
+        onLocation: LocationListener,
+        onNmea: OnNmeaMessageListener,
+    )
+
+    fun unwire(
+        onLocation: LocationListener,
+        onNmea: OnNmeaMessageListener,
+    )
+}
+
+/** Test seam: set to a fake before calling [TelemetryBroadcaster.start] to avoid touching a real `LocationManager`. */
+internal var gpsHandleOverride: BeaconGpsHandle? = null
+
+private const val GPS_MIN_INTERVAL_MS = 1000L
+
+private class AndroidBeaconGpsHandle(
+    private val context: Context,
+    private val locationManager: LocationManager,
+) : BeaconGpsHandle {
+    override fun hasFineLocation(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    @SuppressLint("MissingPermission")
+    // hasFineLocation() is checked by the caller before wire() is invoked; this
+    // call is still wrapped in a try/catch there for the race where permission
+    // is revoked between the check and this call (permission can be pulled at
+    // any time on API 23+), which is exactly the crash this seam exists to guard.
+    override fun wire(
+        onLocation: LocationListener,
+        onNmea: OnNmeaMessageListener,
+    ) {
+        locationManager.requestLocationUpdates(
+            LocationManager.GPS_PROVIDER,
+            GPS_MIN_INTERVAL_MS,
+            0f,
+            onLocation,
+            Looper.getMainLooper(),
+        )
+        locationManager.addNmeaListener(onNmea, Handler(Looper.getMainLooper()))
+    }
+
+    override fun unwire(
+        onLocation: LocationListener,
+        onNmea: OnNmeaMessageListener,
+    ) {
+        locationManager.removeUpdates(onLocation)
+        locationManager.removeNmeaListener(onNmea)
+    }
+}
+
+/**
  * The Zodiac Beacon engine: reads the phone's GNSS (raw NMEA) and magnetometer
  * heading and sends them over UDP to the vehicle LAN — to the fixed fleet
  * multicast group (239.7.7.10:10110, DHCP-independent) with a /24 subnet-directed
@@ -66,7 +129,6 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val LIMITED_BROADCAST = "255.255.255.255"
     private const val TTL = 1
     private const val HDT_INTERVAL_MS = 250L
-    private const val GPS_MIN_INTERVAL_MS = 1000L
     private const val ROTATION_MATRIX_SIZE = 9
     private const val ORIENTATION_SIZE = 3
     private const val PITCH_INDEX = 1
@@ -85,7 +147,10 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val BATTERY_SCALE_PCT = 100
     private const val MS_PER_SEC = 1000L
     private const val NANOS_PER_MS = 1_000_000L
-    private const val PREFS_NAME = "zodiac_beacon"
+
+    // internal: BeaconActivity (battery-optimization-prompt flag, B4) and
+    // BootReceiver (PREF_AUTO_START, B3) share this same preferences file.
+    internal const val PREFS_NAME = "zodiac_beacon"
     private const val PREF_TOTAL_METERS = "odometer_total_m"
 
     private const val TAG = "ZodiacBeacon"
@@ -105,10 +170,12 @@ object TelemetryBroadcaster : SensorEventListener {
     private var scope: CoroutineScope? = null
     private var socket: DatagramSocket? = null
     private var targets: List<InetAddress> = emptyList()
-    private var locationManager: LocationManager? = null
     private var sensorManager: SensorManager? = null
     private var nmeaListener: OnNmeaMessageListener? = null
     private var locationListener: LocationListener? = null
+    private var gpsHandle: BeaconGpsHandle? = null
+
+    @Volatile private var gpsWired: Boolean = false
 
     @Volatile private var headingDeg: Double = 0.0
 
@@ -157,8 +224,16 @@ object TelemetryBroadcaster : SensorEventListener {
     private var odometer: TripOdometer? = null
     private var audioRecord: AudioRecord? = null
 
-    @SuppressLint("MissingPermission")
-    fun start(context: Context) {
+    /**
+     * @param micEnabled whether the mic channel ($ZAUD) should even attempt to
+     * start — false on a background start (see [TelemetryService.onStartCommand]),
+     * where the foreground service has no microphone type declared and starting
+     * capture anyway would run outside what the OS was told this service does.
+     */
+    fun start(
+        context: Context,
+        micEnabled: Boolean = true,
+    ) {
         if (_running.value) return
         val app = context.applicationContext
         appContext = app
@@ -167,6 +242,7 @@ object TelemetryBroadcaster : SensorEventListener {
         tickErrors = 0L
         lastTickError = null
         lastGoodStatus = ""
+        gpsWired = false
         val store = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = store
         val seededTotal = store.getFloat(PREF_TOTAL_METERS, 0f).toDouble()
@@ -187,8 +263,6 @@ object TelemetryBroadcaster : SensorEventListener {
         val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = running
 
-        val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        locationManager = lm
         val onLoc =
             LocationListener { loc ->
                 lastLocation = loc
@@ -197,21 +271,58 @@ object TelemetryBroadcaster : SensorEventListener {
                 totalMeters = odo.totalMeters
             }
         locationListener = onLoc
-        lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, GPS_MIN_INTERVAL_MS, 0f, onLoc, Looper.getMainLooper())
         val onNmea = OnNmeaMessageListener { message, _ -> forward(message) }
         nmeaListener = onNmea
-        lm.addNmeaListener(onNmea, Handler(Looper.getMainLooper()))
+        gpsWired = wireGps(app, onLoc, onNmea)
 
         val sm = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         sensorManager = sm
+        registerSensors(sm)
+        if (micEnabled) startAudioCapture(app, running)
+
+        launchTickLoop(running)
+        launchDeadmanWatchdog(running)
+
+        _running.value = true
+        // Reflect the real GPS/mic state immediately rather than a generic
+        // "Broadcasting" banner — a degraded start (no location permission, GPS
+        // wiring failure) must be visible on the phone the instant it happens,
+        // not just once the tick loop's first status refresh lands.
+        _status.value = statusText()
+    }
+
+    /**
+     * GPS is optional, never fatal: no permission → skip wiring outright; a
+     * `SecurityException` from the actual registration call (permission can be
+     * revoked between the check and the call) is caught, not propagated. Either
+     * way every other channel keeps broadcasting — a permissionless beacon still
+     * sends `$ZTLM`/`$ZENV`/`$ZBCN`, so the fleet sees "alive, no fix" instead of
+     * a crash-looping service (AUDIT-2026-08-09 B5).
+     */
+    private fun wireGps(
+        app: Context,
+        onLoc: LocationListener,
+        onNmea: OnNmeaMessageListener,
+    ): Boolean {
+        val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val handle = gpsHandleOverride ?: AndroidBeaconGpsHandle(app, lm)
+        gpsHandle = handle
+        if (!handle.hasFineLocation()) return false
+        return runCatching { handle.wire(onLoc, onNmea) }
+            .onFailure { e -> Log.e(TAG, "beacon: GPS wiring failed, broadcasting sensors only", e) }
+            .isSuccess
+    }
+
+    /** Ambient light (slow) drives the fleet's day/night switch; linear
+     * acceleration (gravity removed, fast) feeds the shock detector. */
+    private fun registerSensors(sm: SensorManager) {
         sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
-        // Ambient light (slow) drives the fleet's day/night switch; linear
-        // acceleration (gravity removed, fast) feeds the shock detector.
         sm.getDefaultSensor(Sensor.TYPE_LIGHT)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
         sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)?.let { sm.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
-        startAudioCapture(app, running)
+    }
 
-        running.launch {
+    private fun launchTickLoop(loopScope: CoroutineScope) {
+        loopScope.launch {
             TickLoop(
                 body = { tick ->
                     lastTickAtMs = SystemClock.elapsedRealtime()
@@ -232,13 +343,18 @@ object TelemetryBroadcaster : SensorEventListener {
                 },
             ).run(HDT_INTERVAL_MS)
         }
-        // The loop above is the only thing that can report its own death, which is
-        // exactly what makes that reporting untrustworthy when it dies. This
-        // second, independent coroutine is the one that actually screams —
-        // straight to _status, bypassing statusText()'s normal cadence. Note the
-        // honest limitation: a Doze stall freezes this coroutine too (B4's
-        // territory); the banner appears on wake.
-        running.launch {
+    }
+
+    /**
+     * The tick loop above is the only thing that can report its own death,
+     * which is exactly what makes that reporting untrustworthy when it dies.
+     * This second, independent coroutine is the one that actually screams —
+     * straight to `_status`, bypassing `statusText()`'s normal cadence. Note
+     * the honest limitation: a Doze stall freezes this coroutine too (B4's
+     * territory); the banner appears on wake.
+     */
+    private fun launchDeadmanWatchdog(loopScope: CoroutineScope) {
+        loopScope.launch {
             while (isActive) {
                 delay(TICK_DEAD_MS / 2)
                 tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)?.let { health ->
@@ -246,14 +362,17 @@ object TelemetryBroadcaster : SensorEventListener {
                 }
             }
         }
-        _running.value = true
-        _status.value = "Broadcasting → $GROUP:$PORT"
     }
 
     fun stop() {
         persistTotal()
-        nmeaListener?.let { locationManager?.removeNmeaListener(it) }
-        locationListener?.let { locationManager?.removeUpdates(it) }
+        if (gpsWired) {
+            val loc = locationListener
+            val nmea = nmeaListener
+            if (loc != null && nmea != null) gpsHandle?.unwire(loc, nmea)
+        }
+        gpsWired = false
+        gpsHandle = null
         sensorManager?.unregisterListener(this)
         scope?.cancel()
         scope = null
@@ -288,7 +407,13 @@ object TelemetryBroadcaster : SensorEventListener {
         val mic = if (audioActive) "rms %.2f%s".format(audioRms, if (audioBeat) "  ♪BEAT" else "") else "off (grant mic → \$ZAUD)"
         val body =
             buildString {
-                append(if (loc != null) "GPS    %.5f, %.5f".format(loc.latitude, loc.longitude) else "GPS    acquiring…")
+                append(
+                    when {
+                        loc != null -> "GPS    %.5f, %.5f".format(loc.latitude, loc.longitude)
+                        gpsWired -> "GPS    acquiring…"
+                        else -> "GPS OFF — grant location permission"
+                    },
+                )
                 append("\nHDG    ${headingDeg.toInt()}°   TILT p${pitchDeg.toInt()} r${rollDeg.toInt()}   SPD ${speedKph().toInt()} kph")
                 append("\nLIGHT  ${luxValue.toInt()} lx    SHOCK %.1f g peak".format(lastShockG))
                 append(
