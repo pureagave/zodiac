@@ -21,13 +21,57 @@ Ranked by consequence on the playa.
 - [ ] **Detector tuning** against people at 5 / 10 / 20 m, day and night.
 - [ ] **Night legibility of the surround ring on the A54** — the acceptance
       gate no measurement replaces.
-- [ ] **DMX fixture.** Path proven to the XLR connector. Attach the head, aim
-      it, calibrate `pan_center_deg` / `pan_gain` / `reach_half_deg`.
-      **Manual is in the repo** (`jetson/MOVING-HEAD.md`) and already fixed the
-      dimmer channel (was 5 = colour wheel, is 8). **Set the fixture to
-      11-channel, not 9.** Open question the manual doesn't answer: **ch9 is
-      pan/tilt speed and it doesn't say which end is fast** — we send 0; try it
-      first if the head lags a walking contact.
+- [ ] **DMX fixture — POWERED AND RESPONDING 2026-08-08.** Full chain verified
+      end to end: Jetson → olad (`ftdidmx`, universe 0) → FT232R `BG03OCDS` →
+      3-pin XLR → head. Pan, tilt, dimmer and strobe all confirmed under
+      command. Details + the traps in `jetson/MOVING-HEAD.md` §8.
+      - [x] **Mode: arrived in 9-CHANNEL, switched to 11 and re-verified.**
+            Found as 9ch three ways (strobe ch5, tilt ch2, dimmer mutation ch6),
+            switched via the `CHnd` menu item, then confirmed as 11ch two more
+            ways (lamp lit on ch8 with ch6 at zero; ch3 sweeping ~190° with ch1
+            held constant). **`TrackerConfig`'s defaults are now correct.**
+            The top-level menu is undocumented in the manual and is now mapped
+            in `MOVING-HEAD.md` §4.3.
+      - [x] **`rPAn = no`** — pan not reversed at the fixture, so `pan_gain`
+            stays **+1.0**. A sign problem during calibration is a real azimuth
+            error, not a mirrored yoke.
+      - [ ] Attach the head to the vehicle, aim it, calibrate
+            `pan_center_deg` / `pan_gain` / `reach_half_deg`.
+      - [ ] Turn on `--dmx ola` in `ZVISION_ARGS` (`/etc/default/zvision`).
+            zvision currently runs with **no `--dmx` flag**, so it defaults to
+            `none` and nothing automated drives the head. Correct until aimed.
+      - [x] **Colour + gobo wheels mapped by measurement 2026-08-08**, using the
+            rig's own RGB camera pointed at the ceiling (`MOVING-HEAD.md`
+            §8.6/§8.7). Best on-palette slots: **blue `ch5=34` (3° off, near
+            exact)**, red 14, purple 78, green 128. ~a third of the colour wheel
+            is amber/yellow and **banned by the palette rule**. Gobos are 8 slots
+            of 8 units; only the **triangle (28)** and **six-point star (36)**
+            read as vector geometry.
+      - [ ] **Optional: give the idle sound show colour.** `sound_reactive`
+            currently drives only the master dimmer, so the idle head pulses
+            white. The on-palette slots above are now known. Keep the **tracker**
+            on open white / open gobo regardless — colour and patterns both cost
+            visibility, and measured brightness (white peaked 236 at dimmer 86;
+            green needed 128 to reach 154) says a filter is expensive.
+      - [ ] Still unanswered: **ch7 in 9ch (ch9 in 11ch) is pan/tilt speed and
+            the manual doesn't say which end is fast.** We send 0. Try it first
+            if the head lags a walking contact.
+
+- [x] **DMX signal-loss fallback — FIXED IN HARDWARE 2026-08-08.** Measured:
+      cut the DMX and the head resets, then runs its internal auto program —
+      sweeping, cycling gobos/colours, full brightness — until signal returns.
+      On the playa a Jetson reboot, an `olad` crash or a knocked XLR would turn
+      the tracker light into a disco while the driver's HUD still assumes it is
+      aimed at people. Cause: the `BLnd` menu item shipped set to `auto`.
+      **Set `BLnd = blac`** (options are `hold` / `auto` / `blac` / `Sound`).
+      Chosen over `hold` because the vehicle moves: a held beam keeps a
+      fixture-frame position while the car turns, so it rakes across bystanders
+      at full brightness, uncommanded, and reads as purposeful. No software
+      keepalive was written — the hardware setting also covers the case where
+      the Jetson itself is what died, which a keepalive cannot.
+      - [ ] **Add `BLnd = blac` + `CHnd = 11` to a pre-burn checklist.** Both
+            silently revert on a factory reset and neither would be noticed
+            until the next outage.
 - [ ] **Rig azimuth calibration** per camera against the vehicle nose.
 - [ ] **Pod assembly** — waiting on the germanium D20 window.
 - [ ] **Cross-camera dedup** with two cameras on one moving target.

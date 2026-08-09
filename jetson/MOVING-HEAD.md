@@ -3,6 +3,13 @@
 > **This is the vehicle's tracker-light fixture.** `zvision/tracker.py` is wired
 > to the **11-channel** table in §3.2 below. Two things in here are traps that
 > already cost us one bug — see §7 at the end before changing any channel.
+>
+> ✅ **The fixture is set to 11-CHANNEL and verified on the bench 2026-08-08**
+> (§8), so `TrackerConfig`'s defaults match the hardware. It arrived in
+> **9-channel** and was switched via the `CHnd` menu item (§4.3). If anyone ever
+> factory-resets the head, **re-check `CHnd` first** — in 9-channel these
+> defaults drive tilt onto the colour wheel and the dimmer onto "automatic
+> mode", which looks exactly like a dead fixture.
 
 > Transcribed from photographed manual pages 2–6. Generic Chinese-OEM LED moving head
 > (1× high-power white LED, gobo/color wheel, 9/11-channel DMX).
@@ -137,6 +144,41 @@ From address display `A001`, **press the 4th key for ~10 seconds** to open the m
 **To save:** press the 4th key again for ~10 seconds. This step is mandatory —
 without it the settings are not stored.
 
+### 4.3 Top-level menu map — read off the fixture 2026-08-08
+
+**Not in the manual.** The transcribed pages document only §4.2 above, which
+sent us looking for a channel-mode option that does exist — it was just behind
+an opaque label. Buttons are **MENU / UP / DOWN / ENTER**; MENU cycles.
+
+The abbreviations use `nd` for "Md" (Mode) — the pattern repeats across four
+entries, which is what makes the reading reliable rather than a guess.
+
+| Display | Meaning | Notes |
+|---|---|---|
+| `addr` | DMX start address | the `A.001` idle display |
+| **`CHnd`** | **Channel Mode (9 / 11)** | **the 9-vs-11 selector.** Set to **11** |
+| `SLnd` | Slave Mode | master/slave daisy-chain |
+| `SHnd` | Show Mode | the internal auto program |
+| `Sound` | Sound-active mode | |
+| `SEnS` | Sound sensitivity | |
+| **`BLnd`** | **Signal-loss behaviour** — options `hold` / `auto` / `blac` / `Sound` | shipped as **`auto`**, which is what makes the head run its own show when DMX stops (§8.3). **Set to `blac`** |
+| `LEd` | LED options | |
+| `diSP` | Display options | |
+| `rPAn` | Reverse pan | **`no`** — so `pan_gain` stays **+1.0** |
+| `rtiL` | Reverse tilt | |
+| `rESt` | Reset | same effect as the ch11 DMX reset |
+
+**`BLnd` is the hardware fix for the signal-loss light show.** Setting it to
+`blac` beats any software keepalive, because it still works when the Jetson is
+the thing that died — precisely the case a keepalive cannot cover.
+
+Why `blac` and not `hold`: **the vehicle moves.** `hold` freezes the head at its
+last pan/tilt *in the fixture's own frame*, so within seconds of the car turning
+a held beam is raking across whoever happens to be there, at full brightness,
+uncommanded — and it reads as purposeful, which is worse than the disco. `blac`
+also matches what the software would do anyway (`dimmer_idle = 0` blacks the
+head out with nothing to track), so the failure state and the idle state agree.
+
 ---
 
 ## 5. Technical Parameters
@@ -212,3 +254,174 @@ short mode.
 - **Fine-tune menu** (§4.2) offers motor offsets `H`/`Y`/`C`/`G` — a hardware
   alternative to `pan_center_deg` if the mount ends up mechanically skewed.
   Remember the save step: press the 4th key ~10 s again or nothing is stored.
+
+---
+
+## 8. First bench bring-up — 2026-08-08
+
+First time the fixture was powered with the dongle attached. Everything below
+was **measured**, not read off the manual.
+
+### 8.1 As found: 9-channel — then switched to 11 and re-verified
+
+The head **arrived in 9-channel mode.** Settled by three observations, each of
+which is impossible under the other mode:
+
+| Test | Observed | Rules out |
+|---|---|---|
+| `ch5=200, ch6=255` | lamp **strobed** | 11ch — there ch5/ch6 are colour/gobo and cannot strobe |
+| `ch2` alternating 0↔255 | head **moved** | 11ch — there ch2 is pan-*fine*, a sub-degree move |
+| `ch6` 255→0, nothing else changed | lamp **went dark** | 11ch — there the dimmer is ch8, and ch6 is the gobo wheel |
+
+That live map was **§3.1**: pan 1, tilt 2, colour 3, gobo 4, strobe 5,
+**dimmer 6**, speed 7, auto 8, mode/reset 9.
+
+**It was then set to 11-channel via `CHnd` (§4.3) and re-verified**, because the
+menu saying "11" is not evidence that the fixture changed personality. Two
+independent measurements confirmed it did:
+
+| Test | Observed | Rules out |
+|---|---|---|
+| `ch6=0`, `ch8=255` | lamp **lit** | 9ch — there ch6 *is* the dimmer and was proved so by mutation minutes earlier |
+| `ch3` swung 40↔220, `ch1` held at 128 | head **swept ~190°** | 9ch — there ch3 is the colour wheel and cannot move the head at all |
+
+Holding `ch1` constant is what makes the second test airtight: the motion had
+nowhere to come from except ch3. **The live map is now §3.2** and
+`TrackerConfig`'s defaults are correct as written.
+
+### 8.2 The head ignores DMX until its motors have homed
+
+**This is the trap that cost the whole first hour.** A fixture that has not
+completed its power-up reset accepts DMX and does nothing with it — no
+movement, no lamp, no error, display sitting normally at `A.001`. It is
+indistinguishable from a dead wire, and it sent us hunting through olad,
+libftdi, USB enumeration and the XLR before we ever suspected the fixture.
+
+**Check the head performs its homing sweep at power-up.** If it didn't, force a
+motor reset (ch9 held 250–255 for 5 s) *before* concluding anything is broken.
+
+### 8.3 On DMX signal loss the head runs its own light show
+
+Stopping `olad` produced, in order: `rST` on the display, a motor reset, then
+the internal auto program — sweeping, cycling gobos and colours, at full
+brightness. Restoring the signal returned it to obeying DMX (all-zero universe
+⇒ dark and motionless) with no intervention.
+
+**Operational consequence:** any Jetson reboot, `olad` crash or knocked XLR
+turns the tracker light into an uncommanded disco, while the driver's HUD still
+assumes it is pointing at people. `OlaDmxSink` deliberately swallows send
+failures so lighting can never take down the threat broadcaster — but it has no
+concept of *keeping the wire alive*. Tracked in `tasks/open.md`.
+
+### 8.4 The decimal point is the signal indicator
+
+`A.001` with a **flashing dot** = valid DMX arriving. Steady dot = no signal.
+Cheapest possible "is data reaching the fixture" check, and it needs no tools.
+
+### 8.5 Verified-good software chain (so it never gets re-diagnosed)
+
+- Dongle: FT232R, `0403:6001`, serial **`BG03OCDS`**, USB→3-pin XLR.
+- Plugin: **FTDI USB DMX** (`ftdidmx`), port patched to **universe 0**.
+- `/dev/ttyUSB*` is *absent by design* — libftdi detaches `ftdi_sio` when olad
+  claims the device. Its absence is health, not a fault.
+- **olad reads `--config-dir /etc/ola`** (from `/etc/init.d/olad`).
+  `/var/lib/ola/conf/` also contains `ola-*.conf` files and **olad never reads
+  them** — the exact trap `dmx.py` warns about. Edit `/etc/ola`.
+- Health check without a scope: the unnamed olad thread (the FTDI TX thread,
+  logged as `Thread ,` with an empty name) burns ~2 jiffies per 3 s at 30 Hz.
+  Zero means it is not transmitting.
+
+### 8.6 Colour wheel, measured with the rig's own camera
+
+The head was pointed at the ceiling and the rig's RGB camera (`video0`, the
+Microdia Vitade AF — the thermal on `video4` was left to zvision) measured every
+slot. Method matters here, because two things make a naive reading wrong:
+
+- **A clipped beam core reads white whatever colour is in it.** Every exposure
+  from 5 to 320 gave `lit_max = 255`, so brightness is levelled *per colour*
+  via the DMX dimmer to land the core near 200 — bright but unclipped.
+- **The camera is not colorimetric.** Auto-exposure and auto-white-balance are
+  locked off (with auto-exposure on, the *lit* frame read darker than the dark
+  frame), and every colour is then normalised against the open-white slot
+  measured through the same optics. That divides out both the camera response
+  and the LED's own spectrum, leaving the filter's transmission.
+
+| `ch5` | Colour | Measured | Hue | Sat |
+|---:|---|---|---:|---:|
+| 0–8 | open white | `#FFFFFF` | — | 0.00 |
+| 10–18 | red | `#FF442C` | 6° | 0.83 |
+| 20–28 | **green** | `#00FF1F` | 128° | 1.00 |
+| 30–38 | **blue / cyan** | `#00C9FF` | 192° | 1.00 |
+| 40–48 | pale yellow | `#FFFCB4` | 58° | 0.29 |
+| 50–58 | amber | `#FFCF37` | 46° | 0.79 |
+| 60–68 | aqua / turquoise | `#1CFFE2` | 172° | 0.89 |
+| 70–88 | **lavender / purple** | `#EAAEFF` | 284° | 0.31 |
+| 90–98 | yellow | `#FFE854` | 52° | 0.70 |
+| 100–118 | pale yellow / yellow-green band | mixed | 50–76° | 0.26–0.42 |
+| 120–139 | **green** (second, wider slot) | `#00FF20` | 128° | 1.00 |
+
+Boundaries were walked at 2-unit resolution: transitions sit at 18→20, 28→30,
+38→40, 68→70, 88→90 and 118→120. **140 and above is auto colour-spin** — stay
+below it.
+
+#### Against Zodiac's palette (`ui/concepts/ConceptTheme`)
+
+| Zodiac | Target | Best slot | Measured | Off by |
+|---|---|---|---|---|
+| blue `#00BFFF` | 195° | **`ch5=34`** | `#00C9FF` | **3° — effectively exact** |
+| red `#FF5555` | 0° | `ch5=14` | `#FF442C` | 6°, and *more* saturated than the UI red |
+| green `#00FF66` | 144° | **`ch5=128`** | `#00FF20` | 16° — wheel green is yellower than the UI mint |
+| purple `#C77DFF` | 274° | **`ch5=78`** | `#EAAEFF` | 10° hue, but sat 0.31 vs 0.51 — a pale lavender |
+
+**Use `ch5=128` for green, not 24.** Both slots are the same filter, but the
+120–139 slot is twice as wide, so an 8-bit DMX value plus wheel mechanical
+tolerance has far more margin before it lands on a boundary. A half-seated wheel
+washes the colour out — visible as saturation collapsing while hue still looks
+plausible, which is why the fine sweep reports saturation at all.
+
+**Roughly a third of the wheel (40–58, 90–118) is amber and yellow, which the
+palette bans.** Worth knowing before anyone builds an idle colour chase: those
+slots are off-limits by the same rule that governs the screens.
+
+**Colour costs a lot of light.** Open white reached peak 236 at dimmer 86; the
+green slot needed dimmer 128 to reach only 154. **The tracker should stay on
+open white** (`ch5=0`, which is `TrackerConfig`'s behaviour today, since it never
+writes ch5) — a spotlight following a person at night wants every lumen. Colour
+belongs to the idle/show state, not to tracking.
+
+### 8.7 Gobo wheel, mapped the same way
+
+`ch6` 0–63 are the fixed patterns (64–127 is shake, 128+ is auto-change — both
+out of scope). **Eight slots, exactly 8 DMX units each**, so the safe values are
+the centres: **4, 12, 20, 28, 36, 44, 52, 60**. Boundaries measured at 6→8,
+14→16, 22→24, 30→32, 38→40, 46→48, 54→56.
+
+| `ch6` | Centre | Shape |
+|---|---:|---|
+| 0–7 | **4** | open — plain round spot, no pattern |
+| 8–15 | 12 | rose / layered concentric swirl |
+| 16–23 | 20 | dot rosette — ring of ovals around an open centre |
+| 24–31 | **28** | **triangle outline** |
+| 32–39 | **36** | **six-pointed star** |
+| 40–47 | 44 | sunburst — wavy rays around an open centre |
+| 48–55 | 52 | pinwheel — curved blades |
+| 56–63 | 60 | shattered fragments |
+
+**Only two read as vector geometry: the triangle (28) and the six-pointed star
+(36).** Those are the ones that sit with an 80s phosphor-vector aesthetic; the
+rose, rosette, sunburst, pinwheel and fragments are disco florals and will look
+like a hired dancefloor light, not like Zodiac.
+
+**The tracker must stay on the open slot.** `TrackerConfig` never writes ch6, so
+it defaults to 0 — correct, and for the same reason as open white: a patterned
+beam thrown at a person is harder to see, not easier. Gobos belong to the idle
+state.
+
+### 8.8 Method note
+
+Observation lag over chat made single-frame tests ambiguous more than once —
+a report would arrive describing the *previous* frame. **Alternating a channel
+on a fixed cycle and asking "what repeats?" is lag-proof** where "what do you
+see now?" is not. The 9-channel finding was confirmed with a mutation test
+(change exactly one channel, predict the change, verify) rather than by
+accumulating agreeable evidence.

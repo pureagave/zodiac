@@ -6,7 +6,109 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
-## 2026-08-08 — HANDOFF: end of a very long session. Start here.
+## 2026-08-08 — DMX first light: the head works, and it's in 9-channel mode
+
+First time the moving head was powered with the dongle attached. It ended up
+working with **no code or wiring change** — but the hour it took to get there
+is the useful part of this entry.
+
+### The symptom, and why it was misleading
+
+`ch1=128` produced nothing. Everything downstream of that command looked
+perfect, and stayed looking perfect through a long diagnosis: olad holding the
+frame, the `ftdidmx` plugin started clean, the port patched to universe 0, the
+FTDI TX thread confirmed running by CPU sampling, zero write errors across 438
+journal lines, the dongle present and continuously held since boot.
+
+**The head had simply never completed its power-up homing sweep.** These
+fixtures accept DMX and silently discard it until their motors have referenced
+— no movement, no lamp, no error, display sitting normally at `A.001`. It is
+indistinguishable from a severed wire. Forcing a motor reset fixed it
+instantly. That belongs at the *top* of any future dead-fixture checklist,
+above anything software.
+
+### Measured: it arrived in 9-channel — now switched to 11 and re-verified
+
+`TrackerConfig` defaults to 11-channel; the hardware disagreed, proved three
+independent ways (strobe on ch5, movement on ch2, dimmer mutation on ch6 — each
+impossible under the 11-channel map).
+
+The mode selector *does* exist, it was just behind an opaque label. **The
+manual documents no top-level menu at all**, only the §4.2 fine-tune submenu,
+so the whole menu was read off the fixture and is now mapped in
+`MOVING-HEAD.md` §4.3. The abbreviations use `nd` for "Md" (Mode) — `CHnd` is
+Channel Mode, `BLnd` is the signal-loss behaviour, `SHnd` is Show Mode.
+
+Switched to 11-channel, then **re-verified rather than trusted** — a menu
+reading "11" is not evidence the fixture changed personality. Two independent
+confirmations: the lamp lit on ch8 while ch6 sat at zero (ch6 had been proved
+the dimmer by mutation minutes earlier), and ch3 swept ~190° while **ch1 was
+held constant**, so the motion had nowhere to come from but ch3. `TrackerConfig`
+is now correct as written, and `NINE_CHANNEL_OVERRIDES` stays unused.
+
+### Measured: signal loss produced an uncommanded light show — fixed in hardware
+
+Cutting DMX made the head reset and then run its internal auto program —
+sweeping, cycling gobos and colours, full brightness — until signal returned.
+On the vehicle, a Jetson reboot or a knocked XLR would turn the tracker light
+into a disco while the driver's HUD still assumes it is aimed at people.
+
+Cause found in the menu: **`BLnd` shipped set to `auto`**. Set to **`blac`**.
+Chosen over `hold` because **the vehicle moves** — `hold` freezes the head at a
+fixture-frame position while the car turns, so a held beam rakes across
+bystanders at full brightness, uncommanded, and reads as purposeful. `blac` also
+agrees with what the software already does when idle (`dimmer_idle = 0`).
+
+**No software keepalive was written, deliberately.** The hardware setting covers
+the case where the Jetson itself is what died — exactly the case a keepalive
+cannot — and it avoids giving a lighting concern any power to stall the threat
+broadcaster, which is why `OlaDmxSink` swallows failures in the first place.
+
+### Fixed: `NINE_CHANNEL_OVERRIDES` was unreachable *and* half-written
+
+Found while checking what running 9-channel would actually take. The dict was
+**referenced nowhere in the repo** — no CLI flag, no consumer — so there was no
+supported way to drive a 9-channel head at all. Worse, it overrode the channel
+map but **not `forbidden_channels`**, leaving the guard at the 11-channel
+`(10, 11)`. Dropping the fine channels shifts everything above pan down by two,
+so on a 9-channel head the auto programs are ch8 and **mode-select — the motor
+reset — is ch9**. The guard would have protected two channels the fixture does
+not read while the reset sat unguarded. Silent, and only reachable by someone
+switching modes after a factory reset.
+
+Fix: `config_for_channel_mode(mode, **overrides)` is now the only supported way
+to build the config, so the map and its guard can never be applied separately;
+`forbidden_channels: (8, 9)` added; `--dmx-channels {9,11}` wired through
+`app.py` (default 11). 10 tests added, **mutation-verified** — reverting the
+guard to `(10, 11)` fails exactly two of them, and notably *not* the pre-existing
+"never drives forbidden channels" test, which passes against the bug because it
+validates the tracker against whatever the config claims. jetson 322 → 332.
+
+### Facts worth not re-deriving
+
+- **`A.001` with a flashing dot = valid DMX arriving.** Steady = no signal.
+  Free diagnostic, no tools.
+- **`/dev/ttyUSB*` missing is health, not a fault** — libftdi detaches
+  `ftdi_sio` when olad claims the dongle.
+- **olad reads `/etc/ola`** (`--config-dir` in `/etc/init.d/olad`).
+  `/var/lib/ola/conf/` holds a full set of `ola-*.conf` files that olad **never
+  reads** — precisely the trap `dmx.py`'s comment warns about, still live.
+- Transmission health without a scope: the *unnamed* olad thread is the FTDI TX
+  thread; ~2 jiffies per 3 s at 30 Hz. Zero means dead.
+- `strace` is not installed on the Jetson. An empty `grep -c` of its output
+  reads as a confident zero — check the tool ran before believing the result.
+
+### Method
+
+Chat lag repeatedly made single-frame tests ambiguous: a report would arrive
+describing the *previous* frame, and twice led to a wrong conclusion that had
+to be walked back (including an early "the reset proves DMX works" that was
+actually a signal-loss reset). **Alternating a channel on a fixed cycle and
+asking "what repeats?" is lag-proof where "what do you see now?" is not.** The
+mode finding was closed with a mutation test — change exactly one channel,
+predict the outcome, verify — rather than by accumulating agreeable evidence.
+
+---
 
 Rob is restarting the assistant with clean context. **app 719 / beacon 35 /
 jetson 322 tests, `main` clean and green, both CI workflows passing.**
