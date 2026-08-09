@@ -1,0 +1,15 @@
+# Elgato Stream Deck — the vehicle's physical control surface.
+#
+# Install: sudo cp jetson/systemd/70-zodiac-streamdeck.rules /etc/udev/rules.d/
+#          sudo usermod -aG plugdev zodiac
+#          sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# Group access rather than TAG+="uaccess": the control service runs headless
+# from systemd, not from a logged-in seat, so uaccess would never apply to it.
+#
+# Both rules are needed. The StreamDeck library reaches the device through
+# libusb (/dev/bus/usb/...), not the hidraw node, but hidraw access is what
+# makes raw diagnostics possible — and telling those two paths apart mattered
+# during bring-up.
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0fd9", MODE="0660", GROUP="plugdev"
+KERNEL=="hidraw*", ATTRS{idVendor}=="0fd9", MODE="0660", GROUP="plugdev"

@@ -160,6 +160,12 @@ class TrackerConfig:
     tilt_channel: int = 3
     tilt_fine_channel: Optional[int] = 4
     dimmer_channel: Optional[int] = 8
+    # The tracker never writes colour -- a spotlight following someone at night
+    # wants every lumen, and a filter is expensive (MOVING-HEAD.md 8.6). It is
+    # declared here anyway because ``zdeck`` needs it, and fixture wiring lives
+    # in exactly one place: deriving it there as ``dimmer - 3`` happened to work
+    # for both of this fixture's personalities, which is a coincidence, not a law.
+    colour_channel: Optional[int] = 5
 
     # Mechanical spans that DMX full-scale covers. BOTH are MEASURED on the real
     # fixture (MOVING-HEAD.md 8.6b / 8.6e), not taken from the manual — the
@@ -255,6 +261,7 @@ NINE_CHANNEL_OVERRIDES = {
     "tilt_channel": 2,
     "tilt_fine_channel": None,
     "dimmer_channel": 6,
+    "colour_channel": 3,
     "forbidden_channels": (8, 9),
 }
 

@@ -6,6 +6,80 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-09 — Stream Deck as a physical control surface, and what review caught
+
+Six physical keys in the cab driving the tracker light. `jetson/zdeck/` +
+`jetson/DECK.md`. Bring-up verified on the real device (Stream Deck Mini
+`0fd9:0063`, fw 3.03.002, 6 keys 2x3, 80x80 BMP) — Rob drove the head with it.
+
+**No hub needed**: the Jetson's four USB-A connectors are one onboard 4-port
+hub; cameras and dongle take three, the deck took the fourth. **Do not re-cable
+the cameras to make room** — a hub upstream changes every `by-path` in
+`ZVISION_ARGS` and the cameras stop resolving. Being HID, the deck is found by
+vid:pid and is immune to that trap.
+
+Structure mirrors zvision: pure model, surface behind a Protocol with a fake,
+hardware isolated — so CI needs neither the vendor library nor a deck. Fixture
+channel numbers are **borrowed from `TrackerConfig`**, not restated, so the deck
+and the tracker cannot disagree about which channel is the dimmer.
+
+### Five bugs, none found by writing the code
+
+A Fable design review plus one smoke test on real hardware found what an hour of
+careful authoring did not:
+
+1. **Disconnect detection was dead code.** `connected()` called the library's
+   `key_count()`, which returns a class constant and does no I/O — it could
+   never report a disconnect. The reconnect loop was unreachable, so a deck
+   knocked off by a bump would have left the service green with dead keys. Now
+   uses the transport's own `connected()`; verified True/False against the real
+   device.
+2. **Losing the deck left the head hot.** While the panel is gone the operator
+   has no kill control, so the beam must not be left burning. Parks on
+   disconnect now, not just on exit.
+3. **BLACKOUT was untrustworthy.** It went through `OlaDmxSink`, which swallows
+   its own send failures by design — right for a tracker frame, wrong for a
+   kill. A failed blackout rendered a calm grey panel over a live beam: a lit
+   head under a panel saying dark, the one lie that matters. Now goes via
+   `dmxpark.park()` (retries, reports) and a failure renders **DMX FAIL** in red.
+4. **`StartLimitIntervalSec=0` was missing**, so five fast crashes would have
+   made systemd give up permanently — no control surface for the burn, silently.
+   `zvision.service` carries that line *with a comment explaining the trap*; the
+   new unit forgot its own project's lesson.
+5. **A `--once` run hung for four minutes.** `close()` called `reset()` and
+   `close()` in one try block, so a throwing reset skipped the close, the
+   vendor's non-daemon reader thread survived, and the interpreter waited at
+   exit. Found only by running it on the Jetson — the unit tests were green.
+
+### And one the smoke test surfaced by accident
+
+A stale checkout raised `AttributeError` inside `open()`, and the runner
+swallowed it as "no deck; retrying" — forever, naming the wrong problem. A
+programming error was wearing an unplugged cable's clothes. Now only a specific
+`DeckNotPresent` is retried quietly; anything else is loud.
+
+### Deliberately not built
+
+**Arbitration.** This works today *only* because zvision runs `--dmx none`. At
+8 Hz the tracker would overwrite the deck within ~125 ms and BLACKOUT would
+flicker rather than kill — worse than no key, because the operator would believe
+the light was off. Do not enable `--dmx ola` on both at once. Fable's proposed
+`/run/zodiac/light-mode` latch is written up in `tasks/open.md`, including why
+olad port merging cannot express "kill wins" (HTP takes max, so a 0 loses).
+
+Also logged, not built: heartbeat republish, systemd watchdog, the unprompted
+startup slew, and that BLACKOUT and LAMP-off are currently the same operation.
+
+### Tests
+
+**+57 (366 → 423), every one mutation-verified.** Two rounds: the first killed
+10 of 11 mutants, the survivor being an amber colour slot sneaking into the
+palette — the "no amber" test only checked *label* colours, never the wheel
+values. Fixed by making it an invariant: `DeckConfig` now rejects amber slots
+and auto-spin values at construction. Second round killed 7 of 8; that survivor
+was the forbidden-channel guard, unreachable until a test gave it a fixture map
+that actually collides.
+
 ## 2026-08-08 — DMX first light: the head works, and it's in 9-channel mode
 
 First time the moving head was powered with the dongle attached. It ended up

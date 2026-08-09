@@ -248,12 +248,70 @@ resolving. The camera ring is what will force the hub decision; do that and the
 Being HID, the Stream Deck is found by USB vid:pid by the library — immune to the
 `/dev/videoN` reshuffle trap.
 
-- [ ] **Phase 1 — light control (nearly free, Jetson-local).** Kill/blackout,
-      light mode (track / park / idle show), brightness step. A **separate
-      systemd service**, never inside the zvision frame loop: a wedged USB hub
-      must not stall the threat broadcaster, same rule that makes `OlaDmxSink`
-      swallow failures. Needs a hotplug loop — this rig loses USB devices over
-      bumps — and strain relief on the connector.
+- [x] **Phase 1 — BUILT 2026-08-09.** `jetson/zdeck/` + `jetson/DECK.md`.
+      Six keys: BLACKOUT / LAMP / HOME / DIM- / DIM+ / COLOUR, driving the head
+      through olad. Bring-up verified on the real deck (Stream Deck Mini
+      `0fd9:0063`, fw 3.03.002, 6 keys 2x3, 80x80 BMP) — input and output both,
+      and Rob drove the head with it. Structure mirrors zvision: pure model,
+      surface behind a Protocol with a fake, hardware isolated so CI needs
+      neither the library nor a deck. Fixture channel numbers are borrowed from
+      `TrackerConfig` rather than restated. 42 tests, mutation-verified.
+      - [ ] **Install the service on the Jetson** — `DECK.md` §2 has the runbook.
+            Built but not enabled; see the arbitration blocker below first.
+      - [ ] **Strain relief** on the USB connector. This rig loses USB devices
+            over bumps and the runner re-enumerates, but a cable that unplugs
+            itself in the dark is still a lost control surface.
+
+- [ ] **⚠️ BLOCKER — deck vs tracker authority over the light.** The deck works
+      today **only because `zvision` runs `--dmx none`** and nothing else writes
+      the universe. At 8 Hz the tracker overwrites the deck within ~125 ms, so
+      BLACKOUT would **flicker rather than kill** — worse than having no key,
+      because the operator would believe the light was off. **Do not enable
+      `--dmx ola` on both services at once.** Needs a real mechanism: a kill flag
+      the tracker honours each frame, or the deck stopping the tracker outright.
+      Constraint: whatever is chosen must not let a control-surface fault stall
+      the threat broadcaster.
+      **Fable's proposed mechanism, for when this is picked up:** a mode latch
+      at `/run/zodiac/light-mode`, written atomically by zdeck only, read by
+      zvision once per frame (a `stat()` on tmpfs — nanoseconds, no locks,
+      cannot block, so constraint 1 holds). `TRACK`/absent = tracker owns;
+      `MANUAL` = deck owns; `KILL` = nobody lights anything. In MANUAL/KILL the
+      tracker **skips its send entirely** rather than interleaving frames, so
+      there is no flicker. KILL is belt-and-braces: latch *and* a direct
+      retrying `dmxpark` write. Staleness is deliberately asymmetric — a stale
+      `MANUAL` reverts to TRACK (a dead deck must not freeze the beam), a stale
+      `KILL` **stays killed** (a kill must never un-kill itself because its
+      author died). `/run` clears on reboot, so cold start is TRACK.
+      Rejected: olad port merging (HTP takes max, so a kill of 0 structurally
+      cannot win) and deck-sends-intents-to-zvision (the kill would depend on
+      the liveness of the process being overridden).
+- [ ] **Deck backlog — from the Fable review 2026-08-09.** Four bugs it found
+      were fixed before commit (dead `connected()`, no park on disconnect,
+      untrustworthy kill, missing `StartLimitIntervalSec`); these were not:
+      - [ ] **Heartbeat republish (~1 Hz while owning the light).** Today
+            `publish()` is press-driven only, so anything that stomps the
+            universe — notably a `systemctl restart zvision`, whose
+            `ExecStopPost` parks universe 0 — kills the light while the panel
+            still says LAMP ON, and it stays wrong until the next key press.
+      - [ ] **Watchdog.** No `WatchdogSec`/`sd_notify`. A loop wedged inside a
+            blocking vendor USB call looks healthy to systemd forever.
+            `Type=notify` + `WatchdogSec` has the nice property that a hang
+            becomes a kill, which runs `ExecStopPost`, which parks — it fails
+            *dark*.
+      - [ ] **Startup slew.** `start()` publishes immediately with pan/tilt
+            128/128, so every service restart physically slews the head to
+            centre unprompted. Harmless on a bench, rude on a vehicle, and it
+            would stomp the tracker's aim once arbitration exists. Also
+            `128/128` duplicates `home_pan_frac`/`home_tilt_frac` — derive one.
+      - [ ] **BLACKOUT and LAMP-off are currently the same operation**, so one
+            of six keys is redundant. Fable's suggestion: make BLACKOUT a
+            *latched* KILL that holds against the tracker and needs a deliberate
+            release, which is also what the arbitration latch below wants.
+      - [ ] **`ExecStopPost` arg drift**: `ZDECK_ARGS` can set
+            `--dmx-universe`/`--dmx-url` but `ExecStopPost` parks universe 0 at
+            the default URL. Same latent mismatch in `zvision.service`.
+            Harmless with one universe; note it in the env file.
+
 - [ ] **Phase 2 — needs a decision first.** Fleet-wide actions (cycle nav target
       HOME/MAN/TEMPLE, screen blackout/stealth, mark-this-spot on the breadcrumb,
       switch the driver's concept) all require an **inbound command channel the

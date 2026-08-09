@@ -1,0 +1,32 @@
+[Unit]
+Description=Zodiac Deck - physical control surface for the tracker light
+Documentation=https://github.com/pureagave/zodiac/blob/main/jetson/DECK.md
+# Deliberately NOT After=zvision: the panel is the operator's physical control
+# and must come up whether or not the vision box is healthy.
+After=olad.service
+Wants=olad.service
+# Without this, systemd's default 5-starts-in-10s limit permanently gives up
+# after a fast crash loop -- a crash at import (missing venv dep, hidapi .so
+# gone after a reflash) would silently leave the burn with no control surface.
+# Must live in [Unit]; it is ignored under [Service]. Same as zvision.service.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+# Runs in its own venv: the StreamDeck library and Pillow are not dependencies
+# of zvision and must not be installed into the system python it uses.
+WorkingDirectory=/opt/zodiac/jetson
+ExecStart=/opt/zodiac-deck/venv/bin/python -m zdeck $ZDECK_ARGS
+EnvironmentFile=-/etc/default/zodiac-deck
+# Same fail-safe as zvision: never leave the head hot on an abnormal exit.
+ExecStopPost=-/usr/bin/python3 -m zvision.dmxpark --quiet
+Restart=always
+RestartSec=3
+# The deck is reached through libusb/hidraw, both granted to plugdev by
+# 70-zodiac-streamdeck.rules. No root required.
+User=zodiac
+Group=zodiac
+SupplementaryGroups=plugdev
+
+[Install]
+WantedBy=multi-user.target
