@@ -8,6 +8,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.pureagave.zodiac.control.core.connection.TransportType
@@ -222,8 +225,16 @@ class CockpitViewModel(
                         // the display rotation aligned so the ego stays
                         // pointing up. In FREE the user has rotated the
                         // display manually; leave their rotation alone.
-                        val gpsHeading = (state as? LocationSourceState.Active)?.fix?.headingDeg?.toInt()
+                        val activeFix = (state as? LocationSourceState.Active)?.fix
+                        val gpsHeading = activeFix?.headingDeg?.toInt()
                         val newHeading = gpsHeading ?: current.headingDeg
+                        // Speed is folded the same way heading is. Without this
+                        // the collision BRAKE gate read the debug chip and saw
+                        // 0 on every real drive. Hold the last known speed when
+                        // a sentence omits it (GGA carries no speed, and phones
+                        // interleave GGA with RMC every epoch) so the gate does
+                        // not drop out on alternate fixes.
+                        val newGpsSpeed = activeFix?.speedKph ?: current.gpsSpeedKph
                         val newRotation =
                             if (current.followMode == FollowMode.TRACK_UP) {
                                 newHeading.toDouble()
@@ -233,6 +244,7 @@ class CockpitViewModel(
                         current.copy(
                             locationState = state,
                             headingDeg = newHeading,
+                            gpsSpeedKph = newGpsSpeed,
                             camera = current.camera.copy(viewRotationDeg = newRotation),
                         )
                     }
@@ -259,9 +271,20 @@ class CockpitViewModel(
                 // collision flag chattering at frame rate can't strobe the
                 // warning. See brakeAdvisory — the timer to clear it lives in
                 // the operator, since a passed hazard produces no more frames.
-                threatsFlow.driverAlerts({ _uiState.value.speedKph.toFloat() }).collect { alerts ->
-                    _uiState.update { it.copy(brakeAdvised = alerts.brake, checkRear = alerts.checkRear) }
-                }
+                // Re-evaluate when EITHER the threats or the speed change.
+                // `driverAlerts` only recomputes per upstream frame, and
+                // `threatsFlow` is a conflating StateFlow, so a vehicle
+                // accelerating past the brake threshold while the contact list
+                // is unchanged would never have re-run the gate. Combining with
+                // the speed makes crossing the threshold its own trigger.
+                combine(
+                    threatsFlow,
+                    _uiState.map { it.effectiveSpeedKph }.distinctUntilChanged(),
+                ) { threats, _ -> threats }
+                    .driverAlerts({ _uiState.value.effectiveSpeedKph.toFloat() })
+                    .collect { alerts ->
+                        _uiState.update { it.copy(brakeAdvised = alerts.brake, checkRear = alerts.checkRear) }
+                    }
             }
             launch {
                 // Tri-state health of the threat feed — see VisionFeed's doc for

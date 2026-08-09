@@ -238,6 +238,10 @@ class ZodiacApplication : Application() {
             network = NetworkThreatSource(applicationContext = this, scope = applicationScope),
             fake = FakeThreatSource(scope = applicationScope),
             scope = applicationScope,
+            // Deployed vehicle: a dead feed must read ABSENT, never invent
+            // people. The fake source stays wired so a bench build can flip
+            // this without re-plumbing the graph.
+            demoEnabled = false,
         ).also { source -> applicationScope.launch { source.start() } }
     }
 

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -42,11 +43,14 @@ import org.pureagave.zodiac.control.core.model.VehicleCommand
 import org.pureagave.zodiac.control.core.navigation.ClockTime
 import org.pureagave.zodiac.control.core.navigation.clockToBearing
 import org.pureagave.zodiac.control.core.ops.NavTarget
+import org.pureagave.zodiac.control.core.sensor.GpsFix
+import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.telemetry.AmbientLight
 import org.pureagave.zodiac.control.core.telemetry.BeaconHealth
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.telemetry.Odometer
+import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.VisionFeed
 import org.pureagave.zodiac.control.data.FakeVehicleGateway
 import org.pureagave.zodiac.control.data.TelemetryRepository
@@ -178,7 +182,7 @@ class CockpitViewModelTest {
             val routed =
                 RoutedLocationSource(
                     registry = LocationSourceRegistry(sources = listOf(stub)),
-                    scope = this.backgroundScope,
+                    scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
                     initialType = LocationSourceType.FAKE,
                 )
             val store = ViewModelStore()
@@ -1013,6 +1017,103 @@ class CockpitViewModelTest {
                 advanceUntilIdle()
 
                 assertEquals(VisionFeed.ABSENT, vm.uiState.value.visionFeed)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun brakeAdvisory_firesFromMeasuredGpsSpeed_withoutTouchingTheDebugChip() =
+        runTest {
+            // The bug this pins: the BRAKE gate read uiState.speedKph, whose only
+            // writer is the SPD debug chip. On a real drive that stays 0, so the
+            // braking imperative could never fire -- and the rear alert has no
+            // speed gate, which is exactly why bench testing against real bus
+            // traffic never caught it. Nothing here calls setSpeed().
+            val stub = StubLocationSource(LocationSourceType.FAKE)
+            val threats =
+                MutableStateFlow(
+                    listOf(DriverThreat(relAzDeg = 0f, size = 0.8f, collision = true, id = 1)),
+                )
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource =
+                            RoutedLocationSource(
+                                registry = LocationSourceRegistry(sources = listOf(stub)),
+                                // Unconfined on the test scheduler: the routed
+                                // source's stateIn must propagate synchronously,
+                                // otherwise the stub's emission never reaches
+                                // the VM under MainDispatcherRule's separate
+                                // scheduler.
+                                scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+                                initialType = LocationSourceType.FAKE,
+                            ),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource = FakeLocationSource(scope = this.backgroundScope),
+                        threatsFlow = threats,
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+                assertFalse("stationary vehicle must not advise braking", vm.uiState.value.brakeAdvised)
+
+                stub.emit(
+                    LocationSourceState.Active(
+                        GpsFix(location = LatLon(40.786, -119.203), speedKph = 20.0),
+                    ),
+                )
+                advanceUntilIdle()
+
+                assertEquals(0, vm.uiState.value.speedKph) // debug chip untouched
+                assertEquals(20.0, vm.uiState.value.effectiveSpeedKph, 1e-6)
+                assertTrue("BRAKE must fire on measured speed", vm.uiState.value.brakeAdvised)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun measuredSpeedIsHeldWhenASentenceOmitsIt() =
+        runTest {
+            // Phones interleave GGA (no speed) with RMC (speed) every epoch. If
+            // the fold dropped speed on the GGA fix, the brake gate would blink
+            // below threshold on alternate sentences.
+            val stub = StubLocationSource(LocationSourceType.FAKE)
+            val routed =
+                RoutedLocationSource(
+                    registry = LocationSourceRegistry(sources = listOf(stub)),
+                    scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+                    initialType = LocationSourceType.FAKE,
+                )
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = routed,
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource = FakeLocationSource(scope = this.backgroundScope),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle()
+
+                stub.emit(LocationSourceState.Active(GpsFix(LatLon(40.786, -119.203), speedKph = 30.0)))
+                advanceUntilIdle()
+                assertTrue(
+                    "precondition: the fix must reach the VM",
+                    vm.uiState.value.locationState is LocationSourceState.Active,
+                )
+                assertEquals(30.0, vm.uiState.value.effectiveSpeedKph, 1e-6)
+
+                stub.emit(LocationSourceState.Active(GpsFix(LatLon(40.786, -119.203), speedKph = null)))
+                advanceUntilIdle()
+                assertEquals(30.0, vm.uiState.value.effectiveSpeedKph, 1e-6)
             } finally {
                 store.clear()
             }

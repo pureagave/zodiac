@@ -112,7 +112,7 @@ fun driverNightScreen(
                 normalizeSigned(b - state.headingDeg)
             }
         } ?: 0.0
-    val mph = (state.speedKph * KPH_TO_MPH).roundToInt()
+    val mph = (state.effectiveSpeedKph * KPH_TO_MPH).roundToInt()
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Canvas(modifier = Modifier.fillMaxSize()) {

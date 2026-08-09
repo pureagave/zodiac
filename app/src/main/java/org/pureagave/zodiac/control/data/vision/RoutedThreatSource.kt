@@ -30,7 +30,12 @@ class RoutedThreatSource(
     private val network: ThreatSource,
     private val fake: ThreatSource,
     scope: CoroutineScope,
-    private val demoEnabled: Boolean = true,
+    // NO DEFAULT, deliberately. This shipped defaulting to true and the
+    // production wiring never passed it, so a dead Jetson feed put three
+    // fabricated moving contacts on the driver's night HUD -- one of them
+    // flagged as a collision -- separated from reality by a small "DEMO" word.
+    // Every call site must now state which it wants.
+    private val demoEnabled: Boolean,
 ) : ThreatSource {
     override val threats: StateFlow<List<DriverThreat>> =
         combine(network.feedAlive, network.threats, fake.threats) { alive, net, demo ->

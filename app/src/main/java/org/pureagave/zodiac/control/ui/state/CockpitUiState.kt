@@ -43,7 +43,15 @@ import org.pureagave.zodiac.control.core.vision.VisionFeed
  */
 data class CockpitUiState(
     val headingDeg: Int = 0,
+    /**
+     * The *commanded* speed from the SPD debug chips. Drives the synthetic GPS
+     * and the outbound SetSpeed command — it is an input, not a measurement.
+     * Anything asking "how fast is the vehicle moving" wants
+     * [effectiveSpeedKph] instead.
+     */
     val speedKph: Int = 0,
+    /** Measured ground speed from the GPS fix; null until a fix carries one. */
+    val gpsSpeedKph: Double? = null,
     val thermalC: Int = 0,
     val mode: CockpitMode = CockpitMode.DIAGNOSTIC,
     val linkStable: Boolean = true,
@@ -202,6 +210,22 @@ data class CockpitUiState(
     val cameraOverride: PlayaPoint? get() = camera.cameraOverride
     val followMode: FollowMode get() = camera.followMode
     val viewRotationDeg: Double get() = camera.viewRotationDeg
+
+    /**
+     * How fast the vehicle is actually moving. **One owner, on purpose.**
+     *
+     * There were three uncorrelated speeds in this codebase — the debug chip,
+     * the GPS fix, and the beacon's `$ZTLM` — and each consumer picked one ad
+     * hoc. The forward-collision BRAKE gate picked the debug chip, so on a real
+     * drive it read 0 and the braking imperative could never fire; the rear
+     * alert has no speed gate, which is why bench testing against real bus
+     * traffic never caught it. Route every speed question through here.
+     *
+     * Measurement wins over command: a real fix is ground truth, and the debug
+     * value is only meaningful when the fake source is driving. (`$ZTLM` speed
+     * belongs in this chain too once it is folded into state.)
+     */
+    val effectiveSpeedKph: Double get() = gpsSpeedKph ?: speedKph.toDouble()
 
     val egoFix: GpsFix? = (locationState as? LocationSourceState.Active)?.fix
 

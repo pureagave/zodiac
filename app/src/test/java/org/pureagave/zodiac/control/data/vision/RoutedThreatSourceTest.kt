@@ -33,7 +33,7 @@ class RoutedThreatSourceTest {
     fun prefers_the_network_feed_when_present() {
         withScope { scope ->
             val net = StubThreatSource(listOf(DriverThreat(relAzDeg = 5f, size = 0.9f, id = 7)), alive = true)
-            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = true)
             assertEquals(7, awaitNonEmpty(routed).single().id)
         }
     }
@@ -42,7 +42,7 @@ class RoutedThreatSourceTest {
     fun falls_back_to_the_demo_when_the_feed_is_absent() {
         withScope { scope ->
             val net = StubThreatSource(emptyList(), alive = false)
-            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = true)
             assertEquals(1, awaitNonEmpty(routed).single().id)
         }
     }
@@ -58,7 +58,7 @@ class RoutedThreatSourceTest {
     fun live_all_clear_does_not_resurrect_the_demo() {
         withScope { scope ->
             val net = StubThreatSource(listOf(DriverThreat(relAzDeg = 5f, size = 0.9f, id = 7)), alive = true)
-            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = true)
             assertEquals(7, awaitNonEmpty(routed).single().id) // real contact showing
             net.flow.value = emptyList() // edge box now says "all clear", still live
             assertTrue("live all-clear must show no contacts, not the demo", awaitEmpty(routed))
@@ -81,7 +81,7 @@ class RoutedThreatSourceTest {
     fun feed_state_is_live_while_the_network_feed_is_alive() {
         withScope { scope ->
             val net = StubThreatSource(emptyList(), alive = true)
-            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = true)
             assertEquals(VisionFeed.LIVE, awaitFeedState(routed) { it == VisionFeed.LIVE })
         }
     }
@@ -90,7 +90,7 @@ class RoutedThreatSourceTest {
     fun feed_state_is_demo_when_the_network_feed_is_absent_and_demo_is_enabled() {
         withScope { scope ->
             val net = StubThreatSource(emptyList(), alive = false)
-            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = true)
             assertEquals(VisionFeed.DEMO, awaitFeedState(routed) { it == VisionFeed.DEMO })
         }
     }
@@ -111,7 +111,7 @@ class RoutedThreatSourceTest {
     fun feed_state_flips_to_live_the_moment_the_network_feed_recovers() {
         withScope { scope ->
             val net = StubThreatSource(emptyList(), alive = false)
-            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = true)
             awaitFeedState(routed) { it == VisionFeed.DEMO }
             net.aliveFlow.value = true
             assertEquals(VisionFeed.LIVE, awaitFeedState(routed) { it == VisionFeed.LIVE })

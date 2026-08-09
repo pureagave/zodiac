@@ -16,17 +16,27 @@ for every item are in the audit doc; this is the work list.
 
 ### P0 — safety-critical
 
-- [ ] **A1 ✅ The forward BRAKE alert is dead on a real drive.** The speed gate
+- [x] **A1 FIXED 2026-08-09. The forward BRAKE alert was dead on a real drive.** The speed gate
       reads `uiState.speedKph`, whose only writer is the debug SPD chip
       (`CockpitViewModel.kt:262,446`). GPS speed never reaches it, so on a real
       drive it is 0 and `! BRAKE !` / `! COLLISION COURSE !` can never fire. The
       rear alert has no speed gate, which is why the bench test passed. Fix
       needs a **single owner for vehicle speed** (GPS fix → `$ZTLM` → debug).
-- [ ] **A2 ✅ The deployed build shows fabricated contacts when the Jetson dies.**
+      Fixed: `CockpitUiState.effectiveSpeedKph` is now that owner (measured GPS
+      speed beats the commanded chip), GPS speed is folded into state alongside
+      heading and held across sentences that omit it (GGA carries none), and the
+      alert flow now re-evaluates on **speed change as well as threat frames** —
+      `driverAlerts` only recomputed per upstream frame, so a vehicle
+      accelerating past the threshold with an unchanged contact list would never
+      have re-run the gate. 2 tests, 5 mutants killed.
+- [x] **A2 FIXED 2026-08-09. The deployed build showed fabricated contacts.**
       `ZodiacApplication.kt:237` never passes `demoEnabled`, which defaults true,
       so a dead feed silently becomes three invented moving people on the
       driver's HUD — one cycling `collision=true`. **Fix with A1**: fixing the
       brake gate alone makes demo mode flash braking imperatives at phantoms.
+      Fixed by **removing the default** from `demoEnabled` so no call site can
+      forget to decide; production passes `false`, and the six demo-behaviour
+      tests now say `demoEnabled = true` explicitly. The compiler enforces it.
 - [ ] **A3 ✅ The S9+ GPS fallback can freeze `Active` forever.** `FixFreshness`
       appears 4× in BLE and USB and **0× in `SystemLocationSource`** — the
       failover target. A frozen fix satisfies the failover's liveness check
