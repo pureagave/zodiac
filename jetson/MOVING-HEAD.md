@@ -245,10 +245,12 @@ short mode.
 
 ### Still to determine on the bench
 
-- **Channel 9 (pan/tilt movement speed)** — the manual doesn't say which end of
-  0–255 is fast. We leave it at 0. If the head lags badly behind a walking
-  contact, this is the first thing to try, and it interacts with the
-  `pan_slew_dps` / `tilt_slew_dps` ceilings we impose in software.
+- ~~**Channel 9 (pan/tilt movement speed)**~~ — **ANSWERED 2026-08-09, see §8.6d.
+  `ch9 = 0` is the FAST end.** We already send 0, so the shipped default is
+  correct. The old advice here ("if the head lags, try this first") pointed the
+  wrong way: raising ch9 makes it *slower*. If the head ever lags a walking
+  contact the cause is `pan_slew_dps` / `tilt_slew_dps` in software, not ch9.
+  Raising ch9 is only useful to make the head *gentler*.
 - `pan_center_deg` / `pan_gain` / `reach_half_deg` still need the one-time
   vehicle calibration (aim dead ahead, then at a known bearing).
 - **Fine-tune menu** (§4.2) offers motor offsets `H`/`Y`/`C`/`G` — a hardware
@@ -389,6 +391,33 @@ open white** (`ch5=0`, which is `TrackerConfig`'s behaviour today, since it neve
 writes ch5) — a spotlight following a person at night wants every lumen. Colour
 belongs to the idle/show state, not to tracking.
 
+### 8.6a `BLnd = blac` verified by camera — and it is not instant
+
+Setting `BLnd` to `blac` (§4.3) was acted on before it was ever tested. Verified
+2026-08-09 by measurement rather than by asking someone to catch an unannounced
+event: the rig's RGB camera watched the beam while `olad` was stopped.
+
+```
+BEFORE cut : beam_px = 8378
+AFTER  cut : beam_px = [8347, 0, 0, 0, 0, 0, 0, 0, 0, 0]   (1.5 s per sample)
+```
+
+**Blackout confirmed** — the head goes dark, returns home, and stays dark. No
+reset-then-auto-show, which is what `auto` did before the change.
+
+**But the fixture holds its last commanded state for ~1.5–3 s first.** It was
+still fully lit 1.5 s after DMX stopped and dark by 3.0 s — its signal-loss
+timeout. Consequences both ways: a momentary dropout will not blink the light,
+but **blackout is not immediate**, so `blac` is not a substitute for the crash
+fail-safe (§8.6d) or for a hardware switch. Three mechanisms, three different
+failures, none of them redundant.
+
+*Method note:* the first attempt aimed at `tilt=64`, outside the camera's view,
+and the script **aborted rather than reporting a verdict from a blank frame** —
+the right behaviour, and worth keeping in anything that measures the light. A
+first pass also mislabelled `[lit, 0, 0, ...]` as "intermittent"; a single
+leading lit sample is the timeout, not a flicker.
+
 ### 8.6b Pan travel physically verified — 540° confirmed
 
 `pan_range_deg = 540` and `tilt_range_deg = 270` came from the manual (§5), and
@@ -425,6 +454,43 @@ Invisible at the shipped centre of 270, where ±90° of reach never leaves
 [180, 360]. It would have first appeared during on-vehicle calibration and read
 as a bad mount. Both halves were needed — reordering alone does not fix it,
 because the seeded search still returns the unreachable value.
+
+### 8.6d `ch9` speed direction — 0 is FAST (the manual never said)
+
+Timed with the rig's camera: a large tilt move, timing how long until the beam
+left frame.
+
+| `ch9` | Time to complete the same move |
+|---:|---|
+| **0** | **0.36 s** |
+| 128 | 0.42 s |
+| 255 | 1.04 s |
+
+Monotonic across three points and a **2.9× spread**, so it is a real gradient,
+not noise. (At 255 the head had not even finished the *previous* move inside a
+3.5 s settle — the starting beam measured 4684 px against ~8180 for the others,
+which is independent corroboration that 255 is the slow end.)
+
+**We already send 0, so the shipped default is right.** The consequence is for
+the opposite problem: ch9 is the knob for making the head *gentler*, never
+faster. If it ever lags a walking contact, look at `pan_slew_dps` /
+`tilt_slew_dps` in software.
+
+*It took three attempts, and the failures are the instructive part:*
+
+1. **Timed how long the beam was visible.** It never left frame, so every
+   reading equalled the observation window — identical to two decimal places at
+   all three speeds. A measurement that cannot come out differently is not a
+   measurement, and it produced a confident "no effect" verdict.
+2. **Tracked the beam centroid instead.** But with the beam near vertical,
+   *panning sweeps the spot in a tiny circle* — 8 px for 50° of pan. The
+   "has it moved" gate degenerated to 3 px of noise and again reported no effect.
+3. **Large tilt move, timed to frame exit.** Tilt shifts the spot radially, so
+   the motion is large and the stop condition unambiguous.
+
+Both failures returned *plausible* numbers and the same wrong conclusion. The
+tell each time was in the diagnostics, not the verdict — identical timings, and
+a span of 8 px.
 
 ### 8.7 Gobo wheel, mapped the same way
 

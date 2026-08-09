@@ -53,9 +53,19 @@ Ranked by consequence on the playa.
             on open white / open gobo regardless — colour and patterns both cost
             visibility, and measured brightness (white peaked 236 at dimmer 86;
             green needed 128 to reach 154) says a filter is expensive.
-      - [ ] Still unanswered: **ch7 in 9ch (ch9 in 11ch) is pan/tilt speed and
-            the manual doesn't say which end is fast.** We send 0. Try it first
-            if the head lags a walking contact.
+      - [x] **ch9 speed direction ANSWERED 2026-08-09 — 0 is FAST.** Timed by
+            camera: 0.36 s at ch9=0, 0.42 s at 128, 1.04 s at 255 — monotonic,
+            2.9x spread. **We already send 0, so the default was right.** The old
+            note had it backwards: raising ch9 makes the head *slower*, so it is
+            the knob for making it gentler, never faster. A head that lags a
+            walking contact is `pan_slew_dps`/`tilt_slew_dps` in our software.
+            Took three attempts; the two failed methods are written up in
+            `MOVING-HEAD.md` §8.6d because both returned plausible wrong answers.
+      - [x] **`BLnd = blac` VERIFIED by camera 2026-08-09** (§8.6a) — beam gone
+            and stays gone, no reset-then-auto-show. **But not instant:** still
+            fully lit 1.5 s after DMX stops, dark by 3.0 s. So `blac` does not
+            replace the crash fail-safe or a hardware switch — three mechanisms,
+            three different failures.
 
 - [x] **⚠️ P0 — FIXED AND DEPLOYED 2026-08-09.** `zvision/dmxpark.py`
       zeroes all 512 slots and is wired as `ExecStopPost=-...` on the zvision
