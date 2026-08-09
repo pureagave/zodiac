@@ -179,6 +179,75 @@ defect list. Each is verified against the code, with `file:line`.
       them. A `--dmx-aim az=X` one-shot would make the on-vehicle calibration a
       two-number job.
 
+## 🔌 USB device identity — measured 2026-08-09
+
+Today every camera is pinned **by port** (`/dev/v4l/by-path/...usb-0:2.3:1.0...`,
+where `2.3` is the physical port chain). Measured what identity is actually
+available:
+
+| Device | Serial | Can it be addressed by identity? |
+|---|---|---|
+| PureThermal | `000b0026-5103-3133-3332-3733...` | **yes** — real per-unit UID |
+| FTDI / DMX | `BG03OCDS` | **yes**, and already is — olad patches it as `13-BG03OCDS-O-1`, so the dongle already survives a re-plug into any port |
+| Arducam RGB | **`SN0001`** | **no** — a firmware constant, identical on every unit of this model |
+
+**What port-pinning actually buys us:** the `az=` binding. A camera spec ties a
+device to a *bearing on the vehicle*, and the port is what makes that true. If
+identical cameras can move ports, a camera's entire contact set silently rotates
+onto the wrong bearing — wrong threat bearings on the driver's HUD, tracker light
+on the wrong person — and it fails **silently**: everything opens, frames flow,
+nothing errors. So for the ring, the port is not a limitation to route around;
+it is the only identity the hardware offers.
+
+- [ ] **Move thermal + DMX to `by-id`.** Free robustness, no downside, shorter
+      `ZVISION_ARGS`. The ring stays on ports.
+- [ ] **Name the ports via udev** — `/dev/zodiac-cam-front` / `-left` / `-rear`.
+      Same pinning, but the port→bearing map lives in one readable file instead
+      of `2.3` chains in the config, and a mis-plug shows up as a *missing*
+      device rather than a working camera pointing the wrong way.
+- [ ] **Startup identity check**: log each camera's vid:pid + serial + resolved
+      path + az; assert all specs resolve to **distinct** devices; let a spec
+      declare its expected model (`expect=1e4e:0100`) so swapping a thermal for
+      an RGB refuses to start rather than quietly inverting the picture.
+- [ ] **Label the cables.** The realistic failure is not ports renumbering on
+      their own — it is someone unplugging everything to fix something else and
+      re-plugging differently. No code replaces this.
+
+## 🎛️ Stream Deck as a physical control surface — scoped 2026-08-09
+
+Rob has a 6–8 key USB Stream Deck. **Host it on the Jetson**: it is the always-on
+box that already owns olad and the fleet bus, Linux support is `pip install
+streamdeck` + a udev rule, and a tablet host would mean Android USB-host HID on
+the one device the driver needs.
+
+**No hub required.** Measured: the devkit's four USB-A connectors are fed by one
+onboard 4-port hub; three are used (RGB 500 mA, DMX 90 mA, thermal 100 mA) and
+**one is free**. Bus 002 is the same four connectors over SuperSpeed, not extra
+sockets. **Do not re-cable the cameras to make room** — inserting a hub upstream
+changes every `by-path` in `ZVISION_ARGS` (`2.3` → `2.3.1`) and the cameras stop
+resolving. The camera ring is what will force the hub decision; do that and the
+`by-path` re-derivation together, once, with a *powered* hub.
+
+Being HID, the Stream Deck is found by USB vid:pid by the library — immune to the
+`/dev/videoN` reshuffle trap.
+
+- [ ] **Phase 1 — light control (nearly free, Jetson-local).** Kill/blackout,
+      light mode (track / park / idle show), brightness step. A **separate
+      systemd service**, never inside the zvision frame loop: a wedged USB hub
+      must not stall the threat broadcaster, same rule that makes `OlaDmxSink`
+      swallow failures. Needs a hotplug loop — this rig loses USB devices over
+      bumps — and strain relief on the connector.
+- [ ] **Phase 2 — needs a decision first.** Fleet-wide actions (cycle nav target
+      HOME/MAN/TEMPLE, screen blackout/stealth, mark-this-spot on the breadcrumb,
+      switch the driver's concept) all require an **inbound command channel the
+      cockpit app does not have** — it only ever listens (GPS, threat multicast).
+      That lands next to nav/GPS/messaging, so it is a separate call, not a
+      natural extension of phase 1.
+- [ ] **Night discipline**: the keys are backlit LCDs, and a bright RGB panel in
+      the cab fights everything the rest of this project does about night vision.
+      Brightness way down, dim icons, and ideally follow the same `$ZENV` lux
+      auto-dim the tablets already use.
+
 ## 🟡 Waiting on the world
 
 - [ ] **BM 2026 art/camp placements.** `location` and `location_string` are
