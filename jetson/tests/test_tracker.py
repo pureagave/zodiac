@@ -236,13 +236,20 @@ class FrameEmissionTest(unittest.TestCase):
         # Wiring check, not a formula check: coarse and fine must describe one
         # 16-bit quantity. A fine channel fed from a different value would still
         # look plausible per-channel and aim wrong.
-        trk = Tracker(config_for_channel_mode(11))
+        cfg = config_for_channel_mode(11)
+        trk = Tracker(cfg)
         f = trk.update([DriverThreat(rel_az_deg=17.3, size=0.37, id=1)], dt=SNAP)
+        # Spans come from the config, never as literals here: this test used to
+        # hardcode 540/270 and broke the moment tilt_range_deg was corrected to
+        # its measured 180 -- a test repeating the implementation's magic number
+        # can only ever confirm it.
         self.assertEqual(
-            round(f.pan_deg / 540.0 * 65535), f.channels[1] * 256 + f.channels[2]
+            round(f.pan_deg / cfg.pan_range_deg * 65535),
+            f.channels[1] * 256 + f.channels[2],
         )
         self.assertEqual(
-            round(f.tilt_deg / 270.0 * 65535), f.channels[3] * 256 + f.channels[4]
+            round(f.tilt_deg / cfg.tilt_range_deg * 65535),
+            f.channels[3] * 256 + f.channels[4],
         )
 
     def test_the_fine_channel_is_what_buys_sub_coarse_resolution(self):
@@ -343,6 +350,40 @@ class TiltAxisTest(unittest.TestCase):
         cfg = TrackerConfig(tilt_slew_dps=90.0)
         f = Tracker(cfg).update([DriverThreat(rel_az_deg=0.0, size=1.0, id=1)], dt=0.1)
         self.assertAlmostEqual(cfg.tilt_far_deg + 9.0, f.tilt_deg, places=3)
+
+
+class TiltRangeIsMeasuredNotAssumedTest(unittest.TestCase):
+    """The manual (§5) says tilt is 270°. The fixture says 180°, measured three
+    independent ways on the bench 2026-08-09: 64 DMX units = 45°, half-scale is
+    dead vertical, and the two end stops are antiparallel and both below
+    horizontal. `deg_to_dmx16` divides by this span, so the manual's number
+    scaled every tilt command by 1.5 — on the axis that decides how high up a
+    person's body the beam lands."""
+
+    def test_the_measured_span_is_pinned_against_the_manual(self):
+        self.assertEqual(180.0, TrackerConfig().tilt_range_deg)
+
+    def test_ninety_degrees_lands_at_half_scale_which_is_vertical(self):
+        # The observation that settled it. Under the manual's 270 this would be
+        # 85 (a third of scale) and the head would sit well short of vertical.
+        coarse, _ = deg_to_dmx16(90.0, TrackerConfig().tilt_range_deg)
+        self.assertEqual(128, coarse)
+
+    def test_the_bench_progression_reproduces(self):
+        # 64 / 128 / 192 DMX read 45° / 90° / 135° on the real head.
+        cfg = TrackerConfig()
+        for deg, coarse in ((45.0, 64), (90.0, 128)):
+            with self.subTest(deg=deg):
+                self.assertEqual(coarse, deg_to_dmx16(deg, cfg.tilt_range_deg)[0])
+
+    def test_the_aim_defaults_still_sit_inside_the_real_travel(self):
+        # Rescaled with the span so the physical aim did not change. If either
+        # ever exceeds the travel, deg_to_dmx16 silently clamps and two
+        # different distances aim at the same place.
+        cfg = TrackerConfig()
+        for name in ("tilt_far_deg", "tilt_near_deg"):
+            with self.subTest(name=name):
+                self.assertLessEqual(getattr(cfg, name), cfg.tilt_range_deg)
 
 
 class ConfiguredKnobsAreHonouredTest(unittest.TestCase):

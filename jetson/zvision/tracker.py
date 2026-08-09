@@ -161,9 +161,15 @@ class TrackerConfig:
     tilt_fine_channel: Optional[int] = 4
     dimmer_channel: Optional[int] = 8
 
-    # Mechanical spans that DMX full-scale covers.
+    # Mechanical spans that DMX full-scale covers. BOTH are MEASURED on the real
+    # fixture (MOVING-HEAD.md 8.6b / 8.6e), not taken from the manual — the
+    # manual is right about pan and **wrong about tilt**, which it gives as 270.
+    #
+    # Getting these wrong is silent and expensive: deg_to_dmx16 divides by them,
+    # so a bad span scales every commanded angle by the ratio, and on tilt that
+    # is how high up a person's body the beam lands.
     pan_range_deg: float = 540.0
-    tilt_range_deg: float = 270.0
+    tilt_range_deg: float = 180.0  # measured: 64 DMX units = 45 deg, half-scale = vertical
 
     # az (deg, +right) -> pan (fixture deg): pan = center + az*gain, then clamped.
     # gain ~1.0 when the head is mounted axis-aligned with the camera; negate to
@@ -174,8 +180,13 @@ class TrackerConfig:
     # size (0 far .. 1 near) -> tilt (fixture deg). An elevated head tilts further
     # down for a closer contact; a coarse range→elevation proxy until we have real
     # vertical from the detector. Equal far/near = a fixed tilt.
-    tilt_far_deg: float = 135.0
-    tilt_near_deg: float = 160.0
+    # Rescaled with tilt_range_deg 270 -> 180 so the head's PHYSICAL aim is
+    # unchanged by that correction (135/270 and 160/270 are the same fractions
+    # of travel as 90/180 and 106.7/180). Both remain uncalibrated placeholders:
+    # 90 is straight up on this fixture, which is not where you want a beam once
+    # it is on the vehicle. Calibrate on the mount before `--dmx ola`.
+    tilt_far_deg: float = 90.0
+    tilt_near_deg: float = 106.7
 
     # How far off the nose the fixture can actually throw light, as a half-angle.
     # The head is mounted to cover forward and both sides; it cannot light the

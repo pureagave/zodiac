@@ -35,8 +35,19 @@ Ranked by consequence on the playa.
       - [x] **`rPAn = no`** — pan not reversed at the fixture, so `pan_gain`
             stays **+1.0**. A sign problem during calibration is a real azimuth
             error, not a mirrored yoke.
+      - [x] **Pan 540° confirmed, TILT IS 180° NOT 270° — the manual is wrong**
+            (`MOVING-HEAD.md` §8.6b/§8.6e). Measured three ways: 64 DMX = 45°,
+            half-scale is dead vertical, end stops antiparallel. `deg_to_dmx16`
+            divides by the span, so the manual's figure scaled **every tilt
+            command by 1.5×** on the axis that sets how high up a body the beam
+            lands. `tilt_range_deg` now 180.0, pinned by tests that fail if the
+            manual's number returns.
       - [ ] Attach the head to the vehicle, aim it, calibrate
-            `pan_center_deg` / `pan_gain` / `reach_half_deg`.
+            `pan_center_deg` / `pan_gain` / `reach_half_deg`. **Also re-derive
+            `tilt_far_deg` / `tilt_near_deg`** — they were rescaled 135/160 →
+            90/106.7 to preserve the physical aim across the span correction,
+            but 90° is straight up on this fixture, so they are placeholders,
+            not aims.
       - [ ] Turn on `--dmx ola` in `ZVISION_ARGS` (`/etc/default/zvision`).
             zvision currently runs with **no `--dmx` flag**, so it defaults to
             `none` and nothing automated drives the head. Correct until aimed.

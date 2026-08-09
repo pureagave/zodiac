@@ -189,8 +189,8 @@ head out with nothing to track), so the failure state and the idle state agree.
 | Output | Max 1700 lux @ 5 m |
 | Light source | 1× high-power white LED |
 | DMX channels | 9 / 11 |
-| Pan (X axis) | 540° |
-| Tilt (Y axis) | 270° |
+| Pan (X axis) | 540° — measured, confirmed (§8.6b) |
+| Tilt (Y axis) | ~~270°~~ **measured 180°** — see §8.6e |
 | Control modes | DMX-512 / Master-Slave / Auto run / Sound active |
 | Display | LED display |
 | Internal programs | 8 (sound mode controllable via DMX-512) |
@@ -491,6 +491,37 @@ faster. If it ever lags a walking contact, look at `pan_slew_dps` /
 Both failures returned *plausible* numbers and the same wrong conclusion. The
 tell each time was in the diagnostics, not the verdict — identical timings, and
 a span of 8 px.
+
+### 8.6e ⚠️ Tilt is 180°, NOT the 270° the manual claims
+
+**§5 of this manual is wrong about tilt.** Measured on the fixture 2026-08-09,
+three independent ways:
+
+| Evidence | Reading |
+|---|---|
+| DMX → angle progression | tilt 64 → 45°, **128 → dead vertical**, 192 → 135° |
+| Scale factor | 64 DMX units = 45°, so 255 units = **179°** |
+| End stops | tilt 0 and tilt 255 are **antiparallel**, both just below horizontal |
+
+Half-scale landing on vertical is the decisive one: under a 270° span half-scale
+would be 135°, visibly past vertical. It is not, and it was called twice.
+
+**Why it mattered.** `deg_to_dmx16` divides by this span, so the manual's number
+scaled **every tilt command by 1.5×** — on the axis that decides how high up a
+person's body the beam lands. `tilt_far_deg = 135` was being sent as half-scale
+and physically pointing the head straight up. Pan's 540° checked out (§8.6b);
+tilt did not, which is the argument for measuring both rather than spot-checking
+one and trusting the document for the rest.
+
+`tilt_range_deg` is now **180.0**, pinned by tests that fail if anyone restores
+the manual's figure. `tilt_far_deg` / `tilt_near_deg` were rescaled 135/160 →
+90/106.7 — the same fractions of travel, so the physical aim is unchanged by the
+correction. **Both remain uncalibrated placeholders**: 90° is straight up on
+this fixture, which is not where a beam belongs once it is on the vehicle.
+
+A test that hardcoded `270.0` rather than reading the config had to be fixed
+alongside — it could only ever have confirmed the wrong number. Same shape as
+the channel-5 dimmer bug.
 
 ### 8.7 Gobo wheel, mapped the same way
 
