@@ -20,6 +20,7 @@ import java.net.InetAddress
  * fix, and non-NMEA junk must not. Packets are re-sent across a window so the
  * test doesn't race the listener's bind (UDP has no pre-bind buffering).
  */
+@Suppress("LargeClass")
 class NetworkLocationSourceTest {
     // Canonical valid GGA: 4807.038N 01131.000E → 48.1173, 11.5167 (checksum *47).
     private val validGga = "\$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n"
@@ -664,6 +665,173 @@ class NetworkLocationSourceTest {
             )
             assertTrue("the watchdog path must preserve the shock count", watchdogSnapshot.beaconSensors.shockCount > 0)
             assertTrue("stop() must preserve the shock count", stopSnapshot.beaconSensors.shockCount > 0)
+        }
+
+    // --- VTG is GPS course, not compass; only HDT may feed the
+    // compass-preferred slot (AUDIT-2026-08-09 C6). Android GNSS chips emit
+    // $GxVTG every epoch and the beacon forwards raw GNSS verbatim, so on the
+    // real wire HDT and VTG interleave continuously. ---
+
+    @Test
+    fun vtg_arriving_after_hdt_does_not_override_the_compass_heading() =
+        runBlocking {
+            // Mutation: restore VTG to parseHeadingDeg's matched types.
+            val port = 10300
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: HDT heading adopted",
+                    waitUntil(4_000) {
+                        sendUdp(validGga, port)
+                        sendUdp(nmea("GPHDT,45.0,T"), port)
+                        (source.state.value as? LocationSourceState.Active)?.fix?.headingDeg?.let { it in 44.0..46.0 } == true
+                    },
+                )
+                // A stopped vehicle's GNSS chip still emits VTG every epoch
+                // with a meaningless/noisy course. If VTG fed the compass
+                // slot, this would flip the heading away from 45.
+                sendUdp(nmea("GPVTG,200.0,T,198.0,M,000.0,N,000.0,K,A"), port)
+                Thread.sleep(150)
+                val heading = (source.state.value as? LocationSourceState.Active)?.fix?.headingDeg
+                assertTrue(
+                    "VTG must not override the live compass heading; heading=$heading",
+                    heading != null && heading in 44.0..46.0,
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun vtg_traffic_does_not_keep_a_dead_compass_fresh() =
+        runBlocking {
+            // Mutation: restore VTG to parseHeadingDeg's matched types (this
+            // is the watchdog-defeat half of C6: if VTG stamped headingRxMs,
+            // a dead HDT channel would never be judged stale and course would
+            // never take back over).
+            val port = 10301
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port, staleMs = 4_000, headingStaleMs = 300)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: HDT heading adopted",
+                    waitUntil(4_000) {
+                        sendUdp(validGga, port)
+                        sendUdp(nmea("GPHDT,45.0,T"), port)
+                        (source.state.value as? LocationSourceState.Active)?.fix?.headingDeg?.let { it in 44.0..46.0 } == true
+                    },
+                )
+                // HDT goes silent; only VTG and position keep arriving. If VTG
+                // fed headingRxMs, the compass would never be judged stale and
+                // course (180) would never take over.
+                assertTrue(
+                    "a dead compass fed only by VTG traffic must still fall back to GPS course",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("GPVTG,200.0,T,198.0,M,000.0,N,000.0,K,A"), port)
+                        sendUdp(nmea("GPRMC,123519,A,4807.038,N,01131.000,E,12.0,180.0,230394,,"), port)
+                        (source.state.value as? LocationSourceState.Active)?.fix?.headingDeg?.let { it in 179.0..181.0 } == true
+                    },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    // --- start() must be genuinely idempotent (AUDIT-2026-08-09 C5):
+    // CockpitViewModel init calls select(saved) — which already starts the
+    // source — then calls start() again unconditionally. Before this fix
+    // that cancelled and relaunched the live listener and re-acquired (i.e.
+    // leaked) the multicast lock on every app launch for every fleet tablet,
+    // since every fleet tablet persists NET. ---
+
+    private class FakeMulticastLockHandle : MulticastLockHandle {
+        var acquireCalls = 0
+            private set
+        var releaseCalls = 0
+            private set
+        override var isHeld: Boolean = false
+            private set
+
+        override fun acquire() {
+            acquireCalls++
+            isHeld = true
+        }
+
+        override fun release() {
+            releaseCalls++
+            isHeld = false
+        }
+    }
+
+    @Test
+    fun double_start_acquires_the_multicast_lock_exactly_once() =
+        runBlocking {
+            // Mutation: remove the `job?.isActive == true` guard at the top
+            // of start().
+            val port = 10304
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val lock = FakeMulticastLockHandle()
+            val source = NetworkLocationSource(scope = scope, port = port, multicastLockHandle = lock)
+            try {
+                source.start()
+                // The exact double-start CockpitViewModel init performs:
+                // select(saved) already started it, then start() again.
+                source.start()
+                assertEquals("a redundant start() must not re-acquire the lock", 1, lock.acquireCalls)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_releases_the_multicast_lock_acquired_by_start() =
+        runBlocking {
+            // Mutation: delete the multicastLockHandle.release() call in stop().
+            val port = 10305
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val lock = FakeMulticastLockHandle()
+            val source = NetworkLocationSource(scope = scope, port = port, multicastLockHandle = lock)
+            source.start()
+            source.stop()
+            scope.cancel()
+            assertEquals(1, lock.acquireCalls)
+            assertEquals(1, lock.releaseCalls)
+        }
+
+    @Test
+    fun a_redundant_start_does_not_reset_a_live_fix_to_searching() =
+        runBlocking {
+            // The listener-relaunch half of the C5 bug: a second start() must
+            // not cancel and restart the live listener, which would drop
+            // straight back to Searching even though real fixes are still
+            // arriving.
+            val port = 10306
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: an active fix",
+                    waitUntil(4_000) {
+                        sendUdp(validGga, port)
+                        source.state.value is LocationSourceState.Active
+                    },
+                )
+                source.start() // redundant, as CockpitViewModel init performs
+                assertTrue(
+                    "a redundant start() must not discard a live fix",
+                    source.state.value is LocationSourceState.Active,
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
         }
 
     @Test

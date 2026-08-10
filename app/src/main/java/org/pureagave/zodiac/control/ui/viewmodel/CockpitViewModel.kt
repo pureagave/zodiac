@@ -319,7 +319,9 @@ class CockpitViewModel(
             // select() is a no-op when the saved type matches the registry's
             // initialType; otherwise it stops FAKE (never started) and starts
             // the saved source. start() is then a no-op for the saved-source
-            // case (re-entry guarded) and the actual cold start for FAKE.
+            // case (re-entry guarded — true for FAKE, SYSTEM, and NET as of
+            // AUDIT-2026-08-09 C5; BLE/USB do not yet guard re-entry) and the
+            // actual cold start for FAKE.
             locationSource.select(saved.locationSource)
             locationSource.start()
         }
