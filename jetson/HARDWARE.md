@@ -19,6 +19,76 @@ cross-section · system layout · build order, in one sheet.
 - [x] Car power DC-DC buck converter
 - [x] Networking — router + Ethernet cable
 - [x] **DMX interface** (FTDI dongle) + **DMX cables** + **moving-head fixture**
+### Lens specs: which axis, and how to check it on arrival
+
+**Vendors quote whichever number flatters the lens, and often never say which.**
+FLIR states the Ultra Wide's "160°" on the product page, on GroupGets and in the
+R200 dewarping note — and names the axis in none of them. It is the **diagonal**
+(settled by physics 2026-08-07, confirmed by measurement 2026-08-10). We are not
+changing lenses; this is here so the *next* camera added to the ring does not
+repeat the exercise.
+
+For this sensor (160×120, 4:3, equidistant fisheye) the three numbers are:
+
+| axis | half-angle | full | what it governs |
+|---|---|---|---|
+| diagonal | **80°** | 160° | **anything circular in the optical path** — window apertures, lens hoods, shrouds |
+| horizontal | **64°** | 128° | **bearings and coverage arcs** — `fov_ref=d` + `SurroundRing.COVERED_ARCS` |
+| vertical | **48°** | 96° | how much ground/sky is in frame; mounting |
+
+**Rule of thumb: 80° for anything circular in the optical path, 64° for anything
+about bearing.** They are not in conflict — they are different jobs.
+
+**When adding any camera:**
+
+1. **Ask the vendor which axis the FOV is measured across.** If they will not say,
+   assume nothing — a fisheye quoting *horizontal* 160° on a 4:3 sensor would need
+   a ~200° diagonal, which is not a lens that exists. That reasoning is often
+   enough to settle it on paper.
+2. **Put the axis in the spec string** — `fovref=d` or `fovref=h`, always explicit,
+   even though `d` is now the default. The spec string is where the next person looks.
+3. **Verify on arrival with the bottle test** (~5 minutes, no dark room needed):
+   put the camera a measured distance from a wall, park a hot or ice-cold object a
+   measured offset off centre, and compare the bearing `zvision` reports against
+   `atan(offset / distance)`. The ratio of the two *is* the FOV scale error.
+   Measured 2026-08-10: a true 40.4° read as 42.5° → ~61° implied horizontal
+   half-FOV vs 64° assumed. **Do not use "slide it until it disappears"** — a
+   fisheye squeezes and dims an object toward the frame edge until it drops below
+   the detector's minimum-area threshold, so it vanishes well inside the true edge
+   (observed: lost at ~44° against a 64° edge). Comparing reported-vs-true angle at
+   *any* known position calibrates the whole scale and never needs the edge.
+
+### Mounting angle — mount it LEVEL
+
+**`CameraMount` has `mount_az_deg` but no tilt/pitch term**, so the bearing math
+assumes the optical axis is horizontal. Any pitch built into a bracket is
+invisible to the code and comes back as azimuth error — the same failure class as
+the `fov_ref` bug, feeding the same tracker light:
+
+| tilt | azimuth error at 30° bearing | ground enters frame (lens at 2.5 m) |
+|---|---|---|
+| 0° | — | 2.25 m |
+| 10° | +0.4° | 1.56 m |
+| 20° | +1.6° | 1.01 m |
+| 30° | +3.7° | 0.53 m |
+
+Level already sees the ground from ~0.9 × mount height ahead — 2.25 m at 2.5 m up
+— and everything beyond, to the horizon. The zone inside that is not steerable
+anyway. Tilting trades real bearing accuracy for ground you cannot use.
+
+It is worse than the table suggests, too: on a 160° fisheye azimuth and elevation
+are **coupled** (see `pixel_to_bearing`'s docstring — a point's vertical offset
+already changes its computed bearing), so tilting moves every contact into a
+different part of that coupling with no term in the model to undo it.
+
+**Set it level with a spirit level or phone inclinometer, not by eye — aim for
+≤2°; under 5° the azimuth error stays under ~0.2° and is lost in the noise.** The
+playa being flat is what makes this easy: there is no terrain to chase, and level
+leaves 48° of vertical margin either way for suspension pitch, squat and bumps.
+
+If a mount ever genuinely cannot be level, add a `mount_el_deg` field and rotate
+the bearing vector before trusting the output. **Do not tilt it and hope.**
+
 - [x] **Thermal window — germanium D20 × 1 mm, 2-sided AR** (Amazon, ~$90, ordered 2026-08-02; D15 was cancelled). Upsized to 20 mm **for the UW's 160° FOV** — at 160° the window must be **mounted ~2 mm from the lens front** to avoid vignetting (required radius ≈ standoff × tan(80°) ≈ standoff × 5.7); D20 at ~2 mm clears essentially the full 160°, D15 would clip corners. **✅ Reconciled 2026-08-10 — the two numbers were never in conflict.** This sizing correctly uses the **80° diagonal** half-angle, because the window is a *circular* aperture and the rays that can clip on it are the **corner** rays, which sit at the full diagonal half-angle. The 64° from the FOV-reference decision is the **horizontal** half-angle, which governs bearings and coverage arcs — a different job. So `radius ≥ standoff × tan(80°) ≈ 5.7 × standoff` stands and ~2 mm for D20 is right; sizing with tan 64° ≈ 2.05 would permit ~4.9 mm and vignette the image corners, which is exactly where the widest-bearing contacts appear. When quoting the 5.7× rule, say which half-angle it uses and why: **80° for anything circular in the optical path, 64° for anything about bearing.** This paragraph and the "~1.7 mm" figures further down should be reconciled to one number. Don't go bigger — flat-window edge rays (~80° incidence) fall outside the AR coating anyway. (Thorlabs/Edmund $200–750 = lab overkill.) **Cut a scrap of HDPE for bench bring-up so a late shipment can't block the Lepton.**
 
 **Still needed (cheap last-mile, no lead time):**

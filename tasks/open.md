@@ -225,6 +225,13 @@ API contract, not real OS scheduling.
       group still in `CockpitViewModel` after the 2026-08-10 split.
 
 ### Surfaced by the 2026-08-10 documentation audit
+- [ ] **`CameraMount` has no tilt/pitch term** (`mount_az_deg` only), so the bearing
+      math assumes a level optical axis. Guidance added to `HARDWARE.md`: mount
+      level, ≤2°. Only needed if a pod genuinely cannot be mounted level — then add
+      `mount_el_deg` and rotate the bearing vector before trusting the output
+      (~1 hour with tests). A 20° tilt costs ~1.6° of azimuth at a 30° bearing,
+      which is the same failure class as the `fov_ref` bug and feeds the same light.
+
 
 - [x] **DOC-1 — DONE 2026-08-10, and measured.** `zvision`'s `--fov-ref` defaulted
       to `h` (±80°) while the tablet carried ±64° in `SurroundRing.COVERED_ARCS`.
