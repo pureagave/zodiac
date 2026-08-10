@@ -2,6 +2,7 @@ package org.pureagave.zodiac.control
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -849,6 +850,165 @@ class CockpitViewModelTest {
             }
         }
 
+    // --- C10: mapLoadError was dead state — nothing rendered it and there
+    // was no retry. These cover the state-transition/retry-gating logic
+    // that now backs the on-screen overlay (ui/concepts/PlayaMapPanel.kt's
+    // mapLoadErrorOverlay, which is visual-only and unverified by test).
+
+    @Test
+    fun failed_map_load_surfaces_as_mapLoadError() =
+        runTest {
+            val mapRepo = ControllablePlayaMapRepository()
+            val store = ViewModelStore()
+            try {
+                val vm = mapLoadVm(this.backgroundScope, store, mapRepo)
+                advanceUntilIdle()
+
+                mapRepo.emitFailed("art.geojson: unexpected token at line 4")
+                advanceUntilIdle()
+
+                assertEquals(
+                    "art.geojson: unexpected token at line 4",
+                    vm.uiState.value.mapLoadError,
+                )
+                assertNull(vm.uiState.value.playaMap)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun successful_map_load_clears_mapLoadError() =
+        runTest {
+            val mapRepo = ControllablePlayaMapRepository()
+            val store = ViewModelStore()
+            try {
+                val vm = mapLoadVm(this.backgroundScope, store, mapRepo)
+                advanceUntilIdle()
+
+                mapRepo.emitFailed("boom")
+                advanceUntilIdle()
+                assertNotNull(vm.uiState.value.mapLoadError)
+
+                mapRepo.emitLoaded(routableMap())
+                advanceUntilIdle()
+
+                assertNull(vm.uiState.value.mapLoadError)
+                assertNotNull(vm.uiState.value.playaMap)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun retryMapLoad_calls_the_repository_and_a_later_success_clears_the_error() =
+        runTest {
+            val mapRepo = ControllablePlayaMapRepository()
+            val store = ViewModelStore()
+            try {
+                val vm = mapLoadVm(this.backgroundScope, store, mapRepo)
+                advanceUntilIdle()
+                // The VM's own init already issued one load() (the cold start);
+                // count retries as a delta from that so this test is about
+                // retryMapLoad specifically, not the total lifetime call count.
+                val baseline = mapRepo.loadCallCount
+
+                mapRepo.emitFailed("malformed street_lines.geojson")
+                advanceUntilIdle()
+                assertNotNull(vm.uiState.value.mapLoadError)
+
+                vm.retryMapLoad()
+                advanceUntilIdle()
+                // The ControllablePlayaMapRepository's load() is a bare stub — it
+                // doesn't itself flip the flow — so retry's only observable
+                // effect at this point is that it actually called load().
+                assertEquals(baseline + 1, mapRepo.loadCallCount)
+                assertTrue(vm.uiState.value.mapLoadRetrying)
+
+                // The repository's load() (real implementation) would now
+                // publish the outcome on loadResult; simulate it succeeding.
+                mapRepo.emitLoaded(routableMap())
+                advanceUntilIdle()
+
+                assertNull(vm.uiState.value.mapLoadError)
+                assertNotNull(vm.uiState.value.playaMap)
+                assertFalse(vm.uiState.value.mapLoadRetrying)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun retryMapLoad_while_already_loading_does_not_double_load() =
+        runTest {
+            val mapRepo = ControllablePlayaMapRepository()
+            val gate = CompletableDeferred<Unit>()
+            mapRepo.loadGate = gate
+            val store = ViewModelStore()
+            try {
+                val vm = mapLoadVm(this.backgroundScope, store, mapRepo)
+                advanceUntilIdle()
+                // Init's own load() call is already suspended on the gate at
+                // this point — baseline captures that so the assertions below
+                // are about retryMapLoad's call count, not the total.
+                val baseline = mapRepo.loadCallCount
+
+                mapRepo.emitFailed("timeout reading brc/2026/city_blocks.geojson")
+                advanceUntilIdle()
+
+                vm.retryMapLoad()
+                runCurrent() // let the first retry's load() call land and start suspending on the gate
+                assertEquals(baseline + 1, mapRepo.loadCallCount)
+                assertTrue(vm.uiState.value.mapLoadRetrying)
+
+                // Second retry while the first is still in flight must be a no-op.
+                vm.retryMapLoad()
+                runCurrent()
+                assertEquals(baseline + 1, mapRepo.loadCallCount)
+
+                // Release every attempt waiting on the gate (init's + the retry's).
+                // Emit a *distinct* result — StateFlow only re-emits on a value
+                // change, so re-publishing the identical Failed("...") the flow
+                // already holds would silently not notify the collector and
+                // this assertion would pass for the wrong reason.
+                gate.complete(Unit)
+                mapRepo.emitLoaded(routableMap())
+                advanceUntilIdle()
+                assertFalse(vm.uiState.value.mapLoadRetrying)
+
+                // Now that the in-flight attempt resolved, a fresh retry is allowed.
+                vm.retryMapLoad()
+                advanceUntilIdle()
+                assertEquals(baseline + 2, mapRepo.loadCallCount)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun mapLoadError_names_the_underlying_cause_not_a_generic_string() =
+        runTest {
+            val mapRepo = ControllablePlayaMapRepository()
+            val store = ViewModelStore()
+            try {
+                val vm = mapLoadVm(this.backgroundScope, store, mapRepo)
+                advanceUntilIdle()
+
+                val specific = "JSONException: key 'type' not found in city_blocks.geojson feature 12"
+                mapRepo.emitFailed(specific)
+                advanceUntilIdle()
+
+                // The ViewModel must forward the repository's message verbatim,
+                // not paraphrase it into something generic like "map failed" —
+                // that's the whole point of C10 for an unattended, kiosk-locked
+                // fleet with no way to inspect the failure except this string
+                // and the rolling log.
+                assertEquals(specific, vm.uiState.value.mapLoadError)
+            } finally {
+                store.clear()
+            }
+        }
+
     @Test
     fun beaconSensors_foldAmbientHealthOdometer_intoState() =
         runTest {
@@ -1207,16 +1367,59 @@ private fun driveToVm(
     return ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 }
 
-/** PlayaMapRepository whose load result the test drives on demand. */
+/** A VM wired with a caller-supplied [ControllablePlayaMapRepository] for the C10 map-load-error tests. */
+private fun mapLoadVm(
+    scope: CoroutineScope,
+    store: ViewModelStore,
+    mapRepo: ControllablePlayaMapRepository,
+): CockpitViewModel {
+    val factory =
+        CockpitViewModelFactory(
+            telemetryRepository = StaticTelemetryRepo(),
+            vehicleGateway = FakeVehicleGateway(),
+            playaMapRepository = mapRepo,
+            locationSource = newFakeRoutedLocationSource(scope),
+            preferences = NoOpCockpitPreferences(),
+            fakeLocationSource = FakeLocationSource(scope = scope),
+        )
+    return ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+}
+
+/**
+ * PlayaMapRepository whose load result the test drives on demand, and whose
+ * [load] calls are counted/gate-able — the C10 retry tests need to see
+ * "did retryMapLoad() actually call the repository" and "did it call it
+ * exactly once while a previous call was still in flight", which the real
+ * [org.pureagave.zodiac.control.data.playa.AssetsPlayaMapRepository] can't
+ * demonstrate from a plain JVM test without touching real asset I/O.
+ */
 private class ControllablePlayaMapRepository : PlayaMapRepository {
     private val flow = MutableStateFlow<MapLoadResult>(MapLoadResult.Loading)
     override val loadResult: StateFlow<MapLoadResult> = flow.asStateFlow()
     override val map: Flow<PlayaMap> = emptyFlow()
 
-    override suspend fun load() = Unit
+    /** How many times [load] has actually been invoked. */
+    var loadCallCount = 0
+        private set
+
+    /**
+     * When set, [load] suspends on this deferred instead of returning
+     * immediately — models an in-flight load so a test can assert a second
+     * concurrent call is refused rather than piling up.
+     */
+    var loadGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun load() {
+        loadCallCount++
+        loadGate?.await()
+    }
 
     fun emitLoaded(map: PlayaMap) {
         flow.value = MapLoadResult.Loaded(map)
+    }
+
+    fun emitFailed(message: String) {
+        flow.value = MapLoadResult.Failed(message)
     }
 }
 
