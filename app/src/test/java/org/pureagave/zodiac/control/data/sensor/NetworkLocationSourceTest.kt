@@ -9,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
+import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -395,6 +396,299 @@ class NetworkLocationSourceTest {
                         source.beaconSensors.value.beaconHealth == null
                     },
                 )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    // --- stop() must clear beacon-derived readings, not just tear down the
+    // socket (AUDIT-2026-08-09 C4). Before this fix, only the silence
+    // watchdog ever cleared _beaconSensors/_telemetry/_audioLevel, and stop()
+    // killed the watchdog without doing its job — so switching GPS sources at
+    // night froze ambientLux at the night value, holding the screen at the
+    // 0.05 brightness floor through the next day. ---
+
+    @Test
+    fun stop_clears_beacon_health() =
+        runBlocking {
+            // Mutation: delete the clearBeaconReadings() call in stop().
+            val port = 10191
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: beacon health populated",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZBCN,87,1,9,3600"), port)
+                        source.beaconSensors.value.beaconHealth?.batteryPct == 87
+                    },
+                )
+                source.stop()
+                assertEquals(null, source.beaconSensors.value.beaconHealth)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_clears_ambient_light() =
+        runBlocking {
+            // This is the one that holds the screen at 5% through a day: a
+            // frozen ambientLight after switching off NET at night is, after
+            // C2, the sole input to the brightness arbiter outside ACTIVE.
+            val port = 10192
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: ambient light populated",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZENV,3.0"), port)
+                        source.beaconSensors.value.ambientLight?.lux == 3.0
+                    },
+                )
+                source.stop()
+                assertEquals(null, source.beaconSensors.value.ambientLight)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_clears_the_odometer() =
+        runBlocking {
+            val port = 10193
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: odometer populated",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZODO,1234.5,987654.0"), port)
+                        source.beaconSensors.value.odometer?.tripMeters == 1234.5
+                    },
+                )
+                source.stop()
+                assertEquals(null, source.beaconSensors.value.odometer)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_clears_audio_level() =
+        runBlocking {
+            val port = 10194
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: audio level populated",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZAUD,0.500,0.800,1"), port)
+                        source.audioLevel.value != null
+                    },
+                )
+                source.stop()
+                assertEquals(null, source.audioLevel.value)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_clears_vehicle_telemetry() =
+        runBlocking {
+            val port = 10195
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: vehicle telemetry populated",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZTLM,4.0,-1.5,25.0"), port)
+                        source.telemetry.value != null
+                    },
+                )
+                source.stop()
+                assertEquals(null, source.telemetry.value)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_preserves_the_monotonic_shock_count() =
+        runBlocking {
+            // Mutation: clear shockCount too (BeaconSensors() with no args) —
+            // this is the one thing that must survive; a naive "clear
+            // everything" fix breaks the counter the ViewModel diffs against.
+            //
+            // Uses >= rather than exact equality, matching
+            // going_silent_preserves_the_shock_counter above: the waitUntil
+            // precondition below resends on every retry (needed so the test
+            // doesn't race the listener's bind), so duplicate datagrams can
+            // still be in flight and land after the snapshot is taken —
+            // that's more shocks landing, never fewer, so >= is exact enough
+            // to catch a reset-to-zero without being racy.
+            val port = 10196
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: two shocks recorded",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZSHK,1.10"), port)
+                        sendUdp(nmea("ZSHK,2.35"), port)
+                        source.beaconSensors.value.shockCount >= 2
+                    },
+                )
+                val countBeforeStop = source.beaconSensors.value.shockCount
+                source.stop()
+                assertTrue(
+                    "shockCount is a monotonic counter, not a reading — stop() must not rewind it",
+                    source.beaconSensors.value.shockCount >= countBeforeStop,
+                )
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    /** Everything [NetworkLocationSource.clearBeaconReadings] touches, snapshotted for comparison. */
+    private data class ClearedSnapshot(
+        val beaconSensors: BeaconSensors,
+        val hasTelemetry: Boolean,
+        val hasAudioLevel: Boolean,
+    )
+
+    @Test
+    fun the_silence_watchdog_and_stop_clear_the_same_things() =
+        runBlocking {
+            // Mutation: change one path's clearing but not the other (e.g.
+            // have stop() clear _telemetry too but leave the watchdog's inline
+            // clearing not doing so, or vice versa) — this is the test that
+            // stops the two paths drifting, the actual reason clearBeaconReadings()
+            // exists as one shared helper. Snapshots cover telemetry and
+            // audioLevel too, not just beaconSensors — a mutation that only
+            // desyncs one of those two separate flows must still be caught
+            // here, not only by their single-field stop_clears_* tests.
+            val watchdogPort = 10197
+            val stopPort = 10198
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+            // Run 1: drive the silence watchdog to fire.
+            val watchdogSource =
+                NetworkLocationSource(scope = scope, port = watchdogPort, staleMs = 400, beaconSilentMs = 600)
+            val watchdogSnapshot: ClearedSnapshot
+            try {
+                watchdogSource.start()
+                assertTrue(
+                    "precondition: beacon reported before going silent",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZBCN,87,1,9,3600"), watchdogPort)
+                        sendUdp(nmea("ZENV,3.0"), watchdogPort)
+                        sendUdp(nmea("ZODO,1234.5,987654.0"), watchdogPort)
+                        sendUdp(nmea("ZSHK,2.35"), watchdogPort)
+                        sendUdp(nmea("ZTLM,4.0,-1.5,25.0"), watchdogPort)
+                        sendUdp(nmea("ZAUD,0.500,0.800,1"), watchdogPort)
+                        watchdogSource.beaconSensors.value.beaconHealth?.batteryPct == 87 &&
+                            watchdogSource.telemetry.value != null &&
+                            watchdogSource.audioLevel.value != null
+                    },
+                )
+                assertTrue(
+                    "precondition: the watchdog cleared the readings on silence",
+                    waitUntil(4_000) {
+                        val s = watchdogSource.beaconSensors.value
+                        s.beaconHealth == null && s.ambientLight == null && s.odometer == null &&
+                            watchdogSource.telemetry.value == null && watchdogSource.audioLevel.value == null
+                    },
+                )
+                watchdogSnapshot =
+                    ClearedSnapshot(
+                        watchdogSource.beaconSensors.value,
+                        watchdogSource.telemetry.value != null,
+                        watchdogSource.audioLevel.value != null,
+                    )
+            } finally {
+                watchdogSource.stop()
+            }
+
+            // Run 2: reach the same cleared state via stop() instead.
+            val stopSource = NetworkLocationSource(scope = scope, port = stopPort)
+            val stopSnapshot: ClearedSnapshot
+            try {
+                stopSource.start()
+                assertTrue(
+                    "precondition: beacon reported before stop()",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZBCN,87,1,9,3600"), stopPort)
+                        sendUdp(nmea("ZENV,3.0"), stopPort)
+                        sendUdp(nmea("ZODO,1234.5,987654.0"), stopPort)
+                        sendUdp(nmea("ZSHK,2.35"), stopPort)
+                        sendUdp(nmea("ZTLM,4.0,-1.5,25.0"), stopPort)
+                        sendUdp(nmea("ZAUD,0.500,0.800,1"), stopPort)
+                        stopSource.beaconSensors.value.beaconHealth?.batteryPct == 87 &&
+                            stopSource.telemetry.value != null &&
+                            stopSource.audioLevel.value != null
+                    },
+                )
+                stopSource.stop()
+                stopSnapshot =
+                    ClearedSnapshot(
+                        stopSource.beaconSensors.value,
+                        stopSource.telemetry.value != null,
+                        stopSource.audioLevel.value != null,
+                    )
+            } finally {
+                scope.cancel()
+            }
+
+            // shockCount is compared separately (both > 0, i.e. preserved by
+            // both paths) rather than folded into the equality check: each
+            // precondition loop above resends its ZSHK on every retry (needed
+            // so the test doesn't race the listener's bind), so the exact
+            // count landing by the time of the snapshot is a race between the
+            // two independent runs and isn't the thing this test is checking.
+            assertEquals(
+                "the watchdog path and stop() must clear the same non-counter readings identically",
+                watchdogSnapshot.copy(beaconSensors = watchdogSnapshot.beaconSensors.copy(shockCount = 0)),
+                stopSnapshot.copy(beaconSensors = stopSnapshot.beaconSensors.copy(shockCount = 0)),
+            )
+            assertTrue("the watchdog path must preserve the shock count", watchdogSnapshot.beaconSensors.shockCount > 0)
+            assertTrue("stop() must preserve the shock count", stopSnapshot.beaconSensors.shockCount > 0)
+        }
+
+    @Test
+    fun stop_then_start_does_not_resurrect_the_old_readings() =
+        runBlocking {
+            val port = 10199
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: readings populated",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZBCN,87,1,9,3600"), port)
+                        source.beaconSensors.value.beaconHealth?.batteryPct == 87
+                    },
+                )
+                source.stop()
+                assertEquals(null, source.beaconSensors.value.beaconHealth)
+                source.start()
+                // Old readings must not resurrect just from restarting — only
+                // a fresh datagram should repopulate them.
+                assertEquals(null, source.beaconSensors.value.beaconHealth)
+                assertEquals(null, source.telemetry.value)
+                assertEquals(null, source.audioLevel.value)
             } finally {
                 source.stop()
                 scope.cancel()

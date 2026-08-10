@@ -70,6 +70,16 @@ internal var gpsHandleOverride: BeaconGpsHandle? = null
 
 private const val GPS_MIN_INTERVAL_MS = 1000L
 
+/**
+ * The $GPHDT sentence, or null when no compass reading has ever arrived — a
+ * device with no rotation-vector sensor must emit NOTHING, not 0.0, because
+ * 0.0 is a valid heading and the tablets cannot tell the difference.
+ */
+internal fun hdtSentenceOrNull(headingDeg: Double?): String? = headingDeg?.let { Nmea.hdt(it) }
+
+/** The $ZENV sentence, or null when no lux reading has ever arrived. */
+internal fun zenvSentenceOrNull(lux: Double?): String? = lux?.let { Nmea.zenv(it) }
+
 private class AndroidBeaconGpsHandle(
     private val context: Context,
     private val locationManager: LocationManager,
@@ -177,7 +187,7 @@ object TelemetryBroadcaster : SensorEventListener {
 
     @Volatile private var gpsWired: Boolean = false
 
-    @Volatile private var headingDeg: Double = 0.0
+    @Volatile private var headingDeg: Double? = null
 
     @Volatile private var pitchDeg: Double = 0.0
 
@@ -185,7 +195,7 @@ object TelemetryBroadcaster : SensorEventListener {
 
     @Volatile private var lastLocation: Location? = null
 
-    @Volatile private var luxValue: Double = 0.0
+    @Volatile private var luxValue: Double? = null
 
     @Volatile private var fixQuality: Int = 0
 
@@ -326,9 +336,9 @@ object TelemetryBroadcaster : SensorEventListener {
             TickLoop(
                 body = { tick ->
                     lastTickAtMs = SystemClock.elapsedRealtime()
-                    send(Nmea.hdt(headingDeg))
+                    hdtSentenceOrNull(headingDeg)?.let { send(it) }
                     send(Nmea.ztlm(pitchDeg, rollDeg, speedKph()))
-                    if (tick % ENV_EVERY_TICKS == 0L) send(Nmea.zenv(luxValue))
+                    if (tick % ENV_EVERY_TICKS == 0L) zenvSentenceOrNull(luxValue)?.let { send(it) }
                     if (tick % ODO_EVERY_TICKS == 0L) send(Nmea.zodo(tripMeters, totalMeters))
                     if (tick % HEALTH_EVERY_TICKS == 0L) {
                         send(Nmea.zbcn(batteryPct(), fixQuality, satellites, uptimeSec()))
@@ -414,8 +424,10 @@ object TelemetryBroadcaster : SensorEventListener {
                         else -> "GPS OFF — grant location permission"
                     },
                 )
-                append("\nHDG    ${headingDeg.toInt()}°   TILT p${pitchDeg.toInt()} r${rollDeg.toInt()}   SPD ${speedKph().toInt()} kph")
-                append("\nLIGHT  ${luxValue.toInt()} lx    SHOCK %.1f g peak".format(lastShockG))
+                val hdgText = headingDeg?.let { "${it.toInt()}°" } ?: "--"
+                append("\nHDG    $hdgText   TILT p${pitchDeg.toInt()} r${rollDeg.toInt()}   SPD ${speedKph().toInt()} kph")
+                val lightText = luxValue?.let { "${it.toInt()} lx" } ?: "-- lx (no sensor)"
+                append("\nLIGHT  $lightText    SHOCK %.1f g peak".format(lastShockG))
                 append(
                     "\nHEALTH ${batteryPct()}%%  fix q$fixQuality/$satellites sat  up %02d:%02d:%02d".format(
                         up / 3600,

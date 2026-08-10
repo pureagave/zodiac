@@ -133,15 +133,7 @@ class NetworkLocationSource(
                         // reporting a battery, satellite count and uptime from a
                         // beacon that died an hour ago. Silence is fine; a stale
                         // number presented as current is not.
-                        //
-                        // shockCount is monotonic and deliberately preserved: it's
-                        // an event counter the ViewModel diffs against, and
-                        // rewinding it would swallow the next real impact.
-                        _beaconSensors.update { BeaconSensors(shockCount = it.shockCount) }
-                        // Same reasoning: a visualiser still dancing to a
-                        // waveform from a beacon that died an hour ago is a
-                        // display telling a lie.
-                        _audioLevel.value = null
+                        clearBeaconReadings()
                     }
                     delay(staleMs / 2)
                 }
@@ -158,7 +150,24 @@ class NetworkLocationSource(
             socket = null
         }
         releaseMulticastLock()
+        // A stopped source must not leave the last beacon readings looking
+        // live — the watchdog above was the only thing that ever cleared
+        // them, and stop() kills the watchdog without doing its job.
+        clearBeaconReadings()
         _state.value = LocationSourceState.Disconnected
+    }
+
+    /**
+     * Drop every beacon-derived reading. [BeaconSensors.shockCount] is
+     * deliberately preserved: it is a monotonic event counter consumers diff
+     * against, not a reading — rewinding it would swallow the next real
+     * impact. Used by both [stop] and the silence watchdog so the two paths
+     * cannot drift apart.
+     */
+    private fun clearBeaconReadings() {
+        _beaconSensors.update { BeaconSensors(shockCount = it.shockCount) }
+        _telemetry.value = null
+        _audioLevel.value = null
     }
 
     /**
