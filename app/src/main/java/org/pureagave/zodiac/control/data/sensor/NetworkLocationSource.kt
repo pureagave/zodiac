@@ -45,12 +45,19 @@ import java.net.SocketTimeoutException
  */
 class NetworkLocationSource(
     private val scope: CoroutineScope,
-    private val applicationContext: Context? = null,
+    applicationContext: Context? = null,
     private val port: Int = FleetBus.TELEMETRY_PORT,
     private val group: String = FleetBus.TELEMETRY_GROUP,
     private val staleMs: Long = STALE_MS,
     private val beaconSilentMs: Long = BEACON_SILENT_MS,
     private val headingStaleMs: Long = HEADING_STALE_MS,
+    // Seam for the WifiManager.MulticastLock (AUDIT-2026-08-09 C5): Context
+    // is null in every JVM unit test today, so without this parameter the
+    // lock path — and its double-acquire bug — is never exercised by a test.
+    // Real callers (ZodiacApplication) just pass a Context, same as before;
+    // tests can inject a fake handle and assert acquire()/release() counts.
+    private val multicastLockHandle: MulticastLockHandle =
+        applicationContext?.let { WifiMulticastLockHandle(it) } ?: NoOpMulticastLockHandle,
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.NET
 
@@ -60,7 +67,6 @@ class NetworkLocationSource(
     private var job: Job? = null
     private var watchdog: Job? = null
     private var socket: DatagramSocket? = null
-    private var multicastLock: WifiManager.MulticastLock? = null
 
     // Telemetry arrives as separate sentences — position from GGA/RMC, compass
     // heading from HDT — so we hold the latest of each and emit a merged fix.
@@ -112,10 +118,28 @@ class NetworkLocationSource(
     private val _audioLevel = MutableStateFlow<AudioLevel?>(null)
     val audioLevel: StateFlow<AudioLevel?> = _audioLevel.asStateFlow()
 
+    // Dedup state for $ZSHK (AUDIT-2026-08-09 C7): the beacon sends every
+    // sentence to both the multicast group and the subnet-broadcast
+    // fallback, and this source binds wildcard *and* joins the group — so on
+    // any AP that forwards multicast, each datagram arrives twice. Every
+    // other channel is idempotent full-state (a repeat just overwrites
+    // itself with the same value); shockCount is a monotonic counter, so a
+    // duplicate doubles it. See [isDuplicateShockLine].
+    @Volatile private var lastShockLine: String? = null
+
+    @Volatile private var lastShockLineMs: Long = 0L
+
     override suspend fun start() {
-        job?.cancel()
+        if (job?.isActive == true) {
+            // Already running. CockpitViewModel init calls `select(saved)`
+            // then `start()` unconditionally right after — select() already
+            // started this source, so this second call must be a genuine
+            // no-op rather than cancel the live listener and re-acquire the
+            // multicast lock out from under it (AUDIT-2026-08-09 C5).
+            return
+        }
         watchdog?.cancel()
-        acquireMulticastLock()
+        multicastLockHandle.acquire()
         _state.value = LocationSourceState.Searching
         job = scope.launch(Dispatchers.IO) { runListener(this) }
         watchdog =
@@ -149,7 +173,7 @@ class NetworkLocationSource(
             runCatching { socket?.close() }
             socket = null
         }
-        releaseMulticastLock()
+        multicastLockHandle.release()
         // A stopped source must not leave the last beacon readings looking
         // live — the watchdog above was the only thing that ever cleared
         // them, and stop() kills the watchdog without doing its job.
@@ -168,26 +192,6 @@ class NetworkLocationSource(
         _beaconSensors.update { BeaconSensors(shockCount = it.shockCount) }
         _telemetry.value = null
         _audioLevel.value = null
-    }
-
-    /**
-     * Android's WiFi driver filters broadcast/multicast frames out before they
-     * reach an app to save power; a held [WifiManager.MulticastLock] disables
-     * that filter so we actually receive the fleet's UDP broadcast. No-op in
-     * unit tests (no Context → loopback unicast needs no lock).
-     */
-    private fun acquireMulticastLock() {
-        val wifi = applicationContext?.applicationContext?.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
-        multicastLock =
-            wifi.createMulticastLock("zodiac-nmea").apply {
-                setReferenceCounted(false)
-                runCatching { acquire() }
-            }
-    }
-
-    private fun releaseMulticastLock() {
-        multicastLock?.let { lock -> runCatching { if (lock.isHeld) lock.release() } }
-        multicastLock = null
     }
 
     // Broad catch is deliberate: any socket/IO failure must surface as an Error
@@ -287,8 +291,28 @@ class NetworkLocationSource(
         NmeaParser.parseBeaconHealth(line)?.let { h -> _beaconSensors.update { it.copy(beaconHealth = h) } }
         NmeaParser.parseOdometer(line)?.let { o -> _beaconSensors.update { it.copy(odometer = o) } }
         NmeaParser.parseShockEvent(line)?.let { s ->
+            if (isDuplicateShockLine(line)) return@let
             _beaconSensors.update { it.copy(lastShockG = s.peakG, shockCount = it.shockCount + 1) }
         }
+    }
+
+    /**
+     * True if [line] is byte-identical to the immediately preceding `$ZSHK`
+     * line and arrived within [SHOCK_DEDUP_WINDOW_MS] of it — i.e. the AP's
+     * second copy of the same datagram, not a second impact. The wire format
+     * carries no sequence number, so exact-bytes-within-a-short-window is the
+     * only signal available; the beacon's own shock detector has a 500 ms
+     * refractory before it emits a second real event, well outside this
+     * window. Always updates the dedup state, whether or not this call
+     * reports a duplicate, so the *next* line is compared against the one
+     * just seen.
+     */
+    private fun isDuplicateShockLine(line: String): Boolean {
+        val now = nowMs()
+        val duplicate = line == lastShockLine && now - lastShockLineMs <= SHOCK_DEDUP_WINDOW_MS
+        lastShockLine = line
+        lastShockLineMs = now
+        return duplicate
     }
 
     private fun nowMs(): Long = System.nanoTime() / NANOS_PER_MS
@@ -317,5 +341,67 @@ class NetworkLocationSource(
         /** Proprietary prefix the Sensor Hub's own channels share (`$Z…`). */
         const val HUB_SENTENCE_PREFIX: String = "\u0024Z"
         const val NANOS_PER_MS: Long = 1_000_000L
+
+        /**
+         * How long a byte-identical repeat of a `$ZSHK` line is attributed to
+         * the AP delivering the same physical impact twice rather than a
+         * genuine second one (AUDIT-2026-08-09 C7). The beacon's own
+         * refractory between real events is 500 ms; 200 ms comfortably covers
+         * dual multicast/broadcast delivery of one datagram without eating
+         * into that margin.
+         */
+        const val SHOCK_DEDUP_WINDOW_MS: Long = 200L
+    }
+}
+
+/**
+ * Seam for the [WifiManager.MulticastLock] this source holds while running —
+ * Android's WiFi driver filters broadcast/multicast frames out before they
+ * reach an app to save power, and a held lock disables that filter so the
+ * fleet's UDP broadcast actually arrives. Mirrors
+ * [SystemLocationManagerHandle]: the real implementation talks to a live
+ * [Context]; tests inject a fake and assert [acquire]/[release] call counts
+ * directly, which the previous Context-only design made impossible — Context
+ * is null in every JVM unit test, so the lock path (and its double-acquire
+ * bug, AUDIT-2026-08-09 C5) was never exercised.
+ */
+interface MulticastLockHandle {
+    val isHeld: Boolean
+
+    fun acquire()
+
+    fun release()
+}
+
+/** Used when there is no [Context] to hold a lock against (every JVM unit test today). */
+private object NoOpMulticastLockHandle : MulticastLockHandle {
+    override val isHeld: Boolean = false
+
+    override fun acquire() = Unit
+
+    override fun release() = Unit
+}
+
+private class WifiMulticastLockHandle(context: Context) : MulticastLockHandle {
+    private val lock: WifiManager.MulticastLock? =
+        (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)
+            ?.createMulticastLock("zodiac-nmea")
+            ?.apply { setReferenceCounted(false) }
+
+    override val isHeld: Boolean
+        get() = lock?.isHeld == true
+
+    // acquire()/release() are idempotent by construction — each is a no-op
+    // when the lock is already in the requested state — so a caller that
+    // forgets to check isHeld first (exactly the shape of the C5 bug) cannot
+    // double-acquire or double-release through this seam.
+    override fun acquire() {
+        if (isHeld) return
+        runCatching { lock?.acquire() }
+    }
+
+    override fun release() {
+        if (!isHeld) return
+        runCatching { lock?.release() }
     }
 }

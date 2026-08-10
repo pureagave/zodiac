@@ -38,18 +38,35 @@ object NmeaParser {
     }
 
     /**
-     * True/magnetic heading in degrees from a heading sentence — HDT (true),
-     * HDG/HDM (magnetic), or VTG (track made good) — normalized to [0, 360).
-     * The Zodiac Beacon synthesizes HDT from the phone's compass; the network
-     * source merges it into the fix so heading stays live even when the vehicle
-     * is stopped (where GPS course is meaningless). Null for any other sentence.
+     * True compass heading in degrees from the Zodiac Beacon's `$..HDT`
+     * sentence, normalized to [0, 360). The network source merges it into the
+     * fix so heading stays live even when the vehicle is stopped (where GPS
+     * course is meaningless). Null for any other sentence type.
+     *
+     * Deliberately **not** matching VTG or HDG/HDM (AUDIT-2026-08-09 C6):
+     * - VTG is GPS *course*, not compass — it is not a heading sentence at
+     *   all. Android GNSS chips emit `$GxVTG` every epoch and the beacon
+     *   forwards raw GNSS verbatim, so on the shipped fleet path VTG and the
+     *   synthesized HDT interleave and last-writer-wins — a stopped vehicle's
+     *   heading flip-flopped between real compass and course noise, and VTG
+     *   kept the heading timestamp fresh, defeating the dead-compass watchdog
+     *   ([org.pureagave.zodiac.control.data.sensor.NetworkLocationSource]'s
+     *   `headingRxMs`) that exists to fall back to course when HDT dies.
+     *   RMC's own course field is the correct course source; see
+     *   `NetworkLocationSource.ingest`.
+     * - HDG/HDM are *magnetic* heading (~13°E variation at BRC). Applying
+     *   them as true heading without correcting for variation would be
+     *   silently wrong by that amount, so — rather than parse the variation
+     *   field just to get this one call site right — they're rejected here
+     *   like any other non-HDT sentence. Revisit if a receiver that reports
+     *   magnetic-only heading (no HDT) shows up on the fleet.
      */
     fun parseHeadingDeg(line: String): Double? {
         val sentence = line.trim().trimEnd('\r', '\n')
         if (!sentence.startsWith("$") || !checksumValid(sentence)) return null
         val fields = sentence.substringBefore('*').drop(1).split(',')
         return when (fields.firstOrNull()?.takeLast(SENTENCE_TYPE_LEN)) {
-            "HDT", "HDG", "HDM", "VTG" -> parseCourseDeg(fields.getOrElse(HEADING_FIELD) { "" })
+            "HDT" -> parseCourseDeg(fields.getOrElse(HEADING_FIELD) { "" })
             else -> null
         }
     }
@@ -270,7 +287,7 @@ object NmeaParser {
     private const val RMC_SPEED_KNOTS = 7
     private const val RMC_COURSE = 8
 
-    // HDT/HDG/HDM/VTG all carry the heading/track in the first field.
+    // HDT carries the heading in its first field.
     private const val HEADING_FIELD = 1
 
     // ZTLM proprietary telemetry: pitch, roll, speedKph.

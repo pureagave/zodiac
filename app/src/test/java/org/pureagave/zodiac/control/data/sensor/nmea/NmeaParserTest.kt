@@ -71,10 +71,20 @@ class NmeaParserTest {
     }
 
     @Test
-    fun parses_hdg_hdm_and_vtg_headings() {
-        assertEquals(98.3, NmeaParser.parseHeadingDeg(nmea("HCHDG,98.3,0.0,E,12.6,W")) ?: -1.0, COORD_TOLERANCE)
-        assertEquals(271.5, NmeaParser.parseHeadingDeg(nmea("HCHDM,271.5,M")) ?: -1.0, COORD_TOLERANCE)
-        assertEquals(84.4, NmeaParser.parseHeadingDeg(nmea("GPVTG,084.4,T,086.1,M,022.4,N,041.5,K,A")) ?: -1.0, COORD_TOLERANCE)
+    fun rejects_vtg_and_magnetic_hdg_hdm_as_compass_heading() {
+        // AUDIT-2026-08-09 C6: VTG is GPS *course*, not compass — GNSS chips
+        // emit it every epoch and the beacon forwards raw GNSS verbatim, so
+        // treating it as heading flip-flopped a stopped vehicle's heading
+        // between real compass and course noise and kept the dead-compass
+        // watchdog from ever firing (VTG kept `headingRxMs` fresh). HDG/HDM
+        // are *magnetic* heading; the variation field (supplied here, 12.6°W)
+        // is discarded by every caller, so folding them into "compass true
+        // heading" would be silently wrong by ~13° at BRC. Only HDT may feed
+        // the compass-preferred slot — everything else must return null so
+        // NetworkLocationSource.ingest falls back to RMC course instead.
+        assertNull(NmeaParser.parseHeadingDeg(nmea("GPVTG,084.4,T,086.1,M,022.4,N,041.5,K,A")))
+        assertNull(NmeaParser.parseHeadingDeg(nmea("HCHDG,98.3,0.0,E,12.6,W")))
+        assertNull(NmeaParser.parseHeadingDeg(nmea("HCHDM,271.5,M")))
     }
 
     @Test
