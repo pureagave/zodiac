@@ -15,27 +15,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
-import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.geo.PlayaProjection
-import org.pureagave.zodiac.control.core.model.AUTO_RECENTER_MS
 import org.pureagave.zodiac.control.core.model.FollowMode
 import org.pureagave.zodiac.control.core.model.MapLoadResult
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.core.model.VehicleCommand
 import org.pureagave.zodiac.control.core.navigation.ClockTime
-import org.pureagave.zodiac.control.core.navigation.NavigationCue
-import org.pureagave.zodiac.control.core.navigation.PlayaCityModel
-import org.pureagave.zodiac.control.core.navigation.computeNavigationCue
-import org.pureagave.zodiac.control.core.navigation.nextWaypoint
-import org.pureagave.zodiac.control.core.navigation.routeTo
-import org.pureagave.zodiac.control.core.navigation.streetLabel
-import org.pureagave.zodiac.control.core.navigation.toCityModel
-import org.pureagave.zodiac.control.core.ops.AnnouncementCooldown
 import org.pureagave.zodiac.control.core.ops.NavTarget
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
-import org.pureagave.zodiac.control.core.ops.PoiKind
-import org.pureagave.zodiac.control.core.ops.addressTarget
-import org.pureagave.zodiac.control.core.ops.contactsWithinRange
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
@@ -63,6 +50,17 @@ import timber.log.Timber
  * world than its neighbour. The cost is that a per-frame field change copies
  * the whole state — see A5 in `tasks/open.md` for the split that would fix it.
  *
+ * **Three delegates, one facade.** The mechanism for three cohesive groups of
+ * operations lives in plain classes this ViewModel constructs and forwards to:
+ * [MapCameraController] (mode / tilt / zoom / pan / rotate / auto-recenter),
+ * [NavigationController] (drive-to target, route, nav cue, announcements) and
+ * [GpsController] (source selection, lifecycle, synthetic-GPS steering). They
+ * share this class's [_uiState] and `viewModelScope`, so there is still
+ * exactly one state holder and one coroutine lifetime; what changed is that
+ * each group's fields and timers now live next to the code that uses them
+ * instead of as loose members of a god-object. Everything the UI calls is
+ * still a method on this class.
+ *
  * Input validation lives here rather than in the UI (heading 0–359, speed
  * 0–160), so every entry point — chip, gesture, synthetic GPS — is bounded by
  * the same rules.
@@ -77,7 +75,7 @@ class CockpitViewModel(
     private val playaMapRepository: PlayaMapRepository,
     private val locationSource: RoutedLocationSource,
     private val preferences: CockpitPreferences,
-    private val fakeLocationSource: FakeLocationSource,
+    fakeLocationSource: FakeLocationSource,
     /**
      * Offline-first discovery POIs (art + camps). A plain flow rather than the
      * whole repository so the ViewModel depends only on what it renders and
@@ -106,34 +104,12 @@ class CockpitViewModel(
     private val _uiState = MutableStateFlow(CockpitUiState())
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
 
-    /**
-     * Built once when the BRC GIS finishes loading; used to feed every
-     * subsequent [computeNavigationCue] call. Held outside [_uiState]
-     * because the model is large and never has to round-trip through the
-     * Composable layer — only the resulting [NavigationCue] does.
-     */
+    /** Shared by the camera and navigation delegates — one projection per cockpit. */
     private val projection = PlayaProjection(GoldenSpike.ACTIVE)
-    private var cityModel: PlayaCityModel? = null
 
-    /**
-     * Coroutine that flips [FollowMode.FREE] back to [FollowMode.TRACK_UP]
-     * after [AUTO_RECENTER_MS] of map-gesture inactivity. Restarted on
-     * every pan / pinch / rotate; cancelled when the recenter button is
-     * tapped. Held as a field so consecutive gestures coalesce into one
-     * pending revert rather than stacking.
-     */
-    private var autoRecenterJob: Job? = null
-
-    /** Last street the ego was on, and the timer that clears its flash popup. */
-    private val streetCooldown = AnnouncementCooldown(STREET_COOLDOWN_MS)
-    private val passingCooldown = AnnouncementCooldown(PASSING_COOLDOWN_MS)
-
-    private var lastStreetLabel: String? = null
-    private var streetPopupJob: Job? = null
-
-    /** Last art whose passing was announced, and the timer that clears its callout. */
-    private var lastPassingUid: String? = null
-    private var passingJob: Job? = null
+    private val camera = MapCameraController(_uiState, viewModelScope, preferences, projection)
+    private val navigation = NavigationController(_uiState, viewModelScope, projection)
+    private val gps = GpsController(locationSource, fakeLocationSource, preferences, viewModelScope)
 
     /** Last shock count folded into the UI, and the timer that clears its alert banner. */
     private var lastShockCount: Long = 0
@@ -202,11 +178,7 @@ class CockpitViewModel(
                                 it.copy(mapLoadError = result.message, mapLoadRetrying = false)
                         }
                     }
-                    if (result is MapLoadResult.Loaded) {
-                        cityModel = result.map.toCityModel(projection)
-                        recomputeNavCue()
-                        recomputeRoute()
-                    }
+                    if (result is MapLoadResult.Loaded) navigation.onMapLoaded(result.map)
                 }
             }
             launch {
@@ -251,8 +223,8 @@ class CockpitViewModel(
                             camera = current.camera.copy(viewRotationDeg = newRotation),
                         )
                     }
-                    recomputeNavCue()
-                    recomputeRoute()
+                    navigation.recomputeNavCue()
+                    navigation.recomputeRoute()
                 }
             }
             launch {
@@ -319,36 +291,54 @@ class CockpitViewModel(
                     }
                 }
             }
-            // select() is a no-op when the saved type matches the registry's
-            // initialType; otherwise it stops FAKE (never started) and starts
-            // the saved source. start() is then a no-op for the saved-source
-            // case (re-entry guarded — true for FAKE, SYSTEM, and NET as of
-            // AUDIT-2026-08-09 C5; BLE/USB do not yet guard re-entry) and the
-            // actual cold start for FAKE.
-            locationSource.select(saved.locationSource)
-            locationSource.start()
+            gps.applySavedSource(saved.locationSource)
         }
     }
 
-    fun selectLocationSource(type: LocationSourceType) {
-        viewModelScope.launch {
-            locationSource.select(type)
-            preferences.setLocationSource(type)
-        }
-    }
+    // --- GPS (delegated to GpsController) ---
 
-    /**
-     * Stop and restart the currently-selected location source. Used after
-     * runtime permission grants — sources that emitted Error before the user
-     * granted permission need to re-attempt their start path to pick up the
-     * new permission state.
-     */
-    fun restartLocationSource() {
-        viewModelScope.launch {
-            locationSource.stop()
-            locationSource.start()
-        }
-    }
+    fun selectLocationSource(type: LocationSourceType) = gps.selectLocationSource(type)
+
+    fun restartLocationSource() = gps.restartLocationSource()
+
+    fun nudgeFakeGps(
+        dEastM: Double,
+        dNorthM: Double,
+    ) = gps.nudgeFakeGps(dEastM, dNorthM)
+
+    fun resetFakeGps() = gps.resetFakeGps()
+
+    // --- Map camera (delegated to MapCameraController) ---
+
+    fun setMapMode(mode: MapMode) = camera.setMapMode(mode)
+
+    fun setTiltDeg(deg: Int) = camera.setTiltDeg(deg)
+
+    fun setPixelsPerMeter(zoom: Double) = camera.setPixelsPerMeter(zoom)
+
+    fun panBy(
+        dEastM: Double,
+        dNorthM: Double,
+    ) = camera.panBy(dEastM, dNorthM)
+
+    fun nudgeViewRotation(deltaDeg: Float) = camera.nudgeViewRotation(deltaDeg)
+
+    fun recenterPan() = camera.recenterPan()
+
+    // --- Drive-to / navigation (delegated to NavigationController) ---
+
+    fun setNavTarget(target: NavTarget) = navigation.setNavTarget(target)
+
+    fun driveToNearestToilet() = navigation.driveToNearestToilet()
+
+    fun setAddressEntryOpen(open: Boolean) = navigation.setAddressEntryOpen(open)
+
+    fun driveToAddress(
+        clock: ClockTime,
+        ringName: String,
+    ) = navigation.driveToAddress(clock, ringName)
+
+    // --- Owned here: map load, vehicle commands, transport, concept ---
 
     /**
      * Re-attempts the bundled BRC map load without an Activity restart —
@@ -369,101 +359,6 @@ class CockpitViewModel(
         viewModelScope.launch { playaMapRepository.load() }
     }
 
-    fun setMapMode(mode: MapMode) {
-        _uiState.update { it.copy(camera = it.camera.copy(mapMode = mode)) }
-        viewModelScope.launch { preferences.setMapMode(mode) }
-    }
-
-    fun setTiltDeg(deg: Int) {
-        val clamped = deg.coerceIn(CockpitUiState.MIN_TILT_DEG, CockpitUiState.MAX_TILT_DEG)
-        _uiState.update { it.copy(camera = it.camera.copy(tiltDeg = clamped)) }
-        viewModelScope.launch { preferences.setTiltDeg(clamped) }
-    }
-
-    fun setPixelsPerMeter(zoom: Double) {
-        val clamped = zoom.coerceIn(CockpitUiState.MIN_PIXELS_PER_METER, CockpitUiState.MAX_PIXELS_PER_METER)
-        _uiState.update { it.copy(camera = it.camera.copy(pixelsPerMeter = clamped)) }
-        // Pinch is a map gesture — counts as user interaction in FREE mode
-        // and resets the auto-recenter timer, but doesn't itself switch
-        // out of TRACK_UP (the camera still tracks ego, just at new zoom).
-        if (_uiState.value.followMode == FollowMode.FREE) scheduleAutoRecenter()
-        viewModelScope.launch { preferences.setPixelsPerMeter(clamped) }
-    }
-
-    /**
-     * One-finger drag delta, already converted to playa metres (heading-
-     * aware) by the touch input layer. Switches the cockpit into
-     * [FollowMode.FREE] on first call: the camera detaches from the live
-     * GPS fix and parks at an absolute world position, so the user sees
-     * the ego marker slide on screen as the fix updates instead of the
-     * map sliding under a stationary marker.
-     */
-    fun panBy(
-        dEastM: Double,
-        dNorthM: Double,
-    ) {
-        val cap = CockpitUiState.MAX_CAMERA_OFFSET_M
-        _uiState.update { current ->
-            val ego = current.egoFix?.location?.let(projection::project) ?: PlayaPoint(0.0, 0.0)
-            val fromCamera = current.cameraOverride ?: ego
-            val newCamera =
-                PlayaPoint(
-                    eastM = (fromCamera.eastM + dEastM).coerceIn(ego.eastM - cap, ego.eastM + cap),
-                    northM = (fromCamera.northM + dNorthM).coerceIn(ego.northM - cap, ego.northM + cap),
-                )
-            current.copy(camera = current.camera.copy(cameraOverride = newCamera, followMode = FollowMode.FREE))
-        }
-        scheduleAutoRecenter()
-    }
-
-    /**
-     * Two-finger rotate delta in degrees (CW positive on screen). Spins
-     * the *display* — what compass direction sits at the top of the
-     * viewport — without touching the ego's physical heading. Like the
-     * pan gesture, switches to FREE so the camera doesn't immediately
-     * snap back to track-up on the next GPS tick.
-     */
-    fun nudgeViewRotation(deltaDeg: Float) {
-        if (deltaDeg == 0f) return
-        _uiState.update { current ->
-            // Floored modulo keeps the accumulated rotation in [0, 360) so it
-            // never grows unbounded and bleeds float precision over a long
-            // session of rotate gestures.
-            val raw = current.viewRotationDeg + deltaDeg
-            val normalized = ((raw % FULL_CIRCLE_DEG) + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
-            current.copy(
-                camera = current.camera.copy(viewRotationDeg = normalized, followMode = FollowMode.FREE),
-            )
-        }
-        scheduleAutoRecenter()
-    }
-
-    /**
-     * Snap back to [FollowMode.TRACK_UP]: clear the camera override so the
-     * camera follows the GPS fix again, sync display rotation to the
-     * ego's heading so it points up, and cancel any pending auto-recenter.
-     * Bound to the on-screen recenter button and to the auto-revert
-     * timer when the user is idle for [AUTO_RECENTER_MS].
-     */
-    fun recenterPan() {
-        autoRecenterJob?.cancel()
-        autoRecenterJob = null
-        _uiState.update { current ->
-            // One named operation rather than three coordinated field
-            // edits — recentring is a single idea and now reads as one.
-            current.copy(camera = current.camera.recentredOn(current.headingDeg))
-        }
-    }
-
-    private fun scheduleAutoRecenter() {
-        autoRecenterJob?.cancel()
-        autoRecenterJob =
-            viewModelScope.launch {
-                delay(AUTO_RECENTER_MS)
-                recenterPan()
-            }
-    }
-
     fun setHeading(headingDeg: Int) {
         val clamped = headingDeg.coerceIn(CockpitUiState.MIN_HEADING_DEG, CockpitUiState.MAX_HEADING_DEG)
         _uiState.update { current ->
@@ -480,20 +375,15 @@ class CockpitViewModel(
                     },
             )
         }
-        // Steer the synthetic GPS — the next fix will integrate position
-        // along this heading, so the ego "drives" in the new direction.
-        // No-op when the active source isn't FAKE.
-        fakeLocationSource.setHeading(clamped.toDouble())
-        recomputeNavCue()
+        gps.steerFakeGps(clamped)
+        navigation.recomputeNavCue()
         sendCommand(VehicleCommand.SetHeading(clamped))
     }
 
     fun setSpeed(speedKph: Int) {
         val clamped = speedKph.coerceIn(CockpitUiState.MIN_SPEED_KPH, CockpitUiState.MAX_SPEED_KPH)
         _uiState.update { it.copy(speedKph = clamped) }
-        // Throttle the synthetic GPS. > 0 makes the fake source advance the
-        // ego at every tick along the current heading; 0 parks it.
-        fakeLocationSource.setSpeed(clamped.toDouble())
+        gps.throttleFakeGps(clamped)
         sendCommand(VehicleCommand.SetSpeed(clamped))
     }
 
@@ -529,161 +419,7 @@ class CockpitViewModel(
         _uiState.update { it.copy(concept = next) }
         viewModelScope.launch { preferences.setConcept(next) }
     }
-
-    /** Set the active "drive to" preset (HOME / MAN / TEMPLE); clears a BATH lock. Session state. */
-    fun setNavTarget(target: NavTarget) {
-        _uiState.update { it.copy(navTarget = target, driveToBath = false, customTarget = null) }
-        recomputeRoute()
-    }
-
-    /**
-     * Drive to the nearest toilet bank. Session state; the target re-resolves
-     * from [CockpitUiState.activeDriveTarget] as the ego moves, so it always
-     * points at the closest one.
-     */
-    fun driveToNearestToilet() {
-        _uiState.update { it.copy(driveToBath = true, customTarget = null) }
-        recomputeRoute()
-    }
-
-    /** Show/hide the full-screen address-entry keypad. */
-    fun setAddressEntryOpen(open: Boolean) {
-        _uiState.update { it.copy(addressEntryOpen = open) }
-    }
-
-    /**
-     * Drive to a typed-in city address (clock + ring letter, e.g. 2:15 & H).
-     * Resolves it to a point on the polar grid and makes it the active custom
-     * target so the chevron + route guide there. No-op on an unknown ring.
-     */
-    fun driveToAddress(
-        clock: ClockTime,
-        ringName: String,
-    ) {
-        val target = addressTarget(clock, ringName, projection) ?: return
-        _uiState.update { it.copy(customTarget = target, driveToBath = false) }
-        recomputeRoute()
-    }
-
-    /**
-     * Debug-only: shift the FAKE source's parked position by [dEastM] east
-     * and [dNorthM] north. The fake source pushes a fresh fix immediately,
-     * so the ego marker and nav cue jump on the next state emission. No-op
-     * when the active source isn't the fake one (silently ignored).
-     */
-    fun nudgeFakeGps(
-        dEastM: Double,
-        dNorthM: Double,
-    ) {
-        fakeLocationSource.nudgeManualOffset(dEastM, dNorthM)
-    }
-
-    /** Debug-only: clear the fake source's parked offset and resume circling. */
-    fun resetFakeGps() {
-        fakeLocationSource.resetManualOffset()
-    }
-
-    /**
-     * Re-derive the nav cue from the current (ego, heading, city) triple
-     * and stash it in state. Called from every collector / setter that
-     * affects an input — keeps the cue cheap to read in the Composable.
-     * No-ops when the city model isn't loaded yet or there's no GPS fix.
-     */
-    private fun recomputeNavCue() {
-        val cm = cityModel
-        val state = _uiState.value
-        val ego = state.egoFix?.location?.let(projection::project)
-        val cue =
-            if (cm != null && ego != null) {
-                computeNavigationCue(ego, state.headingDeg, cm)
-            } else {
-                NavigationCue.Unknown
-            }
-        if (cue != state.navCue) _uiState.update { it.copy(navCue = cue) }
-
-        // Flash the street name whenever the ego moves onto a new street (or, out
-        // a radial, crosses into a new ring). Inlined here rather than a new VM
-        // method to keep the god-object's function count in check.
-        val street = cue.streetLabel()
-        // Cooldown rather than "differs from last": a label flickering to null
-        // and back at a block edge would otherwise re-flash every time.
-        if (street != null && street != lastStreetLabel && streetCooldown.shouldAnnounce(street)) {
-            _uiState.update { it.copy(streetPopup = street) }
-            streetPopupJob?.cancel()
-            streetPopupJob =
-                viewModelScope.launch {
-                    delay(STREET_POPUP_MS)
-                    _uiState.update { it.copy(streetPopup = null) }
-                }
-        }
-        lastStreetLabel = street
-
-        // Passing callout: flash the nearest notable art the ego is within range
-        // of (passenger flavour). New art only, and cleared on a timer.
-        if (ego != null) {
-            val nearest =
-                contactsWithinRange(state.pois.filter { it.kind == PoiKind.ART }, ego, PASS_RADIUS_M, max = 1)
-                    .firstOrNull()
-            val uid = nearest?.poi?.uid
-            // Cooldown rather than "differs from last": two pieces at similar
-            // range take turns being nearest as the ego jitters, and the pair
-            // would otherwise re-announce on every flip.
-            if (uid != null && uid != lastPassingUid && passingCooldown.shouldAnnounce(uid)) {
-                _uiState.update { it.copy(passingCallout = nearest.poi.name) }
-                passingJob?.cancel()
-                passingJob =
-                    viewModelScope.launch {
-                        delay(PASSING_CALLOUT_MS)
-                        _uiState.update { it.copy(passingCallout = null) }
-                    }
-            }
-            lastPassingUid = uid
-        }
-    }
-
-    /**
-     * Recompute the street-aware route to the active drive-to target and the
-     * next corner to steer toward. Same inputs as the nav cue (fix / city model
-     * / target). Clears to an empty route when any input is missing. The router
-     * is cheap vector math, so this runs on every fix without a cache.
-     */
-    private fun recomputeRoute() {
-        val cm = cityModel
-        val state = _uiState.value
-        val ego = state.egoFix?.location?.let(projection::project)
-        val target = state.activeDriveTarget?.location?.let(projection::project)
-        if (cm == null || ego == null || target == null) {
-            if (state.routeWaypointsM.isNotEmpty() || state.nextWaypoint != null) {
-                _uiState.update { it.copy(routeWaypointsM = emptyList(), nextWaypoint = null, entranceRadial = null) }
-            }
-            return
-        }
-        val route = routeTo(ego, target, cm)
-        val next = nextWaypoint(route.waypointsM, ego)?.let(projection::unproject)
-        _uiState.update {
-            it.copy(routeWaypointsM = route.waypointsM, nextWaypoint = next, entranceRadial = route.entranceRadial)
-        }
-    }
 }
-
-/** Degrees in a full revolution — used to normalize accumulated view rotation. */
-private const val FULL_CIRCLE_DEG: Double = 360.0
-
-/**
- * How long the same street or art piece is suppressed from re-announcing.
- * Long enough that a flapping nearest-contact, or a street label flickering at
- * a block edge, cannot spam the display; short enough that a genuine second
- * pass later in the night still calls out.
- */
-private const val STREET_COOLDOWN_MS = 60_000L
-private const val PASSING_COOLDOWN_MS = 120_000L
-
-/** How long a street-crossing name stays flashed before it clears. */
-private const val STREET_POPUP_MS: Long = 2_500L
-
-/** Proximity (metres) at which we announce passing a notable art piece, and how long the callout stays. */
-private const val PASS_RADIUS_M: Double = 120.0
-private const val PASSING_CALLOUT_MS: Long = 3_000L
 
 /** How long a shock/impact alert banner stays before it clears. */
 private const val SHOCK_ALERT_MS: Long = 2_000L
