@@ -43,12 +43,36 @@ private const val TAIL_LINES = 400
 private const val BYTES_PER_KB = 1024.0
 
 /**
+ * One consistent read of the log's state. Taken together off the IO thread so
+ * the counters can't disagree with the lines they describe.
+ */
+private data class LogSnapshot(
+    val lines: List<String> = emptyList(),
+    val sizeKb: Double = 0.0,
+    /** Lines lost to IO failure. */
+    val dropped: Long = 0L,
+    /** Lines that aged out of the rotation window — expected, but not silent. */
+    val agedOut: Long = 0L,
+    /** Rotations the filesystem refused; non-zero means the cap is at risk. */
+    val rotationFailures: Long = 0L,
+    val lastError: String? = null,
+)
+
+/**
  * On-device log viewer — the last [TAIL_LINES] of the rolling file.
  *
  * The premise of the whole logging feature is a tablet that misbehaved hours
- * ago somewhere out on the playa. `adb pull` answers that at camp with a
- * laptop; this answers it standing next to the vehicle with neither. That's
- * why it exists despite `adb` already working.
+ * ago somewhere out on the playa. This answers it standing next to the vehicle
+ * with no laptop — and on a Fire, where `adb pull` of `Android/data` is
+ * blocked outright, it is the *only* way the log is ever read at all.
+ *
+ * Which is why the loss counters are on screen next to the lines: a reader who
+ * cannot tell a complete record from a truncated one is being lied to by the
+ * one artefact they came to trust.
+ *
+ * Reached by a hidden long-press in the bottom-right corner (see
+ * `CockpitScreen`), never by cockpit chrome. The windscreen is the primary
+ * instrument; a control the driver can hit by accident is a defect.
  *
  * Read on IO, never on the main thread — the file is capped but still hundreds
  * of KB, and this opens while the cockpit is live.
@@ -59,23 +83,29 @@ fun logViewerPanel(
     theme: ConceptTheme,
     onClose: () -> Unit,
 ) {
-    var lines by remember { mutableStateOf<List<String>>(emptyList()) }
-    var sizeKb by remember { mutableStateOf(0.0) }
-    var dropped by remember { mutableStateOf(0L) }
+    var snapshot by remember { mutableStateOf(LogSnapshot()) }
     var reloads by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(reloads) {
-        val snapshot =
+        val read =
             withContext(Dispatchers.IO) {
-                Triple(log.tail(TAIL_LINES), log.files().sumOf { it.length() }, log.droppedLines)
+                LogSnapshot(
+                    lines = log.tail(TAIL_LINES),
+                    sizeKb = log.files().sumOf { it.length() } / BYTES_PER_KB,
+                    dropped = log.droppedLines,
+                    agedOut = log.discardedLines,
+                    rotationFailures = log.rotationFailures,
+                    lastError = log.lastError?.let { "${it::class.java.simpleName}: ${it.message}" },
+                )
             }
-        lines = snapshot.first
-        sizeKb = snapshot.second / BYTES_PER_KB
-        dropped = snapshot.third
-        // Newest last, and the newest is what you opened this for.
-        if (snapshot.first.isNotEmpty()) listState.scrollToItem(snapshot.first.lastIndex)
+        snapshot = read
+        // Newest last, and the newest is what you opened this for. The
+        // aged-out marker, when present, is item 0 and shifts the rest.
+        val leading = if (read.agedOut > 0) 1 else 0
+        if (read.lines.isNotEmpty()) listState.scrollToItem(read.lines.lastIndex + leading)
     }
+    val lines = snapshot.lines
 
     Box(
         modifier = Modifier.fillMaxSize().background(Scrim).clickable(onClick = onClose),
@@ -91,7 +121,18 @@ fun logViewerPanel(
                     .padding(12.dp)
                     .clickable(enabled = false) {},
         ) {
-            header(theme, lines.size, sizeKb, dropped, onReload = { reloads++ }, onClose = onClose)
+            header(theme, snapshot, onReload = { reloads++ }, onClose = onClose)
+            snapshot.lastError?.let {
+                Text(
+                    text = "LAST ERROR  $it",
+                    color = theme.error,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = LINE_SP.sp,
+                    softWrap = false,
+                    maxLines = 1,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
             if (lines.isEmpty()) {
                 Text(
                     text = "— no log lines —",
@@ -106,6 +147,22 @@ fun logViewerPanel(
                     // column destroys the scannability that makes this usable.
                     modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState()),
                 ) {
+                    // Scrolling to the top of the buffer must not read as the
+                    // beginning of the story when it is really where the story
+                    // was cut. The header carries the same number; this puts it
+                    // where the cut actually is.
+                    if (snapshot.agedOut > 0) {
+                        item {
+                            Text(
+                                text = "— ${snapshot.agedOut} earlier lines aged out of the rotation window —",
+                                color = theme.dim,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = LINE_SP.sp,
+                                softWrap = false,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                     items(lines.size) { i -> logLine(lines[i], theme) }
                 }
             }
@@ -136,9 +193,7 @@ private fun logLine(
 @Composable
 private fun header(
     theme: ConceptTheme,
-    lineCount: Int,
-    sizeKb: Double,
-    dropped: Long,
+    snapshot: LogSnapshot,
     onReload: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -148,27 +203,41 @@ private fun header(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "LOG  $lineCount lines  ${"%.0f".format(sizeKb)} KB",
+            text = "LOG  ${snapshot.lines.size} lines  ${"%.0f".format(snapshot.sizeKb)} KB",
             color = theme.primary,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             fontSize = HEADER_SP.sp,
         )
-        // Silent loss would make the log a liar about its own completeness.
-        if (dropped > 0) {
-            Text(
-                text = "$dropped DROPPED",
-                color = theme.error,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = HEADER_SP.sp,
-            )
+        // Silent loss would make the log a liar about its own completeness, so
+        // both ways a line can vanish get a chip here — but they are different
+        // claims and are coloured as such. Aged out is the window working as
+        // designed (data value, purple); dropped and a refused rotation are the
+        // log failing at its job (fault, red).
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (snapshot.agedOut > 0) headerChip("${snapshot.agedOut} AGED OUT", theme.accent)
+            if (snapshot.dropped > 0) headerChip("${snapshot.dropped} DROPPED", theme.error)
+            if (snapshot.rotationFailures > 0) headerChip("${snapshot.rotationFailures} ROTATE FAIL", theme.error)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             panelButton("RELOAD", theme.primary, onReload)
             panelButton("CLOSE", theme.error, onClose)
         }
     }
+}
+
+@Composable
+private fun headerChip(
+    text: String,
+    color: Color,
+) {
+    Text(
+        text = text,
+        color = color,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = HEADER_SP.sp,
+    )
 }
 
 @Composable

@@ -1,6 +1,7 @@
 package org.pureagave.zodiac.control.core.log
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -128,6 +129,101 @@ class RollingFileLogTest {
     }
 
     @Test
+    fun rotation_counts_the_lines_it_ages_out() {
+        // Conservation, not arithmetic: every line handed to the log is either
+        // still on disk or counted as aged out. Anything else means the log
+        // lost lines and said nothing — the one failure mode that makes an
+        // on-device postmortem worthless.
+        val log = log(maxBytes = 40L, keep = 1)
+
+        repeat(FLOOD_LINES) { log.append("entry-$it") }
+
+        val retained = log.files().sumOf { it.readLines().size }.toLong()
+        assertTrue("rotation actually happened", log.discardedLines > 0)
+        assertEquals("nothing lost to failure", 0L, log.droppedLines)
+        assertEquals("written = retained + aged out", FLOOD_LINES.toLong(), retained + log.discardedLines)
+    }
+
+    @Test
+    fun nothing_is_counted_as_aged_out_before_the_first_rotation() {
+        // The other direction: a count that over-reports is just as much a lie.
+        val log = log(maxBytes = 10_000L)
+
+        repeat(TAIL_LINES) { log.append("small-$it") }
+
+        assertEquals(0L, log.discardedLines)
+        assertEquals(TAIL_LINES, log.currentFile.readLines().size)
+    }
+
+    @Test
+    fun the_aged_out_count_is_measured_from_disk_not_remembered() {
+        // A tablet up for days rotates away lines written before the last
+        // process restart. A tally kept only in memory would report those as
+        // never having existed.
+        val first = log(maxBytes = 40L, keep = 1)
+        repeat(FLOOD_LINES) { first.append("entry-$it") }
+
+        val second = log(maxBytes = 40L, keep = 1)
+        assertEquals("a fresh instance starts from zero", 0L, second.discardedLines)
+        repeat(FLOOD_LINES) { second.append("later-$it") }
+
+        val retained = second.files().sumOf { it.readLines().size }.toLong()
+        assertTrue("the second instance aged out the first's lines", second.discardedLines > 0)
+        assertEquals(
+            "every line either survives or is accounted for across the restart",
+            2L * FLOOD_LINES,
+            retained + first.discardedLines + second.discardedLines,
+        )
+    }
+
+    @Test
+    fun a_refused_rotation_is_surfaced_and_the_line_is_not_pretended_written() {
+        val log = log(maxBytes = 40L, keep = 1)
+        log.append(SHORT_LINE)
+        val beforeFailure = log.currentFile.readLines()
+        blockRotationSlotOne()
+
+        repeat(BLOCKED_LINES) { log.append("cannot be rotated in $it") }
+
+        // Behaviour first, counters second: the point is not that a field moved
+        // but that the writer stopped instead of growing a file it can no
+        // longer rotate.
+        assertEquals("no line claims to have landed", beforeFailure, log.currentFile.readLines())
+        assertTrue("the size cap still holds", log.currentFile.length() <= 40L)
+        assertTrue("rename failure recorded", log.rotationFailures > 0)
+        assertTrue("refused lines counted, not swallowed", log.droppedLines > 0)
+        assertNotNull("and a reason a human can read", log.lastError)
+    }
+
+    @Test
+    fun logging_resumes_by_itself_once_rotation_can_succeed_again() {
+        // Refusing to write is only defensible if it is not permanent: a media
+        // remount must bring the log back with no restart.
+        val log = log(maxBytes = 40L, keep = 1)
+        log.append(SHORT_LINE)
+        blockRotationSlotOne()
+        log.append("refused while blocked")
+        val failuresWhileBlocked = log.rotationFailures
+        assertTrue(failuresWhileBlocked > 0)
+
+        File(tempFolder.root, "t.1.log").deleteRecursively()
+        log.append("lands after recovery")
+
+        assertEquals("no new failure once the path cleared", failuresWhileBlocked, log.rotationFailures)
+        assertTrue("the line is really on disk", log.files().flatMap { it.readLines() }.contains("lands after recovery"))
+    }
+
+    /**
+     * Stage a rotation failure the same way the filesystem would: POSIX rename
+     * onto a non-empty directory is refused, and so is deleting one.
+     */
+    private fun blockRotationSlotOne() {
+        val blocker = File(tempFolder.root, "t.1.log")
+        assertTrue(blocker.mkdirs())
+        File(blocker, "occupant").writeText("x")
+    }
+
+    @Test
     fun clear_removes_every_segment() {
         val log = log(maxBytes = 30L, keep = 2)
         repeat(FLOOD_LINES) { log.append("entry-$it") }
@@ -168,6 +264,8 @@ class RollingFileLogTest {
         const val FLOOD_LINES = 40
         const val TAIL_LINES = 12
         const val LONG_LINE = 100
+        const val BLOCKED_LINES = 5
+        const val SHORT_LINE = "first line that fits"
         const val OVERSIZE_ALLOWANCE = 200L
         const val THREADS = 8
         const val PER_THREAD = 200
