@@ -93,8 +93,17 @@ class ValidationTest(unittest.TestCase):
         self.assertEqual([], parse_frame("ZTHREAT;1:-360.0:0.5:0"))
 
     def test_round_trips_a_rear_contact(self):
+        # Not exact dataclass equality: parsing mirrors the tablet's 32-bit float
+        # width, and 0.4 is not representable there (it comes back as
+        # 0.4000000059604645). Asserting equality would be asserting that this
+        # side is *not* a faithful mirror of the consumer.
         rear = [DriverThreat(rel_az_deg=-160.0, size=0.4, collision=False, id=2001)]
-        self.assertEqual(rear, parse_frame(format_frame(rear)))
+        recovered = parse_frame(format_frame(rear))
+        self.assertEqual(1, len(recovered))
+        self.assertEqual(rear[0].id, recovered[0].id)
+        self.assertEqual(rear[0].collision, recovered[0].collision)
+        self.assertEqual(rear[0].rel_az_deg, recovered[0].rel_az_deg)
+        self.assertAlmostEqual(rear[0].size, recovered[0].size, places=6)
 
     def test_caps_contact_count(self):
         frame = "ZTHREAT" + "".join(f";{i}:0.0:0.5:0" for i in range(100))

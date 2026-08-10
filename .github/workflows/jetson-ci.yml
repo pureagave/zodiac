@@ -3,9 +3,9 @@ name: jetson-ci
 on:
   push:
     branches: [main]
-    paths: ["jetson/**", ".github/workflows/jetson-ci.yml"]
+    paths: ["jetson/**", "protocol/**", ".github/workflows/jetson-ci.yml"]
   pull_request:
-    paths: ["jetson/**", ".github/workflows/jetson-ci.yml"]
+    paths: ["jetson/**", "protocol/**", ".github/workflows/jetson-ci.yml"]
 
 jobs:
   zvision-tests:
