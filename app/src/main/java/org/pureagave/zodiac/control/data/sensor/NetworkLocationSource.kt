@@ -3,6 +3,7 @@ package org.pureagave.zodiac.control.data.sensor
 import android.content.Context
 import android.net.wifi.WifiManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -165,8 +166,15 @@ class NetworkLocationSource(
     }
 
     override suspend fun stop() {
-        job?.cancel()
-        watchdog?.cancel()
+        // cancelAndJoin, not cancel: cancellation is cooperative, so a datagram
+        // already inside ingest() would otherwise finish AFTER
+        // clearBeaconReadings() below and repopulate the very readings we just
+        // cleared. Invisible on a fast machine, reproducible on a loaded CI
+        // runner -- and in production it means switching source can leave one
+        // stale beacon reading behind, which is the whole bug stop() is here to
+        // prevent. Joining first makes the clear the last word.
+        job?.cancelAndJoin()
+        watchdog?.cancelAndJoin()
         job = null
         watchdog = null
         withContext(Dispatchers.IO) {
