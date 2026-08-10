@@ -3,9 +3,9 @@ package org.pureagave.zodiac.control.data.sensor
 import android.content.Context
 import android.net.wifi.WifiManager
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
