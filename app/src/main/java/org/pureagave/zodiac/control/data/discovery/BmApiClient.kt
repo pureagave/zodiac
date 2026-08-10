@@ -6,6 +6,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.pureagave.zodiac.control.BuildConfig
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
+import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.ops.PoiKind
@@ -14,6 +15,7 @@ import org.pureagave.zodiac.control.core.ops.campPoint
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.hypot
 
 /** Fetches playa points of interest for a year. Throws on failure so the repo can keep its cache. */
 interface DiscoverySource {
@@ -38,12 +40,32 @@ class BmApiClient(
             art + camps
         }
 
-    internal fun parseArt(o: JSONObject): PlayaPoi? {
+    /**
+     * [onRejectedCoordinate] fires (without arguments — the caller aggregates a
+     * count, never a per-record log) when a location is present but implausibly
+     * far from the city; the record still survives, just unplaced, exactly like
+     * a genuinely missing location.
+     */
+    internal fun parseArt(
+        o: JSONObject,
+        onRejectedCoordinate: () -> Unit = {},
+    ): PlayaPoi? {
         val name = o.optString("name").ifBlank { return null }
         val loc = o.optJSONObject("location")
         val lat = loc?.optDouble("gps_latitude", Double.NaN) ?: Double.NaN
         val lon = loc?.optDouble("gps_longitude", Double.NaN) ?: Double.NaN
-        val point = if (!lat.isNaN() && !lon.isNaN()) artPoint(lat, lon, projection) else null
+        val point =
+            if (lat.isNaN() || lon.isNaN()) {
+                null
+            } else {
+                val projected = artPoint(lat, lon, projection)
+                if (isPlausible(projected)) {
+                    projected
+                } else {
+                    onRejectedCoordinate()
+                    null
+                }
+            }
         return PlayaPoi(
             uid = o.optString("uid"),
             name = name,
@@ -74,6 +96,17 @@ class BmApiClient(
         )
     }
 
+    /**
+     * Rejects placements implausibly far from the city — swapped lat/lon, a
+     * zeroed coordinate pair, or any other garbage the feed hands back projects
+     * to a point tens/hundreds/thousands of km from [GoldenSpike.ACTIVE], versus
+     * a real BRC placement which is at most a few km out (the outer lettered
+     * ring is ~1.75 km; [MAX_PLAUSIBLE_RADIUS_M] pads well past the trash fence
+     * for deep-playa installations without coming close to a plausible bad-data
+     * distance).
+     */
+    private fun isPlausible(point: PlayaPoint): Boolean = hypot(point.eastM, point.northM) <= MAX_PLAUSIBLE_RADIUS_M
+
     private fun getArray(path: String): JSONArray {
         val conn = (URL(baseUrl + path).openConnection() as HttpURLConnection)
         conn.requestMethod = "GET"
@@ -94,6 +127,12 @@ class BmApiClient(
     private companion object {
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 20_000
+
+        // 5 km from the Golden Spike. The city itself is ~3 km across (outer
+        // ring K at 1.75 km) and the trash fence a bit past that; this leaves
+        // headroom for legitimate deep-playa placements while still catching
+        // swapped or zeroed coordinates, which land vastly farther out.
+        const val MAX_PLAUSIBLE_RADIUS_M = 5_000.0
     }
 }
 

@@ -49,6 +49,55 @@ class BmApiClientTest {
     }
 
     @Test
+    fun art_with_zeroed_coordinates_survives_but_is_not_placed() {
+        // (0,0) is thousands of km from BRC (40.78N, -119.2W) -- exactly the
+        // shape a missing/zeroed GPS field takes in a real feed.
+        val p =
+            client.parseArt(
+                JSONObject("""{"uid":"z","name":"Ghost Piece","location":{"gps_latitude":0.0,"gps_longitude":0.0}}"""),
+            )!!
+        assertEquals("Ghost Piece", p.name)
+        assertNull("implausible coordinates must not place a marker", p.point)
+    }
+
+    @Test
+    fun art_with_swapped_lat_lon_is_rejected() {
+        // Golden Spike is roughly (40.78, -119.2); swapping the fields lands the
+        // point ~160 degrees of longitude away from where it should be.
+        val p =
+            client.parseArt(
+                JSONObject(
+                    """{"uid":"s","name":"Swapped Piece","location":{"gps_latitude":-119.196602,"gps_longitude":40.791799}}""",
+                ),
+            )!!
+        assertNull("swapped lat/lon must not place a marker", p.point)
+    }
+
+    @Test
+    fun art_with_implausible_coordinates_increments_the_rejection_callback() {
+        var rejected = 0
+        val p =
+            client.parseArt(
+                JSONObject("""{"uid":"z","name":"Ghost Piece","location":{"gps_latitude":0.0,"gps_longitude":0.0}}"""),
+                onRejectedCoordinate = { rejected++ },
+            )!!
+        assertNull(p.point)
+        assertEquals(1, rejected)
+    }
+
+    @Test
+    fun art_with_plausible_coordinates_does_not_invoke_the_rejection_callback() {
+        var rejected = 0
+        client.parseArt(
+            JSONObject(
+                """{"uid":"art1","name":"The Temple","location":{"gps_latitude":40.791799,"gps_longitude":-119.196602}}""",
+            ),
+            onRejectedCoordinate = { rejected++ },
+        )
+        assertEquals(0, rejected)
+    }
+
+    @Test
     fun camp_with_a_clock_address_is_placed() {
         // NB (latent discrepancy, flagged for real-API verification): parseCamp
         // reads `location_string` from the TOP LEVEL of the record, whereas
