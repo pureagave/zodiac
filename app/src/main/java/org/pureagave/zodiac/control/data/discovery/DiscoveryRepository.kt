@@ -58,20 +58,40 @@ class DiscoveryRepository(
     /**
      * Fetch + re-cache. Swallows network/IO/parse failures so the cached list is
      * preserved; coroutine cancellation is re-thrown so the scope can unwind.
+     *
+     * A fetch is merged into the current set **by kind**: a kind absent from the
+     * fresh result (e.g. every camp record failed to parse this round while art
+     * came through fine) keeps its previously-cached records rather than being
+     * wiped. Only a kind that actually came back non-empty replaces its old data.
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException", "RethrowCaughtException")
     suspend fun refresh() {
         try {
             val fresh = source.fetch(year)
-            if (fresh.isNotEmpty()) {
-                _pois.value = fresh
-                saveCache(fresh)
-            }
+            if (fresh.isEmpty()) return
+            val merged = mergeByKind(_pois.value, fresh)
+            _pois.value = merged
+            saveCache(merged)
         } catch (e: CancellationException) {
             throw e // never swallow coroutine cancellation — let the scope unwind
         } catch (e: Exception) {
             // Offline or API error: keep whatever we already have.
         }
+    }
+
+    /**
+     * For each [PoiKind] present (non-empty) in [fresh], fresh's records replace
+     * current's. A kind fresh didn't return anything for keeps current's records
+     * for that kind untouched — a partial-degraded fetch can't clobber a good
+     * cache for the kind that failed.
+     */
+    private fun mergeByKind(
+        current: List<PlayaPoi>,
+        fresh: List<PlayaPoi>,
+    ): List<PlayaPoi> {
+        val freshKinds = fresh.map { it.kind }.toSet()
+        val keptFromCurrent = current.filter { it.kind !in freshKinds }
+        return keptFromCurrent + fresh
     }
 
     private fun saveCache(pois: List<PlayaPoi>) {

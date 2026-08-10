@@ -136,6 +136,63 @@ class DiscoveryRepositoryTest {
         }
 
     @Test
+    fun art_only_fetch_does_not_destroy_cached_camps() =
+        runTest {
+            // Simulates the C9 partial-degradation scenario: a prior good fetch
+            // cached both art and camps, then a later fetch's camp records all
+            // fail to parse (empty, not an exception) while art comes through.
+            writeCache(listOf(poi("a", "Alpha", PoiKind.ART), poi("b", "Bravo", PoiKind.CAMP)))
+            val repo =
+                DiscoveryRepository(
+                    ListSource(listOf(poi("a2", "Alpha Two", PoiKind.ART))),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                )
+            runCurrent()
+
+            val ids = repo.pois.value.map { it.uid }.toSet()
+            assertEquals(setOf("a2", "b"), ids)
+        }
+
+    @Test
+    fun camp_only_fetch_does_not_destroy_cached_art() =
+        runTest {
+            writeCache(listOf(poi("a", "Alpha", PoiKind.ART), poi("b", "Bravo", PoiKind.CAMP)))
+            val repo =
+                DiscoveryRepository(
+                    ListSource(listOf(poi("b2", "Bravo Two", PoiKind.CAMP))),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                )
+            runCurrent()
+
+            val ids = repo.pois.value.map { it.uid }.toSet()
+            assertEquals(setOf("a", "b2"), ids)
+        }
+
+    @Test
+    fun art_only_fetch_persists_the_merged_set_not_just_the_fresh_art() =
+        runTest {
+            // The merge must actually hit disk, not just the in-memory StateFlow --
+            // otherwise the next cold start loses the camps again.
+            writeCache(listOf(poi("a", "Alpha", PoiKind.ART), poi("b", "Bravo", PoiKind.CAMP)))
+            val repo =
+                DiscoveryRepository(
+                    ListSource(listOf(poi("a2", "Alpha Two", PoiKind.ART))),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                )
+            runCurrent()
+
+            val reopened = DiscoveryRepository(SuspendForeverSource(), backgroundScope, tmp.root, year)
+            runCurrent()
+            assertEquals(setOf("a2", "b"), reopened.pois.value.map { it.uid }.toSet())
+        }
+
+    @Test
     fun cache_round_trips_unicode_in_artist_names() =
         runTest {
             val unicodeName = "火星人 — Skål! 🔥"
