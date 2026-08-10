@@ -256,11 +256,17 @@ API contract, not real OS scheduling.
       (~2 mm standoff) while the same file's fov-ref section concludes the true
       half-angle is 64°. The 2 mm figure is the conservative one, so building to
       it is safe, but the 5.7× rule should not be quoted until one half-angle is
-      chosen. **The half-angle question is now answered (DOC-1, measured
-      2026-08-10): 64° horizontal.** What remains is purely the optics
-      arithmetic — recompute the standoff with tan 64° ≈ 2.05 and reconcile
-      the ~2 mm / ~1.7 mm / 5.7× figures to one number. Building to the
-      conservative 2 mm stays safe in the meantime.
+      chosen. **RESOLVED 2026-08-10 — and it was a category error, not an
+      arithmetic one.** There is no single half-angle to pick: the window is a
+      *circular* aperture, so the rays that govern it are the **corner** rays at
+      the diagonal half-angle of **80°**, while **64°** is the *horizontal* half
+      used for bearings and coverage arcs. Both numbers are correct for their own
+      job. `radius ≥ standoff × tan(80°) ≈ 5.7 × standoff` therefore stands as
+      originally written, and the ~2 mm standoff for D20 is right. Sizing the
+      window with tan 64° would allow ~4.9 mm and quietly vignette the image
+      corners — where the widest-bearing contacts are. Remaining work is only to
+      reconcile the stray "~1.7 mm" figures to the 2 mm one and to state, at each
+      use, which half-angle applies and why.
 
 ### P3 — hygiene, and the structural items
 
