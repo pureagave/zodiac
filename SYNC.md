@@ -6,6 +6,68 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-10 — Documentation audited against the code; three dangerous errors found
+
+Full rewrite of `README.md` and `ARCHITECTURE.md` as a genuine three-part system
+description, plus new `docs/{PROTOCOLS,BUILD,DEVICES,README}.md`, and a correction
+pass over `CLAUDE.md`, all seven `jetson/*.md` and all four `design/*.md`. Every
+claim verified against code; gates re-run green (app 817 / beacon 77 / jetson 429).
+
+**Three errors could have cost real time or hardware:**
+
+1. `MOVING-HEAD.md` §7 still listed `tilt_range_deg | 270` in its config table —
+   the manual's figure, in the lookup table an engineer reads first, three
+   sections above the measurement that refuted it and a test that pins 180.
+   Exactly the failure this project's own rule was written about, living inside
+   the document that tells the story.
+2. `DEPLOY.md` gave `ola_set_dmx -u 0 -d 128,0,128,0,255` as the "dimmer test",
+   twice. In 11-channel mode slot 5 is the **colour wheel** (255 = auto-spin) and
+   the dimmer is **ch8**, so it pans a head that stays dark — the exact symptom
+   MOVING-HEAD §7 Trap 1 tells you to watch for. `jetson/scripts/install-ola.sh`
+   printed the same broken command; fixed here too, with the reason in a comment.
+3. `MOVING-HEAD.md` §8.2 said force a motor reset with "ch9 held 250–255". That is
+   the **9-channel** map; the head runs 11-channel, where ch9 is the pan/tilt
+   speed axis and §8.6d measured 255 as the *slowest* setting. Following it would
+   make an unresponsive head worse while looking like the fix.
+
+**One real cross-side bug surfaced — documented, not fixed.** `HARDWARE.md`
+declares `fovref=d` settled and "DONE"; the tablet carries ±64° in
+`SurroundRing.COVERED_ARCS`, but `zvision`'s `--fov-ref` still defaults to `h`
+(`rig.py:90`) and no example rig sets it. The runner says so itself:
+`fov=160°h ... covers -80°..+80°`. **The two sides of the vehicle disagree by up
+to 16° at the frame edge — about 2.8 m of miss on a person at 10 m, which is
+where the tracker light gets pointed.** Recorded as DOC-1; needs a code decision,
+not a doc edit.
+
+**The `:beacon` CI gap was found during this pass** — every `android-ci.yml` step
+was `:app`-scoped, so the beacon's 77 tests, ktlint, detekt, lint and assemble had
+never run on a push, including the lint gate made real earlier the same day. Fixed
+by unscoping all five; verified by running them as CI does and confirming the
+`:beacon:` tasks execute. First green beacon-inclusive CI run: `4048250`.
+
+Other corrections: `minSdk` documented as 30, is **28** (and `beacon/build.gradle.kts`
+carried a stale comment claiming the beacon's floor was *lower* than the app's when
+29 > 28 — both fixed); "landscape-only", is `fullUser`; `HUD_FORWARD_ARC_DEG`
+documented but does not exist (`PERSPECTIVE_ARC_DEG = 30f`); ZTHREAT called a
+"byte-exact mirror" of a "frozen protocol" when it had drifted ten measured ways;
+DEPLOY's "Lepton is 120×120" (refuted 100 lines later in the same file), "Software
+is 100% ready" (aim uncalibrated, DMX arbitration unresolved) and "disabled-to-fake
+by default" (`install.sh` **enables and starts** it broadcasting a phantom
+collision); TRAINING's 120×120 in three load-bearing arguments; DETECTOR asking for
+`--record`, which shipped; BURN_IN listing the stress ledger as not built, which
+ships; PERFORMANCE written entirely in the old concept letters against a deleted
+`CRTVectorScreen`; and a **fabricated console banner** in `jetson/README.md` that
+could not be the output of the command printed directly above it.
+
+**Lesson worth keeping: the fabricated banner and the stale table row are the same
+defect.** Both are places where someone wrote down what they believed instead of
+what the code does, and both survived because nothing ever re-derived them. The
+golden corpus landed the same day is the pattern that fixes this class — measure
+it, check it in, make CI read it — and it is currently the only artifact in the
+repo that cannot go stale silently.
+
+---
+
 ## 2026-08-10 — The threat protocol had drifted, and five other things fixed in parallel
 
 Six parallel agents in git worktrees plus the ZTHREAT golden corpus, merged one

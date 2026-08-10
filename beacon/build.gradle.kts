@@ -11,8 +11,10 @@ android {
 
     defaultConfig {
         applicationId = "org.pureagave.zodiac.beacon"
-        // The beacon runs on the rugged sensor phone (XCover Pro = Android 10),
-        // so its floor is lower than the tablet app's (minSdk 30).
+        // The beacon runs on the rugged sensor phone (XCover Pro = Android 10 /
+        // API 29), which is its own floor — and a higher one than the tablet
+        // app's (minSdk 28), since the fleet includes a 9th-gen Fire HD 10 on
+        // API 28. The two modules do not share a floor; don't sync them.
         minSdk = 29
         targetSdk = 35
         versionCode = 1

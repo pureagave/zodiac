@@ -83,7 +83,10 @@ the port only exists once it enumerates):
 
   ola_dev_info                                  # note the FT232R device + port number
   ola_patch -d <device> -p <port> -u ${UNIVERSE}       # NB: our FT232R lands on port 1, not 0
-  ola_set_dmx -u ${UNIVERSE} -d 128,0,128,0,255        # pan/tilt/dimmer — head should move
+  # ch5 is the COLOUR WHEEL, not the dimmer: the old 128,0,128,0,255 form set
+  # ch5=255 (auto-spin) and never touched ch8, so the head panned in the dark —
+  # indistinguishable from a dead fixture (MOVING-HEAD.md §7 Trap 1).
+  ola_set_dmx -u ${UNIVERSE} -d 128,0,128,0,0,0,0,255  # pan/tilt + ch8 dimmer — head moves AND lights
   python3 -m zvision --source fake --dmx ola    # live: aims at the fake contacts
 
 Verify olad actually opened it — this line is the one that matters:

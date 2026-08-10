@@ -224,6 +224,42 @@ API contract, not real OS scheduling.
       `retryMapLoad` + the `playaMapRepository` collector are the one cohesive
       group still in `CockpitViewModel` after the 2026-08-10 split.
 
+### Surfaced by the 2026-08-10 documentation audit
+
+- [ ] **DOC-1 (P1) — Resolve the fov-ref disagreement between the two sides.**
+      `HARDWARE.md` §1 concludes the Lepton UW's 160° is the **diagonal** (±64°
+      horizontal) and the tablet already carries ±64° in
+      `SurroundRing.COVERED_ARCS`. But `zvision`'s `--fov-ref` defaults to `h`
+      (`rig.py:90`, `geometry.FOV_HORIZONTAL`) and no documented example rig sets
+      `fovref=d`, so the Python side computes ±80°. The runner prints it plainly:
+      `fov=160°h ... covers -80°..+80°`. **Up to 16° of bearing error at the frame
+      edge — ~2.8 m of miss on a person at 10 m, which is exactly where the
+      tracker light gets pointed.** Either flip the Python default to `d` (and
+      update the examples) or widen the tablet's arc. **Do not close this by
+      editing docs — it is a code decision.** ⚠️ Settled position on record is
+      "under-claim coverage", which points at flipping Python to `d`. Flagged in
+      four docs so it cannot be lost.
+- [x] **DOC-2 — DONE 2026-08-10.** `jetson/scripts/install-ola.sh` printed
+      `ola_set_dmx -u 0 -d 128,0,128,0,255`, writing ch5=255 (colour auto-spin)
+      and never touching the ch8 dimmer, so the head moved in the dark. Now
+      `-d 128,0,128,0,0,0,0,255`, with the reason in a comment.
+- [ ] **DOC-3 (P3) — Delete the stray `jetson/jetson/systemd/zodiac-track.service`.**
+      A tracked duplicate of `jetson/systemd/zodiac-track.service` differing only
+      in comments — and its comment falsely claims `install.sh` creates
+      `/var/lib/zodiac/track`, which it does not. Nothing references it.
+- [ ] **DOC-4 (P3) — `install.sh` should copy `zdeck/`, or DECK.md's step must stay.**
+      `zodiac-deck.service` runs `-m zdeck` from `WorkingDirectory=/opt/zodiac/jetson`,
+      but `install.sh` copies only `zvision` and `pyproject.toml` packages only
+      `zvision`. Works on a git-clone-to-`/opt/zodiac` box, fails with
+      `ModuleNotFoundError: zdeck` otherwise. DECK.md §2 now carries an explicit
+      `cp -r jetson/zdeck /opt/zodiac/jetson/` as the interim fix.
+- [ ] **DOC-5 (P3) — Reconcile the germanium-window standoff arithmetic.**
+      `HARDWARE.md` sizes the D20 window with `radius ≈ standoff × tan(80°)`
+      (~2 mm standoff) while the same file's fov-ref section concludes the true
+      half-angle is 64°. The 2 mm figure is the conservative one, so building to
+      it is safe, but the 5.7× rule should not be quoted until one half-angle is
+      chosen. Same root cause as DOC-1.
+
 ### P3 — hygiene, and the structural items
 
 - [x] **DONE 2026-08-10** — rotation discards counted from disk (`discardedLines`),
