@@ -48,6 +48,12 @@ class BeaconActivity : AppCompatActivity() {
         }
     }
 
+    // SetTextI18n: the beacon ships no string resources and is never localised —
+    // it's a single-screen provisioning UI for one operator on one bolted-in
+    // phone, sideloaded, never on Play. Extracting three literals to strings.xml
+    // would add a resource pipeline for zero reachable benefit. Scoped to this
+    // function so any *other* untranslated UI still gets reported.
+    @Suppress("SetTextI18n")
     private fun buildUi(): LinearLayout {
         val pad = (resources.displayMetrics.density * PAD_DP).toInt()
         val root =
@@ -99,11 +105,10 @@ class BeaconActivity : AppCompatActivity() {
             stopService(svc)
         } else {
             prefs.edit().putBoolean(BootReceiver.PREF_AUTO_START, true).apply()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(svc)
-            } else {
-                startService(svc)
-            }
+            // minSdk is 29, so the pre-O plain startService() branch was dead code
+            // (Lint ObsoleteSdkInt). Routed through ContextCompat so the manual
+            // start and BootReceiver's boot start take the identical path.
+            ContextCompat.startForegroundService(this, svc)
         }
     }
 
@@ -154,7 +159,16 @@ class BeaconActivity : AppCompatActivity() {
      * app wake locks outright (AUDIT-2026-08-09 B4). Prompt for the battery
      * optimization exemption once at provisioning, not on every launch — the
      * flag survives a decline too, so a "no" isn't nagged at forever.
+     *
+     * BatteryLife: Lint's objection is a *Play Store content policy* one — the
+     * exemption is only acceptable for a narrow set of use cases. This app is
+     * never published; it is sideloaded onto one dedicated vehicle sensor phone
+     * that has no other job. WorkManager, Lint's suggested alternative, cannot
+     * do this: the beacon is a continuous 250 ms tick loop feeding 8-10 tablets,
+     * not deferrable work. Without the exemption, deep Doze silently stalls the
+     * whole fleet's GPS. Scoped to this one function.
      */
+    @Suppress("BatteryLife")
     private fun requestBatteryOptimizationExemptionOnce() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (pm.isIgnoringBatteryOptimizations(packageName)) return
