@@ -1,13 +1,22 @@
 package org.pureagave.zodiac.control.ui.concepts
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -18,7 +27,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.geo.LatLon
 import org.pureagave.zodiac.control.core.geo.PlayaPoint
@@ -76,6 +91,15 @@ data class MapUiInputs(
     val headingDeg: Int,
     val pois: List<PlayaPoi>,
     val routeM: List<PlayaPoint>,
+    /**
+     * Human-readable reason the bundled BRC map failed to load (asset I/O,
+     * malformed GeoJSON, ...), or null when it loaded fine / hasn't failed.
+     * Drawn as [mapLoadErrorOverlay] over the (otherwise blank) map canvas —
+     * see C10: this used to be dead ViewModel state with no renderer.
+     */
+    val mapLoadError: String? = null,
+    /** True while a retry triggered from [mapLoadErrorOverlay] is in flight. */
+    val mapLoadRetrying: Boolean = false,
 ) {
     val cameraOverride: PlayaPoint? get() = camera.cameraOverride
     val viewRotationDeg: Double get() = camera.viewRotationDeg
@@ -92,6 +116,8 @@ data class MapUiInputs(
                 headingDeg = state.headingDeg,
                 pois = state.pois,
                 routeM = state.routeWaypointsM,
+                mapLoadError = state.mapLoadError,
+                mapLoadRetrying = state.mapLoadRetrying,
             )
     }
 }
@@ -333,6 +359,88 @@ fun playaMapPanel(
             )
         }
         style.sweep?.let { sweepArmCanvas(it) }
+        // Drawn last so it sits on top of the map, sweep and every other
+        // overlay — a failed load must be the most visible thing in the
+        // viewport, not a detail lost under the scanlines. See C10.
+        inputs.mapLoadError?.let { message ->
+            mapLoadErrorOverlay(
+                message = message,
+                retrying = inputs.mapLoadRetrying,
+                onRetry = viewModel::retryMapLoad,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+private val ErrorOverlayBacking = Color(0xE6000000)
+
+/**
+ * Small centred panel that replaces the (otherwise blank) map canvas when
+ * [MapUiInputs.mapLoadError] is set — the fix for C10, where a failed map
+ * load rendered nothing and the ViewModel's error state had no consumer.
+ * Named after what failed, in the cockpit's own visual language (red
+ * `theme.error` border/text, monospace, no Material dialog) rather than
+ * inventing a new one — matches [streetCrossingPopup] / [passingCallout] in
+ * weight and [permissionRationalePanel]'s chip for the retry action.
+ *
+ * Deliberately small: "a blank map with a short red line and a retry
+ * affordance" per the design brief, not a full-screen scrim.
+ */
+@Composable
+private fun mapLoadErrorOverlay(
+    message: String,
+    retrying: Boolean,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val theme = LocalCockpitTheme.current
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Column(
+            modifier =
+                Modifier
+                    .background(ErrorOverlayBacking)
+                    .border(2.dp, theme.error)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = "MAP LOAD FAILED",
+                color = theme.error,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                letterSpacing = 2.sp,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = message,
+                color = theme.error,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(10.dp))
+            val retryColor = if (retrying) theme.dim else theme.primary
+            Box(
+                modifier =
+                    Modifier
+                        .border(1.dp, retryColor)
+                        .then(if (retrying) Modifier else Modifier.clickable(onClick = onRetry))
+                        .padding(horizontal = 24.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    text = if (retrying) "RETRYING…" else "RETRY",
+                    color = retryColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    letterSpacing = 2.sp,
+                )
+            }
+        }
     }
 }
 

@@ -49,6 +49,7 @@ import org.pureagave.zodiac.control.data.prefs.CockpitPreferences
 import org.pureagave.zodiac.control.data.sensor.FakeLocationSource
 import org.pureagave.zodiac.control.data.sensor.RoutedLocationSource
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
+import timber.log.Timber
 
 /**
  * The cockpit's single state orchestrator: it subscribes to every source the
@@ -195,8 +196,10 @@ class CockpitViewModel(
                     _uiState.update {
                         when (result) {
                             is MapLoadResult.Loading -> it.copy(mapLoadError = null)
-                            is MapLoadResult.Loaded -> it.copy(playaMap = result.map, mapLoadError = null)
-                            is MapLoadResult.Failed -> it.copy(mapLoadError = result.message)
+                            is MapLoadResult.Loaded ->
+                                it.copy(playaMap = result.map, mapLoadError = null, mapLoadRetrying = false)
+                            is MapLoadResult.Failed ->
+                                it.copy(mapLoadError = result.message, mapLoadRetrying = false)
                         }
                     }
                     if (result is MapLoadResult.Loaded) {
@@ -343,6 +346,25 @@ class CockpitViewModel(
             locationSource.stop()
             locationSource.start()
         }
+    }
+
+    /**
+     * Re-attempts the bundled BRC map load without an Activity restart —
+     * the only way back from [MapLoadResult.Failed] (corrupt asset, a
+     * renamed GeoJSON field, ...) short of killing the app. [PlayaMapRepository.load]
+     * is one-shot per call and idempotent once [MapLoadResult.Loaded], so
+     * calling it again after a failure is exactly a retry.
+     *
+     * Guarded by [CockpitUiState.mapLoadRetrying] so a driver mashing the
+     * on-screen RETRY chip can't pile up concurrent parses; the flag is
+     * cleared by the `loadResult` collector above as soon as the next
+     * Loaded/Failed result lands.
+     */
+    fun retryMapLoad() {
+        if (_uiState.value.mapLoadRetrying) return
+        Timber.w("map: retry requested (previous error: %s)", _uiState.value.mapLoadError)
+        _uiState.update { it.copy(mapLoadRetrying = true) }
+        viewModelScope.launch { playaMapRepository.load() }
     }
 
     fun setMapMode(mode: MapMode) {

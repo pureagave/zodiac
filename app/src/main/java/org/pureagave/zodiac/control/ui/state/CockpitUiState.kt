@@ -69,6 +69,13 @@ data class CockpitUiState(
      */
     val camera: MapCameraState = MapCameraState.DEFAULT,
     val mapLoadError: String? = null,
+    /**
+     * True while a manually-triggered [org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel.retryMapLoad]
+     * attempt is in flight. Gates the on-screen RETRY chip so mashing it can't
+     * pile up concurrent map parses; cleared as soon as the repository's next
+     * Loaded/Failed result lands, whichever it is.
+     */
+    val mapLoadRetrying: Boolean = false,
     val concept: CockpitConcept = CockpitConcept.RADAR,
     val navCue: NavigationCue = NavigationCue.Unknown,
     /** Street name to flash big as the ego drives onto/past a street; null when nothing to show. */
