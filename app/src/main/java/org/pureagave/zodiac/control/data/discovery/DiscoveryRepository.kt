@@ -14,6 +14,7 @@ import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.ops.PoiKind
 import java.io.File
+import java.io.IOException
 
 /**
  * Offline-first playa-discovery store. On start it serves any disk cache
@@ -31,6 +32,10 @@ class DiscoveryRepository(
     private val scope: CoroutineScope,
     storageDir: File,
     private val year: Int,
+    // Test seam for the atomic-write path: lets a test inject a write that dies
+    // partway through (simulating a power cut mid-write) without needing to race
+    // a real thread. Default is the real "write the tmp file" step.
+    private val cacheWriter: CacheWriter = CacheWriter { target, text -> target.writeText(text) },
 ) {
     private val _pois = MutableStateFlow<List<PlayaPoi>>(emptyList())
     val pois: StateFlow<List<PlayaPoi>> = _pois.asStateFlow()
@@ -91,7 +96,28 @@ class DiscoveryRepository(
             }
             arr.put(o)
         }
-        runCatching { cacheFile.writeText(arr.toString()) }
+        writeAtomically(arr.toString())
+    }
+
+    /**
+     * Write-to-temp-then-rename, mirroring [org.pureagave.zodiac.control.data.playa.PlayaMapBinaryCache.write].
+     * A crash (power cut) during [cacheWriter] leaves only a half-written `.tmp`
+     * file; [cacheFile] — the one [loadCache] reads — is untouched until the
+     * rename, which is atomic on the same filesystem. Failure at any step is
+     * best-effort: the cache is allowed to stay stale, never to go missing or
+     * corrupt.
+     */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    private fun writeAtomically(text: String) {
+        val tmp = File(cacheFile.parentFile, "${cacheFile.name}.tmp")
+        try {
+            cacheFile.parentFile?.mkdirs()
+            cacheWriter.write(tmp, text)
+            if (!tmp.renameTo(cacheFile)) throw IOException("rename failed: $tmp -> $cacheFile")
+        } catch (e: Exception) {
+            // Next refresh retries; previous on-disk cache (if any) is untouched.
+            tmp.delete()
+        }
     }
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // corrupt/absent cache just yields null → refetch
@@ -126,6 +152,14 @@ class DiscoveryRepository(
     private companion object {
         const val REFRESH_INTERVAL_MS = 24L * 60 * 60 * 1000 // ~daily
     }
+}
+
+/** Test seam for [DiscoveryRepository]'s atomic cache write — see [DiscoveryRepository.writeAtomically]. */
+fun interface CacheWriter {
+    fun write(
+        target: File,
+        text: String,
+    )
 }
 
 private fun JSONObject.optStringOrNull(key: String): String? =

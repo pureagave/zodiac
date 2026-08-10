@@ -134,4 +134,82 @@ class DiscoveryRepositoryTest {
             runCurrent()
             assertEquals(PoiKind.ART, repo.pois.value.single().kind)
         }
+
+    @Test
+    fun cache_round_trips_unicode_in_artist_names() =
+        runTest {
+            val unicodeName = "火星人 — Skål! 🔥"
+            val fresh = listOf(poi("u1", unicodeName))
+            val repo = DiscoveryRepository(ListSource(fresh), backgroundScope, tmp.root, year)
+            runCurrent()
+
+            val reopened = DiscoveryRepository(SuspendForeverSource(), backgroundScope, tmp.root, year)
+            runCurrent()
+            assertEquals(unicodeName, reopened.pois.value.single().name)
+        }
+
+    @Test
+    fun a_torn_write_leaves_the_previous_good_cache_readable() =
+        runTest {
+            // Write a real good cache first, exactly as a prior successful launch
+            // would have.
+            writeCache(listOf(poi("good", "Good Data")))
+
+            // Simulate a power cut mid-write: the CacheWriter seam dies partway
+            // through writing the .tmp file, before the atomic rename ever runs.
+            val dyingWriter =
+                CacheWriter { target, _ ->
+                    target.writeText("{ this is not even close to valid json")
+                    throw IOException("power cut mid-write")
+                }
+            val repo =
+                DiscoveryRepository(
+                    ListSource(listOf(poi("new", "New Data"))),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                    cacheWriter = dyingWriter,
+                )
+            runCurrent()
+
+            // The in-memory state still reflects the fetch (that part is fine --
+            // it's the on-disk cache that must survive the crash).
+            assertEquals(listOf("new"), repo.pois.value.map { it.uid })
+
+            // But the real cache file on disk was never touched by the failed
+            // write -- rename never ran -- so it must still hold the old good data.
+            val reopened = DiscoveryRepository(SuspendForeverSource(), backgroundScope, tmp.root, year)
+            runCurrent()
+            assertEquals(
+                "a torn write must not corrupt the previously-persisted cache",
+                listOf("good"),
+                reopened.pois.value.map { it.uid },
+            )
+        }
+
+    @Test
+    fun a_stray_tmp_file_from_a_real_crash_does_not_wedge_the_next_healthy_write() =
+        runTest {
+            // A genuine power cut kills the process before any Kotlin catch block
+            // gets to run, so the .tmp file is left behind with no cleanup --
+            // unlike the CacheWriter-seam test above, where DiscoveryRepository's
+            // own catch still executes and deletes it. Simulate that directly by
+            // dropping a stray .tmp file on disk with no repository involved.
+            writeCache(listOf(poi("good", "Good Data")))
+            File(tmp.root, "discovery_$year.json.tmp").writeText("garbage, never renamed")
+
+            val repo =
+                DiscoveryRepository(
+                    ListSource(listOf(poi("recovered", "Recovered Data"))),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                )
+            runCurrent()
+            assertEquals(listOf("recovered"), repo.pois.value.map { it.uid })
+
+            val reopened = DiscoveryRepository(SuspendForeverSource(), backgroundScope, tmp.root, year)
+            runCurrent()
+            assertEquals(listOf("recovered"), reopened.pois.value.map { it.uid })
+        }
 }
