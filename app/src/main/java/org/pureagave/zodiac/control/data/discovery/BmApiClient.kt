@@ -12,6 +12,7 @@ import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.ops.PoiKind
 import org.pureagave.zodiac.control.core.ops.artPoint
 import org.pureagave.zodiac.control.core.ops.campPoint
+import timber.log.Timber
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -35,8 +36,24 @@ class BmApiClient(
 ) : DiscoverySource {
     override suspend fun fetch(year: Int): List<PlayaPoi> =
         withContext(Dispatchers.IO) {
-            val art = getArray("/api/art?year=$year").mapObjects(::parseArt)
+            var rejectedCoords = 0
+            val art = getArray("/api/art?year=$year").mapObjects { parseArt(it) { rejectedCoords++ } }
             val camps = getArray("/api/camp?year=$year").mapObjects(::parseCamp)
+            if (rejectedCoords > 0) {
+                Timber.w(
+                    "discovery: %d art record(s) had coordinates >%.0fm from the Golden Spike; placement dropped",
+                    rejectedCoords,
+                    MAX_PLAUSIBLE_RADIUS_M,
+                )
+            }
+            Timber.i(
+                "discovery: %d fetched from API — %d art (%d placed), %d camp (%d placed)",
+                year,
+                art.size,
+                art.count { it.point != null },
+                camps.size,
+                camps.count { it.point != null },
+            )
             art + camps
         }
 

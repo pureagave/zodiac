@@ -13,6 +13,7 @@ import org.json.JSONObject
 import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.ops.PoiKind
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 
@@ -47,7 +48,12 @@ class DiscoveryRepository(
             // Serve cache instantly, then refresh on launch and roughly nightly
             // while the process lives. A failed refresh (offline) is a no-op, so
             // the last good full dataset keeps serving through connectivity gaps.
-            loadCache()?.let { if (it.isNotEmpty()) _pois.value = it }
+            loadCache()?.let {
+                if (it.isNotEmpty()) {
+                    _pois.value = it
+                    Timber.i("discovery: %d served %d record(s) from disk cache", year, it.size)
+                }
+            }
             while (isActive) {
                 refresh()
                 delay(REFRESH_INTERVAL_MS)
@@ -68,14 +74,26 @@ class DiscoveryRepository(
     suspend fun refresh() {
         try {
             val fresh = source.fetch(year)
-            if (fresh.isEmpty()) return
+            if (fresh.isEmpty()) {
+                Timber.i("discovery: %d fetch returned 0 records; keeping cached %d", year, _pois.value.size)
+                return
+            }
             val merged = mergeByKind(_pois.value, fresh)
             _pois.value = merged
             saveCache(merged)
+            Timber.i(
+                "discovery: %d refreshed — fetched %d art / %d camp, now serving %d art / %d camp",
+                year,
+                fresh.count { it.kind == PoiKind.ART },
+                fresh.count { it.kind == PoiKind.CAMP },
+                merged.count { it.kind == PoiKind.ART },
+                merged.count { it.kind == PoiKind.CAMP },
+            )
         } catch (e: CancellationException) {
             throw e // never swallow coroutine cancellation — let the scope unwind
         } catch (e: Exception) {
             // Offline or API error: keep whatever we already have.
+            Timber.w(e, "discovery: %d refresh failed (%s); keeping cached %d", year, e.javaClass.simpleName, _pois.value.size)
         }
     }
 
@@ -135,7 +153,7 @@ class DiscoveryRepository(
             cacheWriter.write(tmp, text)
             if (!tmp.renameTo(cacheFile)) throw IOException("rename failed: $tmp -> $cacheFile")
         } catch (e: Exception) {
-            // Next refresh retries; previous on-disk cache (if any) is untouched.
+            Timber.w(e, "discovery: %d cache write failed; previous on-disk cache (if any) is untouched", year)
             tmp.delete()
         }
     }
@@ -165,6 +183,7 @@ class DiscoveryRepository(
                 )
             }
         } catch (e: Exception) {
+            Timber.w(e, "discovery: %d cache file is corrupt; treating as a miss", year)
             null
         }
     }
