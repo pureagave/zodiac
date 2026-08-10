@@ -42,10 +42,15 @@ android {
             isIncludeAndroidResources = true
         }
     }
-    // A small utility app — don't let cosmetic lint warnings (e.g. hardcoded
-    // strings in the debug UI) fail the shared gate.
+    // The beacon is the module where a manifest / permission / foreground-service-type
+    // / API-level mistake is fleet-fatal: it must survive a reboot and run unattended
+    // for a week feeding 8-10 tablets, and Lint is the only automated check that
+    // reads the manifest at all. It used to be `false` to keep cosmetic warnings
+    // (hardcoded strings in the provisioning UI) out of the shared gate; those are
+    // now suppressed at their source with a rationale, so the gate is real.
+    // Warnings still only report — only errors abort, same as :app.
     lint {
-        abortOnError = false
+        abortOnError = true
     }
 }
 

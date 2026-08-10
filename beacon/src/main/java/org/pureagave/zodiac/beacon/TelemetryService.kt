@@ -97,12 +97,14 @@ class TelemetryService : Service() {
         }
 
     private fun buildNotification(text: String): Notification {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            mgr.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Zodiac Beacon", NotificationManager.IMPORTANCE_LOW),
-            )
-        }
+        // minSdk is 29, so the pre-O "no notification channels" branch was dead
+        // code (Lint ObsoleteSdkInt). Channel creation is idempotent, and it must
+        // stay unconditional: without the channel the foreground notification is
+        // dropped and startForeground() kills the service.
+        val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        mgr.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Zodiac Beacon", NotificationManager.IMPORTANCE_LOW),
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Zodiac Beacon")
             .setContentText(text)
