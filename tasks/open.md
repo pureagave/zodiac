@@ -82,7 +82,7 @@ for every item are in the audit doc; this is the work list.
       battery if vehicle power dies, versus weeks asleep — correct trade, since a
       sleeping beacon is operationally identical to a dead one and `$ZBCN`'s
       battery percentage gives hours of warning.
-- [ ] **B5 Beacon FGS types vs permissions** — location-type FGS restarted while
+- [x] **B5 FIXED 2026-08-09 (commit 7c7c00b) — typed `startForeground` via the pure `safeForegroundTypes`; a START_STICKY restart is a background start by definition. ⚠️ API 34/35 branches argued from docs, not proven on hardware.**
       backgrounded gets no fixes; mic type on Android 14+ throws when denied.
 - [x] **B6 FIXED 2026-08-09.** One exception killed every synthesized beacon
       channel, silently, while GNSS passthrough kept flowing and the phone still
@@ -118,9 +118,9 @@ API contract, not real OS scheduling.
 
 ### P2 — silently wrong data
 
-- [ ] **C1 ✅ Beacon lux defaults to 0.0 and broadcasts it** → no light sensor
+- [x] **C1 FIXED 2026-08-09 (commit 5a20cc1) — absence is unrepresentable; the sentence is not sent until a real reading arrives. A genuine 0.0 lux / 0.0° heading IS still emitted.**
       pins the whole fleet to 5% brightness in daylight.
-- [ ] **C2 Auto-dim and burn-in fight over screen brightness**; auto-dim wins, so
+- [x] **C2 FIXED 2026-08-09 (commit 5298527) — `effectiveBacklight` is the single arbiter and single write site; burn-in is a ceiling that can only reduce. `autoDim` deleted.**
       burn-in mitigation is defeated whenever the beacon is live. Needs an
       arbiter — one write site.
 - [x] **C3 FIXED 2026-08-09. Burn-in animation clock was an accumulating `Float`** — pixel shift
@@ -129,7 +129,7 @@ API contract, not real OS scheduling.
       value, not the increment. Now derived from a Long-nanos baseline with each
       consumer taking its own modulo (`phaseFraction`), so precision no longer
       depends on uptime at all.
-- [ ] **C4 NET `stop()` freezes beacon sensors as live-looking state** — stale
+- [x] **C4 FIXED 2026-08-09 (commit 5a20cc1) — one `clearBeaconReadings()` used by both `stop()` and the silence watchdog so they cannot drift; `shockCount` preserved.**
       night lux holds the screen at 5% through the next day.
 - [x] **C5 FIXED 2026-08-09.** ViewModel init double-started the persisted source
       and leaked a `MulticastLock` on **every fleet launch**. `start()` now
@@ -218,12 +218,14 @@ API contract, not real OS scheduling.
 
 - [x] **`Nmea.checksum` validated against itself** — `xor` → `or` passed all 35
       beacon tests. FIXED 2026-08-09 with published NMEA 0183 vectors.
-- [ ] `NmeaParserTest.kt:74-78` asserts VTG parses as compass — locks in C6.
+- [x] **DONE** — `NmeaParserTest`'s VTG/HDG assertion replaced with
+      `rejects_vtg_and_magnetic_hdg_hdm_as_compass_heading` (commit in the C6 merge).
 - [ ] `PlayaMapBinaryCacheTest.kt:79` reads a different filename than it writes,
       so the header/magic/truncation checks are entirely unverified.
 - [ ] `NavTargetTest.kt:22-26` repeats the Temple coordinate literal.
-- [ ] `SystemLocationSourceTest` never delivers a `Location` — which is how A3
-      survives 719 green tests.
+- [x] **DONE** — the handle seam now speaks `GpsFix`, and
+      `a_delivered_fix_makes_the_source_active` is the first test in that suite
+      that ever delivered one (A3 fix).
 
 ## ⛔ Blocked on Rob / hardware
 
