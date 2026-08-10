@@ -178,13 +178,13 @@ API contract, not real OS scheduling.
 
 ### Surfaced by the P2 fixes — not yet done
 
-- [ ] **BLE and USB `LocationSource.start()` are still unguarded against
+- [x] **DONE 2026-08-10** — BLE and USB `LocationSource.start()` re-entry
       re-entry** — the same shape as the NET bug fixed in C5, lower priority only
       because neither is the persisted default.
 - [ ] **`locationFallbackActive` and `commandError` are dead state** — both set
       by the ViewModel, both rendered nowhere. Exactly the C10 shape. Either wire
       them up or delete them; today they look wired and are not.
-- [ ] **`detekt` `TooManyFunctions` was bumped 24 → 25** for `retryMapLoad`.
+- [x] **DONE 2026-08-10 — reverted to 22** (`TooManyFunctions` had been bumped 24 → 25) for `retryMapLoad`.
       This is against the project's own rule ("split the file, don't bump the
       number" — an instinct that has caught real organisation problems three
       times). The comment in `detekt.yml` already says the VM is becoming a
@@ -195,20 +195,48 @@ API contract, not real OS scheduling.
       `ZodiacApplication` wiring is not unit-testable without a Robolectric
       harness this repo does not have. Verified by review and compile only.
 
+### Surfaced by this session's work — not yet done
+
+- [ ] **`FileLogTree` (`data/log/`) buffers through a `Channel(256, DROP_OLDEST)`
+      and its overflow is still uncounted** — a burst silently loses lines before
+      they ever reach `RollingFileLog`, so the on-screen counters cannot see them.
+      The last silent loss channel in the logging path.
+- [ ] **`BleLocationSource` `Error` is still terminal** — NET got capped re-bind
+      plus a silence-triggered rejoin on 2026-08-10; BLE has the same shape and
+      did not.
+- [ ] **`:beacon` has no CI at all.** Every step in `android-ci.yml` is
+      `:app`-scoped, so beacon's 77 unit tests, ktlint, detekt, lint and assemble
+      have never run on a push — on the one module that must survive a reboot
+      unattended for a week. Now that beacon lint is green, the fix is to drop the
+      `:app:` prefix from all five steps (verified green locally 2026-08-10).
+- [ ] **The beacon's API 34/35 foreground-service branches are still argued, not
+      observed** — lint cannot validate them and the only beacon device on hand is
+      API 29. Needs one boot test on an API 34+ phone before Burn.
+- [ ] **Direct-boot / `BOOT_COMPLETED` before first unlock.** On an FBE device with
+      a secure lock screen the boot receiver never fires, so a 3am thermal reboot
+      leaves the fleet blind until someone physically unlocks the phone. Either
+      confirm the beacon phone has no secure lock credential, or make the
+      receiver/service direct-boot-aware (which also moves `PREF_AUTO_START` to
+      device-protected storage). **Needs Rob's decision.**
+- [ ] **A `MapLoadController` is the next VM delegate if map loading grows** —
+      `retryMapLoad` + the `playaMapRepository` collector are the one cohesive
+      group still in `CockpitViewModel` after the 2026-08-10 split.
+
 ### P3 — hygiene, and the structural items
 
-- [ ] Log overflow silently uncounted; `rotate()` ignores rename failures.
-- [ ] **`ThreatProtocol` drift is enforced socially** — two hand-mirrored
+- [x] **DONE 2026-08-10** — rotation discards counted from disk (`discardedLines`),
+      `rotationFailures` surfaced, a write that cannot be bounded is refused.
+- [x] **DONE 2026-08-10** — `ThreatProtocol` drift was enforced socially — two hand-mirrored
       implementations, zero shared artifacts. A checked-in golden corpus read by
       both suites is an afternoon and removes the category.
-- [ ] NET/BLE `Error` states are terminal; no multicast rejoin after a router
-      reboot.
+- [x] **NET DONE 2026-08-10** — capped re-bind + silence-triggered rejoin.
+      **BLE remains terminal** and is still open.
 - [ ] Beacon network targets computed once; socket never bound to the WiFi
       `Network`, so traffic can leave the wrong interface silently.
 - [ ] Kiosk: provisioning with a debug APK is a signature trap and the documented
       escape hatch likely does not work; `ota_disable_automatic_update` is not an
       allowed key on API 34.
-- [ ] **Beacon is exempt from the lint gate** (`abortOnError = false`) — on the
+- [x] **DONE 2026-08-10** — beacon lint gate is real (`abortOnError = true`) — on the
       one module where manifest/permission mistakes are fleet-fatal.
 - [ ] **Seams worth extracting**: `SystemLocationSource` clock,
       `NetworkLocationSource.ingest()`, a BLE/USB `SppHandle`, and continuing the
@@ -220,9 +248,11 @@ API contract, not real OS scheduling.
       beacon tests. FIXED 2026-08-09 with published NMEA 0183 vectors.
 - [x] **DONE** — `NmeaParserTest`'s VTG/HDG assertion replaced with
       `rejects_vtg_and_magnetic_hdg_hdm_as_compass_heading` (commit in the C6 merge).
-- [ ] `PlayaMapBinaryCacheTest.kt:79` reads a different filename than it writes,
-      so the header/magic/truncation checks are entirely unverified.
-- [ ] `NavTargetTest.kt:22-26` repeats the Temple coordinate literal.
+- [x] **DONE 2026-08-10** — it wrote `_v1` while production writes `_v2`, so the
+      whole corruption half of the suite hit the missing-file path. Tests now have
+      production write the cache and mutate those bytes. No production bug.
+- [x] **DONE 2026-08-10** — re-anchored to the bundled 2026 GIS CPN and BRC city
+      geometry (2500 ft up the 12:00 axis); MAN and HOME given the same treatment.
 - [x] **DONE** — the handle seam now speaks `GpsFix`, and
       `a_delivered_fix_makes_the_source_active` is the first test in that suite
       that ever delivered one (A3 fix).

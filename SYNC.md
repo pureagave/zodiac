@@ -6,6 +6,128 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-10 — The threat protocol had drifted, and five other things fixed in parallel
+
+Six parallel agents in git worktrees plus the ZTHREAT golden corpus, merged one
+at a time with the full gate between each. App **817** tests (was 773), beacon
+**77**, jetson **429** (was 423). Green, pushed.
+
+### The headline: "byte-exact mirror" was not true, and measurement is what showed it
+
+`CLAUDE.md` described `ThreatProtocol.kt` and `threat_protocol.py` as a byte-exact
+mirror. Differential-fuzzing 90 identical frames through both found **10 real
+divergences**. None was visible by reading either file; both were correct on their
+own terms. The cause in every case was the same: **a wire format had inherited its
+host language's numeric parser.**
+
+- Kotlin's `toFloatOrNull` accepts Java *source* syntax — `5.0f`, `5.0d`, hex
+  floats. **`0x1p3` in an azimuth field became a live contact bearing 8° on the
+  driver's HUD**, while the Jetson rejected the very same frame. That is the one
+  that mattered: the Kotlin comment directly above it calls this "the untrusted
+  network boundary".
+- Python's `int()` accepts underscores, surrounding whitespace and unbounded
+  magnitudes — a **4000-digit track id** parsed happily there and was dropped on
+  the tablet.
+- A `size` of `3.5e38` is finite in float64 and infinite in float32, so the
+  producer kept the contact and the consumer discarded it.
+
+Both sides now check an explicit grammar (`-?[0-9]{1,9}` for ids,
+`-?[0-9]{1,9}(\.[0-9]{1,6})?` for numbers — `[0-9]` and not `\d`, because
+Python's `\d` also matches Unicode digits and Java's does not), and the Python
+side rounds parsed values through 32-bit float so both agree on the range and
+clamp boundaries. **0 divergences over 111 cases, compared at exact equality.**
+
+Format direction converged too: half-even rounding to match the producer, and
+negative zero restored from the sign bit — `BigDecimal` has no `-0.0` and spells
+it `0.0`, and a contact a hair to the left of the nose is exactly where that
+shows up.
+
+### What the corpus is, and the one thing that makes it work
+
+`protocol/threat-protocol-golden.json` — 111 parse vectors, 27 format vectors,
+read by **both** suites. It was **measured, not authored**: a vector ships only
+if both implementations were observed to produce it, enforced by an assert in the
+generator. Hand-editing it would let someone write down what they believe instead
+of what the code does, which is the exact failure it exists to prevent.
+
+Both suites **fail loudly when the corpus is missing** rather than skipping, and
+both assert a minimum vector count — otherwise a truncated corpus makes every
+assertion vacuously green, which is this project's most-repeated bug (six times
+now). Verified by hiding the file and watching both go red.
+
+`jetson-ci.yml` was path-filtered to `jetson/**`, so **a corpus-only change would
+have skipped the Python half entirely** — the shared artifact would have been
+enforced on one side. Now triggers on `protocol/**`.
+
+3 cases remain where float64 and float32 spell a value differently (`1.45` → `1.4`
+vs `1.5`). They are recorded in the corpus as `known_precision_limits`, **not
+asserted as agreement**, with a test proving both spellings still parse to the
+same contact. This is inherent to a 64-bit producer and a 32-bit consumer, not a
+defect, and the note is guarded so it cannot rot into a lie.
+
+### Two halves nothing on the vehicle runs
+
+Worth recording, because it explains the whole failure: the production path is
+Python `format_frame` → Kotlin `parse`. Kotlin's `format` and Python's
+`parse_frame` exist **only as mirrors and are exercised only by tests**. The two
+halves that drifted are precisely the two the vehicle never runs. A cross-language
+contract rots in whichever direction nobody executes.
+
+### Merged alongside
+
+- **`CockpitViewModel` split** into `MapCameraController` / `NavigationController`
+  / `GpsController`; 721→457 lines, 24→21 functions, public API and every test
+  unchanged. `TooManyFunctions` reverted 25→**22** (probed to the tightest passing
+  value). "Split the file, don't bump the number" holds for a fourth time.
+- **Two tests that could only agree with the code they test.**
+  `PlayaMapBinaryCacheTest` wrote `_v1` while production writes `_v2`, so every
+  magic/header/truncation assertion was hitting the missing-file path — the whole
+  corruption half of the suite was dead. Fix pattern worth adopting: **have
+  production emit the artifact, then mutate those bytes, and pair every negative
+  assertion with a positive control.** `NavTargetTest` re-anchored to the bundled
+  GIS and BRC city geometry instead of retyping the Temple literal. No production
+  bug behind either.
+- **C5 closed in BLE and USB.** `start()` was re-entrant: the old `job?.cancel()`
+  dropped a working fix back to `Searching` on every redundant start *and* leaked
+  the link, because cancelling a coroutine does not unblock a blocking socket read.
+  `stop()` now cancels, closes the link to break the blocked read, *then* joins.
+- **NET `Error` is no longer terminal.** Capped exponential re-bind (1 s→30 s)
+  plus a 20 s silence-triggered socket rebuild. The silence path is the important
+  one: a WiFi re-association drops IGMP membership while the socket stays valid,
+  so `receive()` times out politely forever on a group the tablet has left —
+  **no exception any retry-on-throw could ever have caught.**
+- **Rolling log tells the truth about loss.** Rotation discards were uncounted, so
+  `tail()` read as the beginning of the story rather than where it was cut — the
+  loss channel that fires constantly on every healthy tablet. A failed `renameTo`
+  left the writer unbounded. Counted from disk, not remembered, because files
+  outlive the process.
+- **`:beacon` lint gate is real** (`abortOnError = true`). Measured 0 errors / 12
+  warnings before (identical under `checkAllWarnings`, so nothing was hiding), 0/4
+  after. Two dead `SDK_INT >= O` guards removed from the service-start and
+  notification-channel paths.
+
+### Lessons banked
+
+- **A "predicted" mutation was wrong twice more today**, both caught only by
+  running it: a `cancel`-vs-`cancelAndJoin` test **cannot** be written in virtual
+  time on a single-threaded scheduler, because any other `join` in the method
+  drains the queued listener and the mutation passes; and a socket-silence check
+  placed inside the `SocketTimeoutException` branch can never distinguish silence
+  from socket age. Run the mutation. Every time.
+- **`${PIPESTATUS[0]}` is bash; this shell is zsh** (`$pipestatus`, 1-indexed). A
+  gradle run that failed reported an empty status and I compared fresh Python
+  output against stale Kotlin output for one cycle. Checking the *artifact's*
+  mtime is what caught it — a new variant of "printing an exit code is not gating
+  on it".
+- **`cd` persists between shell calls.** A `cd jetson` from four commands earlier
+  made `./gradlew` vanish.
+- Asserting a replacement landed is now habit and paid off three times today: it
+  caught a stale `[Locale.ROOT]` KDoc reference after the formatter changed, raw
+  `\x0B`/`\x0C` control bytes I had embedded in Kotlin source where escapes
+  belonged, and a SYNC.md anchor I had quoted from CLAUDE.md rather than the file.
+
+---
+
 ## 2026-08-09 — Stream Deck as a physical control surface, and what review caught
 
 Six physical keys in the cab driving the tracker light. `jetson/zdeck/` +
