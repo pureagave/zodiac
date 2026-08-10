@@ -276,7 +276,14 @@ object TelemetryBroadcaster : SensorEventListener {
         val onLoc =
             LocationListener { loc ->
                 lastLocation = loc
-                odo.add(loc.latitude, loc.longitude)
+                // elapsedRealtimeNanos, not GPS/wall-clock time: monotonic, immune
+                // to the RTC jumps a cold GNSS fix or NTP sync can produce (C8).
+                odo.add(
+                    loc.latitude,
+                    loc.longitude,
+                    if (loc.hasAccuracy()) loc.accuracy else null,
+                    loc.elapsedRealtimeNanos / NANOS_PER_MS,
+                )
                 tripMeters = odo.tripMeters
                 totalMeters = odo.totalMeters
             }
