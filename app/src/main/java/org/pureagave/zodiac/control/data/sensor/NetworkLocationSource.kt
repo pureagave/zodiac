@@ -24,7 +24,6 @@ import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import org.pureagave.zodiac.control.core.telemetry.VehicleTelemetry
 import org.pureagave.zodiac.control.data.sensor.nmea.NmeaParser
 import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
@@ -43,6 +42,24 @@ import java.net.SocketTimeoutException
  * the same. A datagram may carry one or several `\r\n`-terminated sentences;
  * each line is parsed independently. The socket uses a receive timeout so [stop]
  * can unwind the read loop promptly instead of blocking on `receive`.
+ *
+ * **The listener re-binds and re-joins by itself.** The travel router owns
+ * AP/DHCP in the vehicle and *will* be power-cycled mid-night. Both ways that
+ * breaks this source used to be terminal:
+ *  - the bind or a read throws (interface gone) — the old code set
+ *    [LocationSourceState.Error] and `return`ed out of the listener for good;
+ *  - nothing throws at all, but the WiFi re-association silently drops the
+ *    IGMP group membership, so `receive` just times out forever and the tablet
+ *    listens to a group it is no longer in.
+ *
+ * Either way the tablet was dead to GPS for the rest of the night with no cab-side
+ * remedy but a reinstall — and on a Fire, which has no GNSS, that is *no position
+ * at all*. So the listener now loops: failures back off (see [backoffDelayMs])
+ * and retry forever, and a socket that has heard nothing for [rejoinSilentMs] is
+ * torn down and rebuilt so the group is joined afresh. State stays honest
+ * throughout — [LocationSourceState.Error] while the socket is down,
+ * [LocationSourceState.Searching] once re-bound but before a fix, never a claim
+ * that the link is up.
  */
 class NetworkLocationSource(
     private val scope: CoroutineScope,
@@ -52,6 +69,9 @@ class NetworkLocationSource(
     private val staleMs: Long = STALE_MS,
     private val beaconSilentMs: Long = BEACON_SILENT_MS,
     private val headingStaleMs: Long = HEADING_STALE_MS,
+    private val retryBaseMs: Long = RETRY_BASE_MS,
+    private val retryMaxMs: Long = RETRY_MAX_MS,
+    private val rejoinSilentMs: Long = REJOIN_SILENT_MS,
     // Seam for the WifiManager.MulticastLock (AUDIT-2026-08-09 C5): Context
     // is null in every JVM unit test today, so without this parameter the
     // lock path — and its double-acquire bug — is never exercised by a test.
@@ -59,6 +79,22 @@ class NetworkLocationSource(
     // tests can inject a fake handle and assert acquire()/release() counts.
     private val multicastLockHandle: MulticastLockHandle =
         applicationContext?.let { WifiMulticastLockHandle(it) } ?: NoOpMulticastLockHandle,
+    /**
+     * Seam for opening (bind + group join) the listening socket. Production
+     * uses [openFleetNmeaSocket]; tests inject a factory that counts attempts
+     * and can fail on demand, which is the only way to exercise a router
+     * reboot without one.
+     */
+    private val openSocket: () -> MulticastSocket = { openFleetNmeaSocket(port, group) },
+    /**
+     * Seam for the retry backoff wait — the injectable scheduler this repo
+     * uses elsewhere ([FailoverLocationSource]'s `nowMs`, the burn-in
+     * manager's clock). Tests record the requested delays instead of sleeping,
+     * so the policy is asserted exactly rather than inferred from wall time.
+     * The default must stay a real `delay`: it is what makes a [stop] during a
+     * backoff cancel promptly instead of parking a thread.
+     */
+    private val backoffWait: suspend (Long) -> Unit = { delay(it) },
 ) : LocationSource {
     override val type: LocationSourceType = LocationSourceType.NET
 
@@ -67,7 +103,15 @@ class NetworkLocationSource(
 
     private var job: Job? = null
     private var watchdog: Job? = null
-    private var socket: DatagramSocket? = null
+
+    /**
+     * The socket the listener is currently reading, or null while it is
+     * between attempts (backing off after a failure, or rebuilding after
+     * silence). Exactly one socket exists at a time — every attempt closes its
+     * own socket in [pump]'s `finally` before the next is opened — so a night
+     * of retries cannot leak file descriptors.
+     */
+    @Volatile private var socket: MulticastSocket? = null
 
     // Telemetry arrives as separate sentences — position from GGA/RMC, compass
     // heading from HDT — so we hold the latest of each and emit a merged fix.
@@ -202,52 +246,164 @@ class NetworkLocationSource(
         _audioLevel.value = null
     }
 
-    // Broad catch is deliberate: any socket/IO failure must surface as an Error
-    // state, never crash the IO coroutine. The SocketTimeoutException swallow is
-    // also deliberate — a read timeout is the normal "nothing arrived this tick"
-    // path that lets the loop re-check isActive so stop() unwinds promptly.
-    @Suppress("TooGenericExceptionCaught", "SwallowedException", "DEPRECATION")
-    private fun runListener(listenerScope: CoroutineScope) {
-        val sock =
-            try {
-                // NB: use also{}, not apply{} — inside apply the receiver's own
-                // `port` property (−1 when unconnected) would shadow our ctor port.
-                MulticastSocket(null).also { s ->
-                    s.reuseAddress = true
-                    s.bind(InetSocketAddress(port))
-                    s.soTimeout = READ_TIMEOUT_MS
-                    // Join the fixed fleet multicast group. runCatching: a host
-                    // with no multicast-capable interface (some CI) fails the
-                    // join, but the socket still receives unicast/broadcast to
-                    // the port — so tests and any broadcast fallback keep working.
-                    runCatching { s.joinGroup(InetAddress.getByName(group)) }
-                }
-            } catch (ex: Exception) {
-                _state.value = LocationSourceState.Error("NET: bind :$port failed — ${ex.message}", LocationSourceError.IO_ERROR)
-                return
+    /**
+     * Own the socket for as long as the job lives: open it, read it until it
+     * breaks or goes silent, then open it again after a backoff. Unlike the
+     * attempt *interval*, the attempt *count* is deliberately unbounded — the
+     * router may come back after ten seconds or after an hour, and a tablet
+     * that gave up after N tries is exactly the terminal-Error bug this
+     * replaces. What is bounded is the cost: one socket at a time, and a wait
+     * that grows to [retryMaxMs] so an all-night outage costs a couple of binds
+     * a minute rather than a spin.
+     */
+    private suspend fun runListener(listenerScope: CoroutineScope) {
+        var failures = 0
+        while (listenerScope.isActive) {
+            val sock = openSocketOrNull()
+            if (sock == null) {
+                failures++
+                backoffWait(backoffDelayMs(failures))
+                continue
             }
-        socket = sock
+            socket = sock
+            // Bound and listening, nothing heard yet. Never assert Active here:
+            // a re-bind proves only that the socket exists, not that the hub is
+            // on the air. (An already-Active fix inside its staleness window is
+            // left alone; the staleness watchdog owns demoting it.)
+            if (_state.value !is LocationSourceState.Active) _state.value = LocationSourceState.Searching
+            val result = pump(listenerScope, sock)
+            socket = null
+            // Only traffic counts as progress. Resetting on a successful bind
+            // alone would let a socket that dies the instant it opens retry at
+            // the base interval forever.
+            if (result.received) failures = 0
+            when (result.reason) {
+                ListenEnd.STOPPED -> return
+                ListenEnd.SILENT -> Unit // rebuild immediately; rejoinSilentMs is the rate limit
+                ListenEnd.FAILED -> {
+                    _state.value = LocationSourceState.Error("NET: ${result.detail}", LocationSourceError.IO_ERROR)
+                    failures++
+                    backoffWait(backoffDelayMs(failures))
+                }
+            }
+        }
+    }
+
+    // Broad catch is deliberate: any socket/IO failure must surface as an Error
+    // state and a retry, never crash the IO coroutine.
+    @Suppress("TooGenericExceptionCaught")
+    private fun openSocketOrNull(): MulticastSocket? =
+        try {
+            openSocket()
+        } catch (ex: Exception) {
+            _state.value =
+                LocationSourceState.Error("NET: bind :$port failed — ${ex.message}", LocationSourceError.IO_ERROR)
+            null
+        }
+
+    /**
+     * Read [sock] until the job is cancelled, the socket breaks, or it has
+     * heard nothing for [rejoinSilentMs]. Always closes [sock] on the way out,
+     * so the caller may open a fresh one unconditionally.
+     *
+     * The broad catch is deliberate: any socket/IO failure must come back as a
+     * retryable [ListenEnd.FAILED], never crash the IO coroutine.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun pump(
+        listenerScope: CoroutineScope,
+        sock: MulticastSocket,
+    ): ListenResult {
         val buf = ByteArray(BUFFER_BYTES)
+        var reason = ListenEnd.STOPPED
+        var detail: String? = null
+        var received = false
+        var lastRxMs = nowMs()
         try {
             while (listenerScope.isActive) {
-                val packet = DatagramPacket(buf, buf.size)
-                try {
-                    sock.receive(packet)
-                } catch (timeout: SocketTimeoutException) {
-                    continue // let the loop re-check isActive so stop() unwinds promptly
+                // Total silence for this long means the group membership is
+                // presumed lost: a WiFi re-association after a router reboot
+                // takes the interface down and back up without ever failing a
+                // read, so the reads keep timing out politely on a group we are
+                // no longer a member of. Rebuilding is the only rejoin
+                // available. Checked here rather than inside the timeout branch
+                // below so it is a statement about *silence*, not about the
+                // socket's age — a socket that is hearing the beacon reaches
+                // this line just as often and must never be recycled.
+                if (nowMs() - lastRxMs > rejoinSilentMs) {
+                    reason = ListenEnd.SILENT
+                    break
                 }
-                ingest(String(packet.data, 0, packet.length, Charsets.US_ASCII))
+                val packet = receiveOrNull(sock, buf)
+                if (packet != null) {
+                    lastRxMs = nowMs()
+                    received = true
+                    ingest(String(packet.data, 0, packet.length, Charsets.US_ASCII))
+                }
             }
         } catch (ex: Exception) {
             // A read throwing after stop() closed the socket is a normal shutdown.
             if (listenerScope.isActive) {
-                _state.value = LocationSourceState.Error("NET: ${ex.message}", LocationSourceError.IO_ERROR)
+                reason = ListenEnd.FAILED
+                detail = ex.message
             }
         } finally {
-            runCatching { sock.leaveGroup(InetAddress.getByName(group)) }
-            runCatching { sock.close() }
+            closeSocket(sock)
+        }
+        return ListenResult(reason, received, detail)
+    }
+
+    /**
+     * One read, or null if the socket's receive timeout elapsed with nothing
+     * on it. The swallow is deliberate — a read timeout is the normal "nothing
+     * arrived this tick" path, and returning to the loop is what lets the
+     * source notice cancellation (so [stop] unwinds promptly) and notice
+     * silence (so a lost group membership gets re-joined).
+     */
+    @Suppress("SwallowedException")
+    private fun receiveOrNull(
+        sock: MulticastSocket,
+        buf: ByteArray,
+    ): DatagramPacket? {
+        val packet = DatagramPacket(buf, buf.size)
+        return try {
+            sock.receive(packet)
+            packet
+        } catch (timeout: SocketTimeoutException) {
+            null
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun closeSocket(sock: MulticastSocket) {
+        runCatching { sock.leaveGroup(InetAddress.getByName(group)) }
+        runCatching { sock.close() }
+    }
+
+    /**
+     * Exponential backoff, capped: [retryBaseMs] × 2^(failures−1), never above
+     * [retryMaxMs]. 1 s first — a momentary blip (the beacon phone flipping AP,
+     * a brief deauth) heals before anyone in the cab notices. 30 s ceiling —
+     * a router power-cycle is a ~30-60 s outage, so that is the longest anyone
+     * waits past the network actually returning, while an all-night dead
+     * router costs two binds a minute instead of a hot loop. No jitter: the
+     * retry is a local bind plus an IGMP join, so ten tablets retrying in step
+     * put nothing on the air worth spreading out.
+     */
+    private fun backoffDelayMs(failures: Int): Long {
+        val shift = (failures - 1).coerceIn(0, BACKOFF_MAX_SHIFT)
+        val grown = retryBaseMs shl shift
+        return grown.coerceIn(retryBaseMs, maxOf(retryBaseMs, retryMaxMs))
+    }
+
+    private enum class ListenEnd { STOPPED, SILENT, FAILED }
+
+    /** Why [pump] returned, and whether anything at all was heard while it ran. */
+    private data class ListenResult(
+        val reason: ListenEnd,
+        val received: Boolean,
+        val detail: String? = null,
+    )
 
     /**
      * Split a datagram into NMEA lines and merge them: position from GGA/RMC,
@@ -327,8 +483,25 @@ class NetworkLocationSource(
 
     private companion object {
         const val BUFFER_BYTES: Int = 2048
-        const val READ_TIMEOUT_MS: Int = 1_000
         const val STALE_MS: Long = 5_000L
+
+        /** First retry after a socket failure — short enough that a blip heals unnoticed. */
+        const val RETRY_BASE_MS: Long = 1_000L
+
+        /** Ceiling on the backoff, i.e. the worst-case blindness after the network returns. */
+        const val RETRY_MAX_MS: Long = 30_000L
+
+        /**
+         * How long a bound socket may hear *nothing at all* before it is
+         * rebuilt to re-join the multicast group. Comfortably past
+         * [BEACON_SILENT_MS] (12 s) so a hub that is merely quiet has already
+         * been reported as such before we start recycling sockets underneath
+         * it, and past any plausible gap in a 4 Hz feed.
+         */
+        const val REJOIN_SILENT_MS: Long = 20_000L
+
+        /** Caps the shift in [backoffDelayMs] well short of Long overflow. */
+        const val BACKOFF_MAX_SHIFT: Int = 16
 
         /**
          * How long the hub can be entirely silent before its readings are
@@ -361,6 +534,34 @@ class NetworkLocationSource(
         const val SHOCK_DEDUP_WINDOW_MS: Long = 200L
     }
 }
+
+/** How long a `receive` blocks before the loop re-checks cancellation. */
+private const val SOCKET_READ_TIMEOUT_MS: Int = 1_000
+
+/**
+ * Bind the fleet NMEA socket and join the fixed multicast group. Split out of
+ * the class so it is both the production implementation of
+ * [NetworkLocationSource]'s `openSocket` seam and something a test can call
+ * directly to hand the source a genuine working socket after simulating a
+ * failed attempt or two.
+ */
+@Suppress("DEPRECATION")
+internal fun openFleetNmeaSocket(
+    port: Int,
+    group: String,
+): MulticastSocket =
+    // NB: use also{}, not apply{} — inside apply the receiver's own `port`
+    // property (−1 when unconnected) would shadow the argument.
+    MulticastSocket(null).also { s ->
+        s.reuseAddress = true
+        s.bind(InetSocketAddress(port))
+        s.soTimeout = SOCKET_READ_TIMEOUT_MS
+        // Join the fixed fleet multicast group. runCatching: a host with no
+        // multicast-capable interface (some CI) fails the join, but the socket
+        // still receives unicast/broadcast to the port — so tests and any
+        // broadcast fallback keep working.
+        runCatching { s.joinGroup(InetAddress.getByName(group)) }
+    }
 
 /**
  * Seam for the [WifiManager.MulticastLock] this source holds while running —

@@ -3,16 +3,23 @@ package org.pureagave.zodiac.control.data.sensor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.telemetry.BeaconSensors
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.MulticastSocket
+import java.net.SocketException
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.system.measureTimeMillis
 
 /**
  * Exercises the UDP receive path end-to-end over real loopback sockets: a
@@ -899,6 +906,315 @@ class NetworkLocationSourceTest {
                     "a redundant start() must not discard a live fix",
                     source.state.value is LocationSourceState.Active,
                 )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    // --- The Error state used to be terminal: the listener set Error and
+    // `return`ed, so a router power-cycle (the travel router owns AP/DHCP and
+    // *will* be rebooted mid-night) blinded the tablet for the rest of the
+    // night — and a Fire has no GNSS at all, so that is no position, not a
+    // degraded one. Recovery must be automatic, bounded and cancellable. ---
+
+    /** Opens real fleet sockets, but fails the first [failFirst] attempts and counts every one. */
+    private class CountingSocketFactory(
+        private val port: Int,
+        private val failFirst: Int = 0,
+    ) : () -> MulticastSocket {
+        val opened = CopyOnWriteArrayList<MulticastSocket>()
+        val attempts = AtomicInteger()
+
+        override fun invoke(): MulticastSocket {
+            if (attempts.incrementAndGet() <= failFirst) {
+                throw SocketException("simulated: no route to host (router rebooting)")
+            }
+            return openFleetNmeaSocket(port, FleetBus.TELEMETRY_GROUP).also { opened += it }
+        }
+    }
+
+    @Test(timeout = 60_000)
+    fun a_transient_bind_failure_self_heals_instead_of_blinding_the_tablet() =
+        runBlocking {
+            // Mutation: restore the old terminal path — on a bind failure set
+            // Error and return out of the listener.
+            val port = 10310
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val factory = CountingSocketFactory(port, failFirst = 2)
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    retryBaseMs = 300,
+                    retryMaxMs = 1_000,
+                    openSocket = factory,
+                )
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: a failed bind reports Error, honestly",
+                    waitUntil(4_000) { source.state.value is LocationSourceState.Error },
+                )
+                assertTrue(
+                    "a bind that fails while the router reboots must be retried, not given up on",
+                    waitUntil(15_000) {
+                        sendUdp(validGga, port)
+                        source.state.value is LocationSourceState.Active
+                    },
+                )
+                assertTrue("the source must have re-attempted the bind; attempts=${factory.attempts.get()}", factory.attempts.get() >= 3)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun a_broken_read_re_binds_and_reports_searching_again() =
+        runBlocking {
+            // The other terminal path: the bind succeeded, then the interface
+            // went away under a live socket and the read threw. Mutation: on a
+            // read failure set Error and return (as before).
+            val port = 10311
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val factory = CountingSocketFactory(port)
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    retryBaseMs = 200,
+                    retryMaxMs = 500,
+                    openSocket = factory,
+                )
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: an active fix on the first socket",
+                    waitUntil(8_000) {
+                        sendUdp(validGga, port)
+                        source.state.value is LocationSourceState.Active
+                    },
+                )
+                // Kill the live socket the way a vanishing interface does: the
+                // blocked receive throws rather than timing out.
+                factory.opened.last().close()
+                assertTrue(
+                    "a read failure must surface as Error, not be swallowed",
+                    waitUntil(8_000) { source.state.value is LocationSourceState.Error },
+                )
+                assertTrue(
+                    "the listener must re-bind after a read failure instead of dying in Error",
+                    waitUntil(15_000) { factory.attempts.get() >= 2 },
+                )
+                assertTrue(
+                    "a re-bound socket has proved nothing yet — it must read Searching, never Active",
+                    waitUntil(8_000) { source.state.value is LocationSourceState.Searching },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun a_persistent_bind_failure_backs_off_instead_of_busy_looping() =
+        runBlocking {
+            // Mutation: drop the backoffWait() call from the failure path.
+            // Over 2 s the capped-exponential policy (100/200/400/400…) makes
+            // ~7 attempts; a fixed 100 ms retry makes ~20; no wait at all makes
+            // thousands and pins a core all night.
+            val port = 10312
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val factory = CountingSocketFactory(port, failFirst = Int.MAX_VALUE)
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    retryBaseMs = 100,
+                    retryMaxMs = 400,
+                    openSocket = factory,
+                )
+            try {
+                source.start()
+                Thread.sleep(2_000)
+                val attempts = factory.attempts.get()
+                assertTrue("the retry must actually happen; attempts=$attempts", attempts >= 3)
+                assertTrue("the retry must back off, not spin; attempts=$attempts in 2 s", attempts <= 12)
+                assertTrue(
+                    "while the socket is down the source must say so, not pretend to be searching",
+                    source.state.value is LocationSourceState.Error,
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun the_retry_backoff_doubles_and_is_capped() =
+        runBlocking {
+            // Mutation: make the backoff constant (return retryBaseMs), or
+            // uncap it. Asserted through the injected scheduler seam rather
+            // than wall-clock timing, so it is exact and not load-sensitive.
+            val port = 10313
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val waits = CopyOnWriteArrayList<Long>()
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    retryBaseMs = 100,
+                    retryMaxMs = 400,
+                    openSocket = { throw SocketException("simulated: interface down") },
+                    backoffWait = { ms ->
+                        waits += ms
+                        // Park once we have the sequence, so the loop doesn't
+                        // spin the CPU for the rest of the test.
+                        if (waits.size >= 6) awaitCancellation()
+                    },
+                )
+            try {
+                source.start()
+                assertTrue("the retry loop should have requested six waits", waitUntil(8_000) { waits.size >= 6 })
+                assertEquals(
+                    "backoff must double from the base and clamp at the ceiling",
+                    listOf(100L, 200L, 400L, 400L, 400L, 400L),
+                    waits.take(6),
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun stop_during_a_retry_backoff_returns_promptly() =
+        runBlocking {
+            // Mutation: swap the default backoffWait for a non-cancellable
+            // wait (Thread.sleep(it)) — stop()'s cancelAndJoin then waits out
+            // the full 60 s backoff and this test times out. Switching GPS
+            // source in the cab must never hang the UI on a retry timer.
+            val port = 10314
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val factory = CountingSocketFactory(port, failFirst = Int.MAX_VALUE)
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    retryBaseMs = 60_000,
+                    retryMaxMs = 60_000,
+                    openSocket = factory,
+                )
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: parked in the backoff after a failed bind",
+                    waitUntil(8_000) { factory.attempts.get() >= 1 && source.state.value is LocationSourceState.Error },
+                )
+                val elapsed = measureTimeMillis { source.stop() }
+                assertTrue("stop() must cancel the backoff, not wait it out; took ${elapsed}ms", elapsed < 3_000)
+                assertEquals(LocationSourceState.Disconnected, source.state.value)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun retrying_the_bind_does_not_re_acquire_the_multicast_lock() =
+        runBlocking {
+            // Mutation: acquire the lock per attempt inside the retry loop —
+            // the C5 leak shape, one leaked lock per retry, all night.
+            val port = 10315
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val lock = FakeMulticastLockHandle()
+            val factory = CountingSocketFactory(port, failFirst = Int.MAX_VALUE)
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    retryBaseMs = 50,
+                    retryMaxMs = 100,
+                    multicastLockHandle = lock,
+                    openSocket = factory,
+                )
+            try {
+                assertEquals(0, lock.acquireCalls)
+                source.start()
+                assertTrue("precondition: several retries happened", waitUntil(8_000) { factory.attempts.get() >= 4 })
+                assertEquals("the retry loop must not re-acquire the multicast lock", 1, lock.acquireCalls)
+                source.stop()
+                assertEquals("stop() releases the one lock start() took", 1, lock.releaseCalls)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun a_socket_that_hears_nothing_is_rebuilt_so_the_group_is_rejoined() =
+        runBlocking {
+            // Mutation: delete the silence check in pump()'s timeout branch.
+            // This is the failure with no exception to catch: a WiFi
+            // re-association drops the IGMP membership, every read goes on
+            // timing out politely, and the tablet listens forever to a group
+            // it is no longer in. Rebuilding the socket is the only rejoin.
+            val port = 10316
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val factory = CountingSocketFactory(port)
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    rejoinSilentMs = 300,
+                    openSocket = factory,
+                )
+            try {
+                source.start()
+                val rebuilt = waitUntil(15_000) { factory.opened.size >= 3 }
+                assertTrue(
+                    "a socket that has heard nothing must be rebuilt, not listened to forever; opened=${factory.opened.size}",
+                    rebuilt,
+                )
+                assertTrue(
+                    "every superseded socket must be closed — a night of rejoins must not leak descriptors",
+                    factory.opened.dropLast(1).all { it.isClosed },
+                )
+                assertTrue(
+                    "silence is not a fault: rebuilding must not fabricate an Error",
+                    source.state.value is LocationSourceState.Searching,
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun a_socket_that_is_hearing_traffic_is_never_recycled() =
+        runBlocking {
+            // Mutation: recycle on socket age rather than on silence (i.e.
+            // don't restamp the last-received time on each datagram) — that
+            // would drop the whole fleet's GPS every rejoin interval, which is
+            // a worse bug than the one being fixed.
+            val port = 10317
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val factory = CountingSocketFactory(port)
+            val source =
+                NetworkLocationSource(
+                    scope = scope,
+                    port = port,
+                    rejoinSilentMs = 1_000,
+                    openSocket = factory,
+                )
+            try {
+                source.start()
+                val deadline = System.currentTimeMillis() + 3_000
+                while (System.currentTimeMillis() < deadline) {
+                    sendUdp(validGga, port)
+                    Thread.sleep(100)
+                }
+                assertEquals("a socket that is hearing the beacon must not be recycled", 1, factory.opened.size)
+                assertTrue("and the fix must have stayed live throughout", source.state.value is LocationSourceState.Active)
             } finally {
                 source.stop()
                 scope.cancel()
