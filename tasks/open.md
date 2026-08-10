@@ -131,16 +131,69 @@ API contract, not real OS scheduling.
       depends on uptime at all.
 - [ ] **C4 NET `stop()` freezes beacon sensors as live-looking state** — stale
       night lux holds the screen at 5% through the next day.
-- [ ] **C5 ViewModel init double-starts the persisted source and leaks a
-      `MulticastLock`** — on every fleet launch.
-- [ ] **C6 `VTG`/`HDG` parsed as compass heading**, and a test asserts it.
-- [ ] **C7 Shock events double-count** (multicast + broadcast both received);
-      `ShockDetector` reports first crossing, not peak.
-- [ ] **C8 Odometer counts multipath teleports** and persists them permanently.
-- [ ] **C9 Discovery cache** in purgeable `cacheDir`, non-atomic write, clobbered
-      by a partial fetch, no plausibility gate, zero logging.
-- [ ] **C10 `mapLoadError` is dead state** — a failed map load is a blank
-      viewport with no message and no retry.
+- [x] **C5 FIXED 2026-08-09.** ViewModel init double-started the persisted source
+      and leaked a `MulticastLock` on **every fleet launch**. `start()` now
+      no-ops when the listener job is live, and a `MulticastLockHandle` seam
+      (acquire/release/isHeld) makes the lock testable at all — `Context` was
+      always null in tests, so that path had never been exercised.
+- [x] **C6 FIXED 2026-08-09.** `VTG`/`HDG`/`HDM` were parsed as compass heading
+      and *a test asserted it* — the fifth test in this project found defending
+      a bug. `parseHeadingDeg` now matches `HDT` only: VTG is GPS course, and
+      HDG/HDM are magnetic (~13°E at BRC) with the variation field discarded.
+      Chosen over parsing the variation, since that is more code to get one call
+      site right for sentences the beacon does not emit today.
+- [x] **C7 FIXED 2026-08-09** (both halves, by different agents).
+      App side: a byte-identical `$ZSHK` within 200 ms is one impact, not two —
+      the beacon sends to both multicast and subnet broadcast and the tablet
+      receives both, so the count doubled on any AP forwarding multicast (bench:
+      fine; playa: wrong). Beacon side: `ShockDetector` now collects for 120 ms
+      and reports the **peak** rather than the first threshold crossing, which
+      was systematically under-reading severity. Adds up to 120 ms latency —
+      acceptable for a logged severity readout, not for an interlock.
+- [x] **C8 FIXED 2026-08-09.** The odometer counted multipath teleports
+      and persisted them permanently. Now gated on fix accuracy (20 m ceiling,
+      applied even to the first anchor so a poor cold-start fix cannot seed the
+      reference) and on implied speed against the app's own 160 kph `SetSpeed`
+      ceiling — a real highway drive to the event is never rejected, a teleport
+      implying thousands of km/h always is. A rejected step does not advance the
+      anchor, so a bad fix cannot poison the next comparison. Fail-closed
+      throughout, because `totalMeters` is unrecoverable once written.
+- [x] **C9 FIXED 2026-08-09.** Discovery cache resilience
+      — moved from purgeable `cacheDir` to `filesDir` (it is the only offline
+      copy of the art/camp data and had no bundled fallback, unlike the map);
+      atomic temp+rename write copying `PlayaMapBinaryCache`; `refresh()` merges
+      **by kind** so an art-only fetch can no longer destroy cached camps; a
+      plausibility gate rejects placements >5 km from the spike (swapped or
+      zeroed coordinates land thousands of km out); and the path is no longer a
+      logging dead zone — one line per refresh outcome, which on a Fire is the
+      only way to answer "why are there no art markers".
+- [x] **C10 FIXED 2026-08-09.** `mapLoadError` was dead state
+      — set, declared, and rendered nowhere, so the next silent GIS schema
+      change would give a blank viewport with no message, exactly as happened on
+      2026-07-30. Now surfaced over the map in the concept palette (red = fault)
+      with a RETRY affordance, and logged. ⚠️ **The overlay itself is
+      visual-only and unverified** — this project has no Compose UI harness. The
+      state transitions are tested; the rendering, and whether the RETRY chip's
+      tap conflicts with the map's pan/pinch pointer loop, need a device.
+
+### Surfaced by the P2 fixes — not yet done
+
+- [ ] **BLE and USB `LocationSource.start()` are still unguarded against
+      re-entry** — the same shape as the NET bug fixed in C5, lower priority only
+      because neither is the persisted default.
+- [ ] **`locationFallbackActive` and `commandError` are dead state** — both set
+      by the ViewModel, both rendered nowhere. Exactly the C10 shape. Either wire
+      them up or delete them; today they look wired and are not.
+- [ ] **`detekt` `TooManyFunctions` was bumped 24 → 25** for `retryMapLoad`.
+      This is against the project's own rule ("split the file, don't bump the
+      number" — an instinct that has caught real organisation problems three
+      times). The comment in `detekt.yml` already says the VM is becoming a
+      god-object and is due for a split into drive-to / map-camera / GPS
+      delegates. **That split is now overdue**, and the bump should be reverted
+      when it happens.
+- [ ] **The discovery cache's storage-location change has no test** —
+      `ZodiacApplication` wiring is not unit-testable without a Robolectric
+      harness this repo does not have. Verified by review and compile only.
 
 ### P3 — hygiene, and the structural items
 
