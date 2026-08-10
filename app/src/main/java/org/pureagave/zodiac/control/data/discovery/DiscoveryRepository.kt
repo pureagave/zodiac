@@ -21,17 +21,21 @@ import java.io.File
  * if the fetch fails (no Starlink / API down) the cache stands. Exposes a single
  * [pois] `StateFlow` for the cockpit to render as RADAR contacts / MAP markers /
  * drive-to targets.
+ *
+ * [storageDir] must be non-purgeable storage (`filesDir`, not `cacheDir`): this
+ * cache is the *only* offline copy of art/camp data for up to 14 unattended days,
+ * and there is no bundled fallback the way the base playa map has one.
  */
 class DiscoveryRepository(
     private val source: DiscoverySource,
     private val scope: CoroutineScope,
-    cacheDir: File,
+    storageDir: File,
     private val year: Int,
 ) {
     private val _pois = MutableStateFlow<List<PlayaPoi>>(emptyList())
     val pois: StateFlow<List<PlayaPoi>> = _pois.asStateFlow()
 
-    private val cacheFile = File(cacheDir, "discovery_$year.json")
+    private val cacheFile = File(storageDir, "discovery_$year.json")
 
     init {
         scope.launch {
