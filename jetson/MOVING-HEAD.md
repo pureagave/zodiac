@@ -216,18 +216,36 @@ head out with nothing to track), so the failure state and the idle state agree.
 `TrackerConfig` in `zvision/tracker.py` holds the wiring; these are the
 manual-derived facts behind its defaults.
 
+> **This table is a summary, not the source of truth.** `TrackerConfig` in
+> `zvision/tracker.py` is. The row below that used to read `tilt_range_deg | 270`
+> is exactly the failure this document exists to warn about — a manual figure in
+> a lookup table, outliving the measurement that refuted it three sections later.
+> If you need a value, read the dataclass.
+
 | Config | Value | Why |
 |---|---|---|
 | `pan_channel` / `pan_fine_channel` | 1 / 2 | 16-bit pan (§3.2) |
 | `tilt_channel` / `tilt_fine_channel` | 3 / 4 | 16-bit tilt |
+| `colour_channel` | 5 | declared for `zdeck`; the tracker never writes it |
 | `dimmer_channel` | **8** | §3.2 — **not 5** |
-| `pan_range_deg` | 540 | §5 |
-| `tilt_range_deg` | 270 | §5 |
+| `forbidden_channels` | 10, 11 | auto programs; mode-select / motor reset |
+| `pan_range_deg` | 540 | §5, measured (§8.6b) |
+| `tilt_range_deg` | **180** | **measured (§8.6e) — the manual's 270 is wrong.** Pinned by a test that fails if anyone restores it |
+| `pan_center_deg` / `pan_gain` | 270 / 1.0 | mid-travel and unmirrored; **nominal, needs on-vehicle calibration** |
+| `tilt_far_deg` / `tilt_near_deg` | 90 / 106.7 | rescaled for the 180° range (§8.6e); **uncalibrated placeholders** |
+| `reach_half_deg` | 90 | forward plus both sides; a contact going astern releases the latch |
+| `pan_slew_dps` / `tilt_slew_dps` | 120 / 90 | slew rate limits |
+| `switch_margin` | 0.15 | hysteresis, so the beam doesn't twitch between two similar contacts |
+| `sound_gain` / `sound_silence` / `beat_dimmer` | 4.0 / 0.03 / 255 | the idle `$ZAUD` show |
 
 **11-channel, not 9.** 8-bit pan across 540° is ~2.1° per step, which is
 visibly steppy on a slow follow. The fine channels are the whole reason to use
 the longer personality. `NINE_CHANNEL_OVERRIDES` exists for a head stuck in the
-short mode.
+short mode, and is reachable **only** through `--dmx-channels 9` (which resolves
+it via `config_for_channel_mode`). That accessor exists because the dict was once
+referenced by nothing at all, and overrode the channel map without overriding
+`forbidden_channels` — leaving the motor reset, which shifts to ch9 in the short
+mode, completely unguarded.
 
 ### Traps
 
@@ -300,7 +318,12 @@ indistinguishable from a dead wire, and it sent us hunting through olad,
 libftdi, USB enumeration and the XLR before we ever suspected the fixture.
 
 **Check the head performs its homing sweep at power-up.** If it didn't, force a
-motor reset (ch9 held 250–255 for 5 s) *before* concluding anything is broken.
+motor reset *before* concluding anything is broken — **channel 11** held 250–255
+for 5 s in the 11-channel mode the fixture now runs in (§8.1 switched it). It is
+ch9 only in 9-channel mode; this paragraph was written before the switch and said
+ch9. Getting that wrong today writes 255 to ch9, which §8.6d measured as the
+**slowest** pan/tilt speed setting — i.e. it would make an "unresponsive head"
+look worse while appearing to be the fix.
 
 ### 8.3 On DMX signal loss the head runs its own light show
 

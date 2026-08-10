@@ -1,6 +1,26 @@
 # Surround DRIVER HUD — design (rev 2, post-review)
 
-Status: **Phase 1 landed** (`core/vision/SurroundRing.kt`, 26 tests, `818e61e`).
+> **Status 2026-08-10: all phases have landed. This document is now the
+> rationale, not a plan.**
+>
+> | Phase | State | Where it lives |
+> |---|---|---|
+> | 1 — `SurroundRing` pure logic | ✅ | `core/vision/SurroundRing.kt` |
+> | 1.5a — discrete FAR/MID/NEAR bands | ✅ | `Band`, `radiusFraction` (1.00 / 0.66 / 0.34) |
+> | 1.5b — angular clustering + hysteresis | ✅ | `CLUSTER_DEG = 15f`, `MAX_BLIPS = 12`, `SWITCH_MARGIN = 0.08f`, `BlipTracker` |
+> | 2 — the ring rendering | ✅ | `ui/concepts/SurroundRingCanvas.kt` — split into its own file rather than absorbed into `DriverNightScreen` |
+> | 3 — status line + centre banner | ✅ | `SurroundRing.HudStatus` + `statusLineText`; the banner keys off `state.brakeAdvised` as specified |
+>
+> **Still outstanding: the field check.** Nobody has confirmed a `#00421E` rim and
+> small hollow blips are legible at night brightness, through dust, by someone
+> actually driving. Until that evening happens, this feature is built but not
+> accepted.
+>
+> Two limitations were documented rather than fixed, as planned — **reversing**
+> (the brake/rear logic inverts and there is no gear signal, so it is a spotter
+> procedure) and **contact coasting** (a track that drops out on occlusion vanishes
+> instantly rather than fading).
+
 Rev 2 folds in a design review (Fable, 2026-08-07) and two decisions from Rob.
 Everything below supersedes rev 1.
 

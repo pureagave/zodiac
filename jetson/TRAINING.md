@@ -15,7 +15,7 @@ cost, what do I do with the big GPU, and what is realistic before the event.*
 **The bottleneck is not compute. It is footage from our own cameras.** An A100
 or H100 fine-tunes a YOLO-nano on a few thousand images in well under an hour —
 you could do it on a decent laptop GPU overnight. What no amount of compute
-substitutes for is that nobody, anywhere, has recorded 120×120 ultra-wide LWIR
+substitutes for is that nobody, anywhere, has recorded 160×120 ultra-wide LWIR
 from a mutant vehicle on a playa at 2am. That footage can only be captured while
 the rig is bolted to the car. GPU time can be rented any evening.
 
@@ -94,7 +94,7 @@ The domain gap is real and it will not be closed by prompt-fiddling.
 
 These get a working night detector quickly. **But mind the domain gap** — FLIR
 ADAS is 640×512 Boson, forward-facing, mounted on a car at road height, with a
-normal lens. Ours is 120×120, ultra-wide **fisheye**, mounted on an art car,
+normal lens. Ours is 160×120, ultra-wide **fisheye**, mounted on an art car,
 looking at people standing *around* the vehicle rather than ahead of it.
 Different resolution, different distortion, different viewpoint, different
 range. Public data gets you to "detects warm humans"; our own data gets you to
@@ -106,15 +106,19 @@ Already built and shipping:
 
 ```bash
 python3 -m zvision --record /data/drive-01 --record-hz 1 \
-  --camera thermal:/dev/video0:az=0:fov=160:lens=fisheye:name=thermal \
+  --camera thermal:/dev/video0:az=0:fov=160:fovref=d:lens=fisheye:name=thermal \
   --camera rgb:/dev/video2:az=105:fov=87:lens=pinhole:name=stbd
 ```
+
+(`fovref=d` because the Lepton Ultra Wide's quoted 160° is the diagonal — see
+[HARDWARE.md](HARDWARE.md) §1. `--fov-ref` still defaults to `h`, so it has to be
+said explicitly.)
 
 Writes `<dir>/<camera>/<seconds>.png|jpg` plus an `index.jsonl` line per frame
 carrying the **pixel boxes** the motion detector found:
 
 ```json
-{"camera":"thermal","t":132.5,"file":"thermal/000132.500.png","boxes":[[44,60,18,39]]}
+{"camera":"thermal","t":132.5,"file":"thermal/00000132.500.png","boxes":[[44,60,18,39]]}
 ```
 
 Those boxes are **weak labels** — motion blobs, not truth. Their value is that
@@ -123,8 +127,10 @@ draw one from scratch, and a night of driving arrives pre-sorted into "something
 moved here" rather than as thousands of unsorted stills.
 
 Defaults are deliberate: **1 Hz** (consecutive 10 Hz frames are near-duplicates
-that waste disk and annotator attention), thermal as **PNG** (lossless — JPEG
-artefacts on a low-contrast 120×120 frame destroy real signal), RGB as JPEG, and
+that waste disk and annotator attention), small frames as **PNG** (lossless — JPEG
+artefacts on a low-contrast 160×120 frame destroy real signal) and large ones as
+JPEG — the split is by **pixel count**, not by camera kind, which is why the
+thermal lands on PNG; and
 a **20 GB cap** so a long night can't fill the boot disk. Recording failures are
 swallowed and reported once; they never interrupt detection.
 
@@ -171,9 +177,9 @@ yolo train model=yolov8n.pt data=zodiac-thermal.yaml \
 yolo export model=runs/detect/train/weights/best.pt format=onnx opset=12
 ```
 
-Note `imgsz=160` — matching the sensor rather than upscaling to 640 keeps
-inference cheap on the Orin and stops the model learning interpolation
-artefacts. Expect this to take **well under an hour**. If you find yourself
+Note `imgsz=160` — matching the sensor's **long** axis (the frame is 160×120)
+rather than upscaling to 640 keeps inference cheap on the Orin and stops the
+model learning interpolation artefacts. Expect this to take **well under an hour**. If you find yourself
 waiting on the GPU, something is misconfigured.
 
 Then ONNX → `.engine` **on the Orin**, per the Stage A gotcha.

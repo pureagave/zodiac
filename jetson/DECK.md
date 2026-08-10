@@ -25,7 +25,7 @@ cameras stop resolving.
 
 | Key | Does | Notes |
 |---|---|---|
-| BLACKOUT | dimmer → 0 | **red** when the head is lit, **grey** when already dark — a kill control that looks armed over a dark head is noise |
+| BLACKOUT | dimmer → 0, **and** zeroes the whole universe via `dmxpark.park()` | **red** when the head is lit, **grey** when already dark — a kill control that looks armed over a dark head is noise. Deliberately **bypasses `OlaDmxSink`**, which swallows its own send failures by design — right for a tracker frame, wrong for a kill. `park()` retries and reports |
 | LAMP | toggle 0 ↔ full | shows `ON` / `OFF` |
 | HOME | pan+tilt to mid-travel | mid-pan is where the head should be mounted (§8.6b); mid-tilt is dead vertical (§8.6e) |
 | DIM − / DIM + | step by 32 | both keys show the live level in purple |
@@ -53,11 +53,27 @@ sudo mkdir -p /opt/zodiac-deck && sudo chown zodiac:zodiac /opt/zodiac-deck
 python3 -m venv /opt/zodiac-deck/venv
 /opt/zodiac-deck/venv/bin/pip install streamdeck pillow
 
+# the zdeck package itself must be where the unit runs it from
+sudo mkdir -p /opt/zodiac/jetson
+sudo cp -r jetson/zdeck /opt/zodiac/jetson/
+
 sudo cp jetson/systemd/zodiac-deck.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now zodiac-deck
 ```
 
+> **The `cp -r jetson/zdeck` step is not optional and nothing else does it.**
+> `zodiac-deck.service` runs `-m zdeck` with `WorkingDirectory=/opt/zodiac/jetson`,
+> but `scripts/install.sh` copies only the `zvision` package and `pyproject.toml`
+> packages only `zvision`. On a plain `git clone` to `/opt/zodiac` it happens to
+> work because the checkout is already there; on an `install.sh`-from-elsewhere
+> box it fails with `ModuleNotFoundError: zdeck`. Re-copy after every update.
+
 Run it by hand instead: `/opt/zodiac-deck/venv/bin/python -m zdeck --dmx fake`
+
+> **`zdeck`'s `--dmx` defaults to `ola`** — the opposite of `zvision`, whose DMX
+> output defaults to `none`. That asymmetry is deliberate (the deck exists to
+> drive the light; the vision runner does not, yet) and it is what §3's safety
+> argument rests on. Pass `--dmx fake` explicitly for a dry run.
 
 ---
 
@@ -83,9 +99,17 @@ rule that makes `OlaDmxSink` swallow its send failures. The unit is
 `After=olad` but explicitly **not** `After=zvision`: the operator's physical
 control should come up whether or not the vision box is healthy.
 
-**Never leaves the head hot.** The runner parks on every exit path, and the unit
-carries the same `ExecStopPost=-... zvision.dmxpark` fail-safe as zvision, which
-systemd runs on crash and kill. Necessary because `olad` owns frame timing and
+**A failed kill is visible.** If the blackout send throws, key 0 re-renders as
+**`DMX FAIL`** in red and LAMP turns red too. A calm grey panel over a live beam
+is the one lie that matters on this device, so the panel says it does not know
+rather than saying "dark".
+
+**Never leaves the head hot.** The runner parks on every exit path — *and when
+the deck itself disappears*, which is the case most likely to happen on the
+vehicle: while the panel is gone the operator has no kill control, so the beam
+must not be left burning. The unit also carries the same
+`ExecStopPost=-... zvision.dmxpark` fail-safe as zvision, which systemd runs on
+crash and kill. Necessary because `olad` owns frame timing and
 retransmits the last universe forever, so a dead writer leaves a frozen beam —
 and the fixture's own `BLnd=blac` cannot help, since from its side the signal
 never stopped.

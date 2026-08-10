@@ -12,14 +12,14 @@ cross-section · system layout · build order, in one sheet.
 **In hand / covered:**
 - [x] Jetson Orin Nano Super Dev Kit **+ its included 19 V PSU** (bench power covered)
 - [x] **NVMe M.2 2280 SSD, 512 GB** — in hand 2026-07-31 (512 > the 256 spec'd = more headroom for JetPack + models + recordings)
-- [x] **FLIR Lepton Ultra Wide + PureThermal Mini USB** (ordered ~2026-08, on the way — **one thermal camera**: 1 board + 1 UW module). **Switched from the 3.5:** the UW is **160° FOV** (vs 57°), **non-radiometric**, and — **measured on the real board 2026-08-07** — **160×120 (4:3), not 120×120** as first recorded, at a native **9 fps**. Wide surround coverage fits the "people all around a slow art car" mission; non-radiometric is fine (zvision detects warm blobs by contrast/motion, not absolute °C). **Code implication — DONE (2026-08-03):** zvision now unprojects pixels through a real lens model (`--lens equidistant` for the fisheye) and defaults `--hfov` to 160. **The 160° is the DIAGONAL — use `fovref=d` (settled 2026-08-07).** FLIR never states the axis (product page, GroupGets, the R200 dewarping note all just say "160°"), so we settled it on physics: the board emits **160×120**, and 160° across the *width* of a 4:3 f-theta frame demands a **~200° diagonal** — not a lens that exists; on the square 120×120 "usable" area FLIR quotes it would be 226°. Read as the diagonal it is an ordinary fisheye and the true horizontal half-angle is **80° × 80/100 = 64°**, so the camera covers **±64°, not ±80°**. This is not cosmetic: `fov_ref` feeds `pixel_to_bearing`, so the wrong choice mis-aims **every edge bearing by up to 16°** — about 2.8 m of miss on a person 10 m away, which is where the tracker light gets pointed. Under real uncertainty we deliberately err toward the *narrower* reading: under-claiming coverage costs a little caution, over-claiming is the confident all-clear the blind-arc report exists to prevent. `LeptonUwFovReferenceTest` pins the arithmetic; the tablet's `SurroundRing.COVERED_ARCS` carries the matching ±64°. Widen it only against a real measurement or a FLIR figure that names the axis. Mini USB is **not USB-C** — it takes a small USB-B-family cable (GroupGets' page says micro-B; the board in hand took a mini-B, so trust the board). The **PureThermal 3** is the USB-C one. A cable ships in the box. Enumerates plug-and-play as `/dev/videoN` via `uvcvideo` (`GroupGets PureThermal fw:v1.3.0`).
+- [x] **FLIR Lepton Ultra Wide + PureThermal Mini USB** (ordered ~2026-08, on the way — **one thermal camera**: 1 board + 1 UW module). **Switched from the 3.5:** the UW is **160° FOV** (vs 57°), **non-radiometric**, and — **measured on the real board 2026-08-07** — **160×120 (4:3), not 120×120** as first recorded, at a native **9 fps**. Wide surround coverage fits the "people all around a slow art car" mission; non-radiometric is fine (zvision detects warm blobs by contrast/motion, not absolute °C). **Code implication — DONE (2026-08-03):** zvision now unprojects pixels through a real lens model (`--lens equidistant` for the fisheye) and defaults `--hfov` to 160. **The 160° is the DIAGONAL — use `fovref=d` (settled 2026-08-07).** FLIR never states the axis (product page, GroupGets, the R200 dewarping note all just say "160°"), so we settled it on physics: the board emits **160×120**, and 160° across the *width* of a 4:3 f-theta frame demands a **~200° diagonal** — not a lens that exists; on the square 120×120 "usable" area FLIR quotes it would be 226°. Read as the diagonal it is an ordinary fisheye and the true horizontal half-angle is **80° × 80/100 = 64°**, so the camera covers **±64°, not ±80°**. This is not cosmetic: `fov_ref` feeds `pixel_to_bearing`, so the wrong choice mis-aims **every edge bearing by up to 16°** — about 2.8 m of miss on a person 10 m away, which is where the tracker light gets pointed. Under real uncertainty we deliberately err toward the *narrower* reading: under-claiming coverage costs a little caution, over-claiming is the confident all-clear the blind-arc report exists to prevent. `LeptonUwFovReferenceTest` pins the arithmetic; the tablet's `SurroundRing.COVERED_ARCS` carries the matching ±64°. Widen it only against a real measurement or a FLIR figure that names the axis. **⚠️ Not actually settled in `zvision` yet:** `--fov-ref` still defaults to `h` (`app.py`, `geometry.FOV_HORIZONTAL`, `rig.CameraMount.fov_ref`), and every documented example rig — here, in README.md, DEPLOY.md and TRAINING.md — omits `fovref=d`. So the Python side currently computes ±80° while the tablet assumes ±64°: **the two sides of the vehicle disagree by up to 16° at the frame edge.** Until the default flips or every example gains `fovref=d`, treat edge bearings as unverified and add `fovref=d` by hand. The "Code implication — DONE" above refers to the lens-model work (2026-08-03), not to this. Mini USB is **not USB-C** — it takes a small USB-B-family cable (GroupGets' page says micro-B; the board in hand took a mini-B, so trust the board). The **PureThermal 3** is the USB-C one. A cable ships in the box. Enumerates plug-and-play as `/dev/videoN` via `uvcvideo` (`GroupGets PureThermal fw:v1.3.0`).
 - [x] RGB camera — Arducam day/night IMX462 USB (`B0CQ4QDCXN`)
 - [x] Camera-head housing (aluminum CCTV box)
 - [x] Jetson enclosure — KKSB Orin Nano Super case (`B0FRJ1WBQF`)
 - [x] Car power DC-DC buck converter
 - [x] Networking — router + Ethernet cable
 - [x] **DMX interface** (FTDI dongle) + **DMX cables** + **moving-head fixture**
-- [x] **Thermal window — germanium D20 × 1 mm, 2-sided AR** (Amazon, ~$90, ordered 2026-08-02; D15 was cancelled). Upsized to 20 mm **for the UW's 160° FOV** — at 160° the window must be **mounted ~2 mm from the lens front** to avoid vignetting (required radius ≈ standoff × tan(80°) ≈ standoff × 5.7); D20 at ~2 mm clears essentially the full 160°, D15 would clip corners. Don't go bigger — flat-window edge rays (~80° incidence) fall outside the AR coating anyway. (Thorlabs/Edmund $200–750 = lab overkill.) **Cut a scrap of HDPE for bench bring-up so a late shipment can't block the Lepton.**
+- [x] **Thermal window — germanium D20 × 1 mm, 2-sided AR** (Amazon, ~$90, ordered 2026-08-02; D15 was cancelled). Upsized to 20 mm **for the UW's 160° FOV** — at 160° the window must be **mounted ~2 mm from the lens front** to avoid vignetting (required radius ≈ standoff × tan(80°) ≈ standoff × 5.7); D20 at ~2 mm clears essentially the full 160°, D15 would clip corners. **⚠️ Unreconciled:** this sizing uses an 80° half-angle, while the FOV-reference decision above concludes the true horizontal half-angle is 64° (tan 64° ≈ 2.05, which would allow ~4.9 mm of standoff for D20, not ~2 mm). The optics number was not revised when the bearing number was. The 2 mm figure is the *conservative* one, so building to it is safe — but do not quote the 5.7× rule elsewhere without deciding which half-angle applies. This paragraph and the "~1.7 mm" figures further down should be reconciled to one number. Don't go bigger — flat-window edge rays (~80° incidence) fall outside the AR coating anyway. (Thorlabs/Edmund $200–750 = lab overkill.) **Cut a scrap of HDPE for bench bring-up so a late shipment can't block the Lepton.**
 
 **Still needed (cheap last-mile, no lead time):**
 - [ ] **Gore/ePTFE breather vent ×2** (one per box)
@@ -33,14 +33,18 @@ cross-section · system layout · build order, in one sheet.
 
 ## Bill of materials
 
+> **The shopping list above is the current state; this table is the original
+> costing.** Where they disagree, the list wins — it carries the later decisions.
+> The rows that changed are marked **SUPERSEDED**.
+
 | # | item | est. | status / notes |
 |---|---|---|---|
 | 1 | **Jetson Orin Nano Super Dev Kit** | $249 | ordered (Arrow, MSRP) |
-| 2 | **FLIR Lepton 3.5 + PureThermal 3** | $283 | ordered (GroupGets) — thermal, connects as **UVC over USB** |
-| 3 | **NVMe M.2 2280 SSD, 256 GB** | ~$30 | **prefer over microSD** — SD cards die from vehicle vibration + playa heat. Boot JetPack from NVMe. |
+| 2 | ~~FLIR Lepton 3.5 + PureThermal 3~~ | $283 | **SUPERSEDED** — switched to the **Lepton Ultra Wide + PureThermal Mini** (160° vs 57°, non-radiometric, 160×120 @ 9 fps). Note the *Mini* is not USB-C; the PureThermal **3** is. Still UVC over USB. |
+| 3 | **NVMe M.2 2280 SSD** | ~$30 | **512 GB in hand** (the 256 GB here was the original spec). Prefer over microSD — SD cards die from vehicle vibration + playa heat. Boot JetPack from NVMe. |
 | 4 | *(fallback)* microSD 64 GB UHS-I A2 | ~$12 | only if not using NVMe; carry a spare |
 | 5 | **Daytime/low-light RGB — Arducam IMX462 USB (Sony STARVIS)** | ~$60–80 | day **and** night primary. Prefer the **day/night auto IR-cut** variant (Amazon `B0CQ4QDCXN`). Rolling-shutter is fine at a mutant vehicle's walking pace; if jello ever shows, fall back to a global-shutter mono (Arducam OV9281). See "RGB camera" below. |
-| 5a | *(optional)* **850/940 nm IR illuminator** | ~$15–25 | extends night range past the camera's short onboard LEDs (people at 10–30 m). 940 nm = invisible; 850 nm = brighter, faint red glow. |
+| 5a | *(optional, likely skip)* **850/940 nm IR illuminator** | ~$15–25 | **Probably not buying** — see the headlights-vs-illuminator note above: the thermal is the night primary and needs no illumination, and headlights light the scene for the RGB cam anyway. Only revisit if night RGB range proves short. |
 | 6 | **Power — 19 V, 5.5×2.5 mm barrel (centre-positive)** | ~$15–35 | bench brick + a car DC-DC to a clean 19 V — see "Power & thermal budget". |
 | 7 | **Networking** — pick one | | see below |
 | 7a | hardwire **Ethernet** to travel router | $0 | **recommended** for a fixed roof install — most reliable, zero driver fiddling |
@@ -48,7 +52,7 @@ cross-section · system layout · build order, in one sheet.
 | 7c | USB WiFi dongle (Panda/Alfa) | ~$15 | fastest, ugliest |
 | 8 | **Camera-head housing** — aluminum CCTV box + sun shield (IP66) | ~$40–80 | the "sensor pod" at top-centre. Flat front modifies easily: RGB behind the glass, thermal behind a cut port (item 8b). See "Enclosure & mounting". |
 | 8a | **Jetson enclosure** — vented aluminum case (KKSB Orin Nano Super `B0FRJ1WBQF`, VESA mount; or Waveshare `B0CG38BS5S`) | ~$25–55 | get the **Orin** Nano version, NOT the old Jetson Nano (different board). Aluminum body = heatsink; keep it OUT of the sealed camera pod, mounted shaded, with the vent/fan filtered for dust. |
-| 8b | **Thermal window** — **AR-coated germanium** (~25–33 mm) | ~$25–60 | the thermal port. **AVOID glass / acrylic / polycarbonate — they block LWIR entirely.** Germanium is the standard (looks like a metal mirror; transparent only to the thermal). HDPE sheet is a cheap test-only substitute; open recess works but risks dust on the lens. |
+| 8b | **Thermal window** — **AR-coated germanium**. **Ordered: D20 × 1 mm, 2-sided AR** (the ~25–33 mm figure here predates the Ultra Wide switch — see the shopping list) | ~$25–60 | the thermal port. **AVOID glass / acrylic / polycarbonate — they block LWIR entirely.** Germanium is the standard (looks like a metal mirror; transparent only to the thermal). HDPE sheet is a cheap test-only substitute; open recess works but risks dust on the lens. |
 | 8c | **Gore/ePTFE breather vent** (adhesive or screw-in, IP66/68) | ~$5–15 | one per box — equalizes pressure + vents humidity while blocking water AND dust, so a sealed box doesn't become a sun-baked pressure cooker. |
 | 9 | **Shared mount + bracket** (rubber vibration isolators) | ~$10–20 | one rigid bracket, top-centre, facing travel — also kills SSD / rolling-shutter jitter. |
 | 10 | short **shielded USB cables** (thermal + RGB + camera↔Jetson tether) | ~$10–15 | keep runs short; use active USB if the tether exceeds ~3 m. |
@@ -275,7 +279,7 @@ membrane equalizes pressure and lets humidity out while blocking water *and* dus
 - [ ] Every connector strain-relieved and taped
 - [ ] Power converter fused on the 12 V side
 - [ ] Cameras behind a cleanable window if enclosed; thermal needs an IR-transmissive window (germanium/HDPE) — **not glass**, glass blocks LWIR
-- [ ] RGB + thermal co-mounted rigidly on one bracket (small baseline), FOVs roughly matched (~57°) for clean frame registration
+- [ ] RGB + thermal co-mounted rigidly on one bracket (small baseline). **The ~57° matched-FOV note here is obsolete** — it was written for the Lepton 3.5. The thermal is now the 160°-quoted Ultra Wide (±64° horizontal on the diagonal reading) and the RGB is ~85° horizontal, so the FOVs do *not* match and registration is by declared `az`/`fov`/`lens` in the rig spec, not by overlaying frames
 - [ ] Cameras at top-centre facing the direction of travel
 
 ## Assembly order
@@ -318,9 +322,11 @@ the fixture's pan/tilt DMX channels.
     same thing; when picking one, look for a **genuine FT232R/RL** chip (NOT
     CH340), a **3-pin XLR DMX** output (avoid the bare "USB→RS485" terminal-block
     versions), and an **OLA / QLC+ / FreeStyler** compatibility note. It's
-    host-timed, so **pin OLA to a dedicated Orin CPU core** (`taskset`/`isolcpus`;
-    the Nano has 6) so the ML workload can't jitter the DMX timing — that removes
-    its only real downside. Plenty for a single slow-slewing tracker head.
+    host-timed, so **pin OLA to a dedicated Orin CPU core** so the ML workload
+    can't jitter the DMX timing — that removes its only real downside. This is
+    done, and not with `taskset`/`isolcpus`: `scripts/install-ola.sh` writes a
+    systemd drop-in with `CPUAffinity` (default core 5, overridable via
+    `DMX_CORE`). Verify with `systemctl show olad -p CPUAffinity`. Plenty for a single slow-slewing tracker head.
   - **Buffered / no-fuss:** DMXKing ultraDMX MAX (~$150, `B0C7HHYK18`) — the
     Micro's hardware-timed successor, bombproof but 2-universe overkill; or a
     **Eurolite USB-DMX512 PRO** (~$50) if you can find US stock. The Enttec DMX

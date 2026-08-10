@@ -1,104 +1,315 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working in this repository.
 
 ## Project
 
-Zodiac Control — an Android tablet cockpit UI for a Judge Dredd-inspired vehicle. Built with Kotlin + Jetpack Compose, targeting **Amazon Fire and Samsung Galaxy Tab** tablets in landscape (the Galaxy Tab S9+ OLED is the main dashboard; the Fire HD 10 LCD is the performance floor). Currently a v0.1.0 prototype. Three runtime-switchable cockpit "concepts" — `RADAR`, `MAP`, and `DRIVER` (`core/model/CockpitConcept`; the original A `CRT VECTOR` and B `PERSPECTIVE` were dropped and the survivors lost their letter tags, 2026-07-04; `DRIVER`, the OLED night HUD, was added later) — share the same underlying state and an 80s green-phosphor aesthetic (neon vectors, scanlines). The active concept is picked via a top-right pill and persisted across launches; switching is purely presentational. The center of every concept renders a live Black Rock City playa map driven by a pluggable GPS source.
+**Zodiac** — software for a Judge-Dredd-themed mutant vehicle (art car) run by
+the Galactic Relay camp at Burning Man. Three parts, one system:
 
-Package: `org.pureagave.zodiac.control`
+- **`:app`** — the Android tablet cockpit (`org.pureagave.zodiac.control`). Kotlin
+  + Jetpack Compose. Three runtime-switchable "concepts" — `RADAR`, `MAP`,
+  `DRIVER` — over a live Black Rock City playa map.
+- **`:beacon`** — the [Zodiac Beacon](#beacon--the-sensor-hub)
+  (`org.pureagave.zodiac.beacon`), a headless phone sensor hub that broadcasts
+  NMEA over UDP multicast to the fleet.
+- **`jetson/`** — the Python edge box on a Jetson Orin Nano Super: `zvision`
+  (camera ring → one full-circle threat list on the fleet bus + a DMX tracker
+  light) and `zdeck` (a six-key Stream Deck control surface).
 
-**Monorepo — three modules:**
-- `:app` — the Android cockpit app (this file's main subject).
-- `:beacon` — the [Zodiac Beacon](#zodiac-beacon-sensor-hub), a headless phone sensor-hub broadcaster (`org.pureagave.zodiac.beacon`).
-- `jetson/` — `zvision`, a Python vision edge box on a Jetson Orin Nano Super (a ring of thermal/RGB cameras → one full-circle threat list on the fleet bus + a DMX tracker light). Docs in `jetson/*.md`.
+**Read first:** [`README.md`](README.md) for what exists,
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for how it is put together,
+[`docs/PROTOCOLS.md`](docs/PROTOCOLS.md) for the wire formats between the parts,
+[`docs/BUILD.md`](docs/BUILD.md) for build/test/deploy, [`SYNC.md`](SYNC.md) top
+entries for what just happened.
 
-## Build & Test Commands
+## The rule that matters most
+
+**Measure, don't guess.** A fixture manual said the moving head's tilt range was
+270°; it is 180°, and believing the manual scaled every tilt command by 1.5× and
+cost real hours. Where a number here came from a datasheet rather than a
+measurement, say so. When a doc and the code disagree, **the code wins** — fix
+the doc and record the correction in `SYNC.md`.
+
+The corollary: a test that cannot fail is worthless. This project has been bitten
+by tests that agreed with the code they tested more than once.
+
+## Build & test
 
 ```bash
-./gradlew assembleDebug              # Build debug APK
-./gradlew testDebugUnitTest          # Run unit tests
-./gradlew detekt                     # Static analysis
-./gradlew ktlintCheck                # Code style check
-./gradlew ktlintFormat               # Auto-fix formatting
+./gradlew ktlintCheck detekt lintDebug testDebugUnitTest assembleDebug  # before every commit
+./gradlew ktlintFormat                                                  # auto-fix style
+cd jetson && python3 -m unittest discover -s tests -t .                 # when touching the edge box
 ```
 
-```bash
-./gradlew lintDebug                  # Android Lint (manifest/permission/API)
-./gradlew assembleRelease            # R8 minify + resource shrink (unsigned without a keystore)
-```
+Counts as of 2026-08-10, all green: `:app` **817**, `:beacon` **77**,
+`jetson` **429**.
 
-Android CI (`android-ci.yml`, `:app`-scoped) runs ktlint, detekt, **Android Lint (lintDebug)**, unit tests, and assembleDebug on push/PR to `main` (via the Gradle wrapper). A separate `jetson-ci.yml` (path-filtered to `jetson/**`) runs the `zvision` Python unit tests. Run the app gates locally before each commit; run `jetson` tests (`cd jetson && python -m unittest discover -s tests -t .`) when touching the edge box.
+CI on push/PR to `main`:
 
-## Architecture
+- `android-ci.yml` — ktlint, detekt, `lintDebug`, unit tests, `assembleDebug`,
+  **unscoped**, so both `:app` and `:beacon` are covered. Run them unscoped
+  locally too; a `:app:`-prefixed task silently skips the beacon.
+- `jetson-ci.yml` — path-filtered to `jetson/**` and `protocol/**`; runs the
+  Python suite plus a one-frame emit check.
 
-**Reactive state with Coroutines + Flow.** ViewModel subscribes to repository/gateway flows and exposes a single `StateFlow<CockpitUiState>` to the Compose UI.
+Java and the Android SDK may not be on `PATH`; set `JAVA_HOME` / `ANDROID_HOME`
+inline per command if `./gradlew` cannot find them.
 
-**Key layers:**
-- `CockpitScreen` — top-level dispatcher: reads `CockpitConcept` and routes to one of three concept screens — `RADAR` (`ui/concepts/MotionTrackerScreen`) / `MAP` (`ui/concepts/InstrumentBayScreen`) / `DRIVER` (`ui/concepts/DriverNightScreen`). RADAR/MAP render the operational readout (`ui/ops/opsReadout`) as a first-class themed footer: BRC clock / sun / **drive-to guidance** (bearing + distance + heading-relative arrow to the active `core/ops/NavTarget` — HOME/MAN/TEMPLE, chosen via a prominent full-width `DRIVE TO` bar (`ui/ops/driveToBar`) above the footer). `DRIVER` is the OLED night HUD — a mostly-black vector display that renders thermal threat contacts + minimal nav (see "Vision / threats").
-- `ui/viewmodel/CockpitViewModel` — state orchestration, input validation (heading 0-359, speed 0-160), command dispatch, map/GPS/concept actions
-- `ui/state/CockpitUiState` — immutable data class, updated via `.copy()` (includes `commandError` surfaced from failed command sends)
-- `data/VehicleConnectionGateway` / `data/RoutedVehicleGateway` — interface + pure router that forwards commands to the currently selected transport adapter (note: switching transports does **not** disconnect the old adapter — see `RoutedVehicleGatewayTest`)
-- `data/TelemetryRepository` — streams `Telemetry` via Flow
-- `data/transport/TransportAdapter` — pluggable interface (connect/disconnect/send) per transport type (BLE/USB/WiFi)
-- `core/model/VehicleCommand` — sealed interface (`SetHeading`, `SetSpeed`)
-- `core/connection/ConnectionModels` — TransportType enum, ConnectionPhase, ConnectionState
+## `:app` architecture
 
-**GPS / location (see "GPS sourcing"):** `data/sensor/*LocationSource` (Fake/System/BLE/USB/**Network**) behind `RoutedLocationSource` + `LocationSourceRegistry`, feeding `data/sensor/nmea/NmeaParser`. Same selector-chip pattern as transports. `NetworkLocationSource` (NET) is the shipped, verified shared-WiFi fleet path — it also parses the beacon's five proprietary sensor sentences (see "Beacon sensor channels") and exposes them via a `beaconSensors` flow.
+**Reactive state with Coroutines + Flow.** Delegates fold repository and source
+flows into one `StateFlow<CockpitUiState>` that the whole UI reads.
 
-**Beacon sensor channels:** the `:beacon` broadcasts five proprietary NMEA sentences beyond GPS/heading/tilt — `$ZAUD` (mic rms/peak/beat), `$ZENV` (ambient lux), `$ZSHK` (shock/impact g), `$ZBCN` (beacon health: battery/fix/sats/uptime), `$ZODO` (trip+lifetime odometer). `NmeaParser` parses them into `core/telemetry/*` models (`AudioLevel`, `AmbientLight`, `ShockEvent`, `BeaconHealth`, `Odometer`, aggregated in `BeaconSensors`); `NetworkLocationSource.beaconSensors` → `CockpitViewModel` → `CockpitUiState`. `$ZENV` lux drives an **auto-dim** of screen brightness: `ui/state/ScreenBrightness.luxToBrightness` (log-scaled) applied by `MainActivity.autoDim`.
+**Manual DI** in `ZodiacApplication.kt` (process-lifetime scope) — no Hilt or
+Dagger. Everything is `by lazy`; `onCreate` does the only ordered work.
 
-**Vision / threats (DRIVER concept):** `data/vision/*ThreatSource` (Fake/Network) behind `RoutedThreatSource` consume `ThreatProtocol` frames the Jetson broadcasts on the fleet threat group; `core/vision/DriverThreat` + `ThreatProtocol` (byte-exact mirror of the Python side) model per-contact bearing/size/collision. `relAzDeg` is a **full-circle** bearing (±180) since the edge box fuses a ring of cameras — but `DriverNightScreen` still draws only the forward half (`HUD_FORWARD_ARC_DEG`), so rear contacts ride the bus undisplayed until the surround HUD lands.
+### Layers
 
-**Playa map + navigation:** `data/playa/` (GeoJSON parser → binary cache → `PlayaMapRepository`), `core/geo/` (equirectangular `PlayaProjection`, `PlayaViewport`), `core/navigation/` (`PlayaNavigator`, clock-bearing cues), rendered by `ui/playamap/` (projection, markers, labels, pan/pinch touch input). Active year is a single source of truth: `core/geo/GoldenSpike.ACTIVE` = `Y2026` (base assets in `app/src/main/assets/brc/2026/`; the 2026 city moved ~583 m SW from 2025 but the 12:00 axis is still 45°). The 2026 GIS ships no art layer — art/camp markers come from the BM API and stay hidden until BM releases 2026 data (~3 weeks pre-event).
+- **`CockpitScreen`** — top-level dispatcher. Wrapped by `burnInScaffold`, routes
+  on `CockpitConcept` to `MotionTrackerScreen` (RADAR) / `InstrumentBayScreen`
+  (MAP) / `DriverNightScreen` (DRIVER), or bypasses all three for
+  `passengerScreen` when this device holds the passenger role.
+- **`ui/viewmodel/`** — **four** files: `CockpitViewModel` (457 lines, 20 public
+  functions) owns the single `MutableStateFlow<CockpitUiState>` and the flow
+  wiring, and delegates to `MapCameraController` (pan/zoom/rotate/tilt/recenter),
+  `NavigationController` (drive-to, routing, street and art callouts) and
+  `GpsController` (source selection, fake-GPS nudges). The public API is the
+  ViewModel's; the delegates are internal collaborators.
+- **`ui/state/CockpitUiState`** — one immutable data class, 37 fields, updated by
+  `.copy()`. The per-frame copy cost is known and tracked as A5 in `tasks/open.md`.
+- **`core/`** — all pure logic, no Android: `geo`, `navigation`, `ops`, `vision`,
+  `telemetry`, `sensor`, `model`, `connection`, `log`, `net`, `passenger`,
+  `permission`. **No new logic in a composable** — draw code turns decisions into
+  pixels; decisions live in `core/` with tests. `SurroundRing` /
+  `SurroundRingCanvas` is the model split to follow.
+- **`data/`** — `VehicleConnectionGateway` / `RoutedVehicleGateway`,
+  `TelemetryRepository`, `data/transport/TransportAdapter`,
+  `data/sensor/*LocationSource`, `data/vision/*ThreatSource`,
+  `data/playa/PlayaMapRepository`, `data/discovery/DiscoveryRepository`,
+  `data/prefs/DataStoreCockpitPreferences`, `data/log/FileLogTree`.
 
-**Preferences:** `data/prefs/DataStoreCockpitPreferences` persists GPS source / map mode / tilt / zoom / concept / burn-in config across launches (Jetpack DataStore).
+**Input validation lives in the ViewModel layer**, so every entry point — chip,
+gesture, synthetic GPS, persisted preference — is bounded identically: heading
+0–359, speed 0–160 kph, tilt 0–80°, zoom 0.05–5.0 px/m, camera pan ±5000 m.
 
-**Burn-in mitigation (OLED dashboard):** `burnin/` — `BurnInMitigationManager` (process-lifetime idle state machine: ACTIVE → DIM → DEEP_IDLE → SLEEP, on an injectable clock; activity = touch / real GPS movement / link change) drives `burnInScaffold`, which wraps the whole cockpit from one node in `CockpitScreen`. Pixel-shift is universal; the brightness breathe/dim `graphicsLayer` is OLED-gated off on the Fire (`BurnInDeviceProfile`). DEEP_IDLE renders `standbyScreen`; SLEEP is app-drawn black + min backlight (Activity stays foreground, instant wake). Corner long-press = park / hidden `burnInTuningPanel`. All params are `BurnInConfig` (self-coercing) and preferences-backed.
+### Two routers, opposite lifecycle policies — both intentional
 
-**All transports are currently fake** (FakeTransportAdapter, FakeTelemetryRepository). Real BLE/USB/WiFi transport adapters are a future milestone; the GPS location sources, by contrast, have real System/BLE/USB implementations.
+`RoutedLocationSource.select()` **stops** the old source before starting the new
+one. `RoutedVehicleGateway.selectTransport()` **leaves** the old adapter
+connected. Both are documented in place and pinned by tests.
+`FailoverLocationSource` exists because the location policy makes
+failover-on-top-of-routing impossible any other way.
 
-**DI is manual** in `ZodiacApplication.kt` (process-lifetime scope) — no Hilt/Dagger. Dependencies are created and wired up directly.
+### GPS / location
 
-## GPS sourcing
+Five sources behind `LocationSource` — `FAKE` / `SYSTEM` / `BLE` (Bluetooth
+Classic SPP) / `USB` (serial) / **`NET`** — selected at runtime through
+`RoutedLocationSource` + `LocationSourceRegistry` and the right-rail chips.
 
-Fire tablets have no built-in GNSS. Architecture is a pluggable `LocationSource` (FAKE / SYSTEM / BLE / USB / **NET**), parallel to the transport adapter pattern. Fleet target is 8-10 tablets in one vehicle, so a single shared sensor hub broadcasts on the car's local WiFi rather than per-tablet receivers. **NET is shipped and verified end-to-end.**
+**`NET` is the shipped, verified fleet path.** `NetworkLocationSource` binds
+wildcard on `239.7.7.10:10110`, joins the group, holds a `MulticastLock`, and
+feeds `NmeaParser`. It rebuilds its socket on exponential backoff after a failure
+or 20 s of silence — rebuilding is the only way to re-join a group after a router
+reboot. `start()` is idempotent; `stop()` joins the listener before clearing.
 
-- **Hub:** the `:beacon` app (Zodiac Beacon), on the XCover Pro phone today; Pi Zero 2 W + u-blox USB GNSS + roof antenna later. The travel router keeps the AP/DHCP role.
-- **Tablet side:** `NetworkLocationSource` listens on the fixed fleet multicast group `239.7.7.10:10110` (subnet-broadcast fallback; holds a `MulticastLock`), feeds lines into `NmeaParser`, emits `LocationSourceState` like every other source. Same selector chip pattern.
-- Earlier bring-up used an iPhone running GPS2IP to prove `NetworkLocationSource` before the beacon app existed.
+`FailoverLocationSource` wraps NET with SYSTEM, presents itself as `NET`, and
+keeps both warm. Drop after 3 s unhealthy, recover only after 10 s healthy —
+deliberately asymmetric so a half-alive beacon cannot flap the source. Armed only
+where `FEATURE_LOCATION_GPS` is reported.
 
-## Zodiac Beacon (sensor hub)
+`NmeaParser` handles GGA, RMC, HDT and the six proprietary `$Z*` types, and
+**deliberately rejects VTG, HDG and HDM** (see `docs/PROTOCOLS.md` §2.3 — this is
+load-bearing, don't "fix" it).
 
-`:beacon` (`org.pureagave.zodiac.beacon`) is a headless foreground-service app that turns a phone into the vehicle's sensor hub. `TelemetryBroadcaster` forwards raw GNSS NMEA verbatim and adds: `$GPHDT` (compass true heading, from `Nmea.hdt`), `$ZTLM` (IMU pitch/roll + speed), and the five proprietary channels — `$ZAUD` (mic levels via `AudioLevels`), `$ZENV` (lux), `$ZSHK` (shock via `ShockDetector`), `$ZBCN` (health), `$ZODO` (odometer via `TripOdometer`). Sentence builders + XOR checksum are in `Nmea.kt`. Broadcasts to the fixed multicast group + subnet-broadcast fallback on UDP `10110`. Only a mic level/beat number leaves the phone — no audio is recorded or transmitted. Tests: `beacon/src/test/.../{Nmea,AudioLevels,ShockDetector,TripOdometer}Test.kt`.
+### Beacon sensor channels
 
-## UI Structure
+The five proprietary channels — `$ZAUD` (mic rms/peak/beat), `$ZENV` (lux),
+`$ZSHK` (shock g), `$ZBCN` (health), `$ZODO` (odometer) — parse into
+`core/telemetry/*` and flow `NetworkLocationSource.beaconSensors` →
+`CockpitViewModel` → `CockpitUiState`. `$ZAUD` is held out of `beaconSensors`
+because it updates ~15 Hz. `$ZENV` lux drives auto-dim through
+`ScreenBrightness.luxToBrightness`, applied by `burnInScaffold`, which is the
+**single writer** of screen brightness.
 
-`CockpitScreen` dispatches on the active `CockpitConcept` (three concepts). `RADAR` (`MotionTrackerScreen`) is the *Aliens* M41A sweep-scope — a circular scope whose sweep arm lights up the real BRC map. `MAP` (`InstrumentBayScreen`) is the *Alien* Nostromo gauge-wall — bordered tiles (heading dial, speed gauge, ground-track map, cell/throttle gauges). `DRIVER` (`DriverNightScreen`) is the Star-Wars-vector OLED night HUD for the driver phone — mostly-black, thermal threat contacts as hollow wireframe figures + minimal nav. RADAR/MAP share the control strip (`ConceptControls`) and the `opsReadout` footer, each rendered in its own palette.
+### Vision / threats (DRIVER)
 
-Center-viewport touch drives the **map**, not the vehicle: drag to pan, pinch to zoom, two-finger twist to rotate (`ui/playamap/MapTouchInput`). Heading/speed are set programmatically / by the synthetic GPS, not by tapping the viewport. (An earlier X→heading / Y→speed mapping was replaced by the map interaction.)
+`data/vision/*ThreatSource` behind `RoutedThreatSource` consume `ZTHREAT` frames
+from `239.7.7.20:10120`. `RoutedThreatSource.demoEnabled` has **no default
+value**, deliberately — it once defaulted to `true` and put fabricated contacts
+on the driver's HUD. `ZodiacApplication` passes `false`.
 
-Color system (semantic, set 2026-07-04; shared constants in `ui/concepts/ConceptTheme`): pure black bg; **green `#00FF66`** for all chrome/controls/buttons/labels; **blue `#00BFFF`** for status only (link/connection/GPS state, selected control); **purple `#C77DFF`** for live data values (heading/speed/range/zoom, clock, distance, gauge needles, ego marker, map landmarks); **red `#FF5555`** for faults / extreme warnings only. Amber is banned.
+`VisionFeed` is `LIVE` / `DEMO` / `ABSENT` and is surfaced, never hidden. An
+empty-but-live feed is a real all-clear and must not trigger demo fallback.
+
+`relAzDeg` is **full-circle** (±180). The forward perspective view filters to
+`PERSPECTIVE_ARC_DEG = 30f`; the **surround ring carries every contact** and is
+rendered by `SurroundRingCanvas` with all decisions in `core/vision/SurroundRing`.
+
+### Playa map + navigation
+
+`data/playa/` (GeoJSON → binary cache → `PlayaMapRepository`), `core/geo/`
+(equirectangular `PlayaProjection`, track-up `PlayaViewport`), `core/navigation/`
+(`PlayaNavigator`, `ClockBearing`, `PlayaCityModel`, `PlayaRoute`), rendered by
+`ui/playamap/`.
+
+Active year is one source of truth: `GoldenSpike.ACTIVE = Y2026` (assets in
+`app/src/main/assets/brc/2026/`). The 2026 city moved ~583 m SW from 2025 but did
+not rotate — the 12:00 axis is still 45° true. The 2026 GIS ships **no art
+layer**; art and camp markers come from the BM API and stay hidden until BM
+releases the data (~3 weeks pre-event).
+
+Routing snaps every in-city corner to a real GIS street vertex, which is what
+keeps the drawn route on the drawn streets.
+
+### Other subsystems
+
+- **Passenger display** (`ui/passenger/`, `core/passenger/`) — a self-running card
+  carousel for riders. **A card with no data leaves the rotation rather than
+  showing empty**, and the "souls" card requires a genuinely `LIVE` vision feed.
+  Toggled by a hidden top-right long-press, hidden in both directions.
+- **Burn-in mitigation** (`burnin/`) — `BurnInMitigationManager` is a pure phase
+  machine (ACTIVE → DIM → DEEP_IDLE → SLEEP at 5 / 30 / 60 min) on an injectable
+  clock. `burnInScaffold` wraps the whole cockpit from one node. Pixel-shift is
+  universal; the breathe/dim layer is OLED-gated by
+  `BurnInDeviceProfile` (`Build.MANUFACTURER != "Amazon"`). All parameters are in
+  the self-coercing `BurnInConfig`, preferences-backed and live-tunable.
+- **Kiosk** (`kiosk/`, `docs/KIOSK.md`) — device-owner lock task. Every step is a
+  no-op without device owner. **Never rename `ZodiacDeviceAdminReceiver`** — it
+  breaks every already-provisioned tablet.
+- **Logging** (`core/log/RollingFileLog`, `data/log/FileLogTree`) — size-capped
+  rotating log that never throws and **counts everything it discards**. Hidden
+  bottom-right long-press opens an on-device viewer, which on the Fire is the
+  only way to read it.
+- **Discovery** (`data/discovery/`) — offline-first BM API cache in `filesDir`
+  (not `cacheDir` — Android may purge that). A failed or partial fetch never
+  clobbers a good cache.
+- **Preferences** (`data/prefs/`) — 21 DataStore keys, enums stored by name, every
+  numeric read clamped, corruption handler installed. Default GPS source is
+  **`NET`, not `FAKE`**.
+
+### Hidden corner gestures
+
+Top-left = park · bottom-left = burn-in tuning panel · bottom-right = log viewer
+· top-right = toggle passenger role.
+
+## `:beacon` — the sensor hub
+
+Headless foreground service, minSdk 29. `TelemetryBroadcaster` forwards raw GNSS
+NMEA **verbatim** and synthesizes `$GPHDT`, `$ZTLM`, `$ZAUD`, `$ZENV`, `$ZSHK`,
+`$ZBCN`, `$ZODO`. Sentence builders and the XOR checksum are in `Nmea.kt`; every
+format is pinned to `Locale.US`.
+
+One 250 ms tick loop drives everything periodic with integer divisors. A deadman
+watchdog banners the status readout if the loop dies. Broadcasts to the multicast
+group **and** a subnet broadcast on UDP 10110.
+
+**Only a mic level and beat flag ever leave the phone** — no audio is recorded,
+buffered or transmitted. An absent sensor emits **nothing** rather than a
+fabricated `0.0` (heading and lux). GPS failure is never fatal — the other
+channels keep broadcasting.
+
+Tests: `beacon/src/test/.../{Nmea,AudioLevels,ShockDetector,TripOdometer,BeaconNet,
+ForegroundTypes,TickLoop,...}Test.kt` — 13 files, four of them Robolectric.
+
+## `jetson/` — the edge box
+
+`zvision` core is **standard-library only** (numpy/opencv are an optional lazy
+extra), so the whole suite and `--source fake` run anywhere.
+
+Pipeline: `--camera` specs → `rig.build_rig` → per-camera `detect()` →
+`to_global` → `merge_contacts` → `format_frame` → `ThreatBroadcaster` (10 Hz)
+→ `239.7.7.20:10120`, with an optional branch into `Tracker` → `DmxSink` → `olad`.
+
+**The detector is background subtraction, not a model.** No TensorRT, ONNX, YOLO
+or weights exist in the tree. `FakeDetector` is the default source, and
+`install.sh` writes `--source fake --hz 10`, i.e. no real cameras.
+
+`zdeck` borrows its DMX channel numbers from `zvision`'s `TrackerConfig` rather
+than restating them. **Never run `zvision --dmx ola` and `zdeck` at the same
+time** — arbitration is unresolved and BLACKOUT would flicker rather than kill.
+
+Measured fixture facts that contradict its manual: tilt range is **180°** (not
+270°) and the dimmer is **channel 8** (not 5, which is the colour wheel). Both
+are pinned by tests.
+
+## Wire protocols
+
+Full reference in [`docs/PROTOCOLS.md`](docs/PROTOCOLS.md).
+
+`ZTHREAT` is a **cross-language contract between two hand-written
+implementations, and neither is authoritative.** The shared truth is the measured
+golden corpus at `protocol/threat-protocol-golden.json`, read by both test suites,
+which fail loudly rather than skipping if it is missing. Before it existed the two
+sides had silently drifted in ten measured ways. If you change the format,
+re-run the differential comparison that produced the corpus — **do not hand-edit
+the JSON**, which is exactly the failure it exists to prevent.
+
+## UI conventions
+
+Concepts share the control strip (`ConceptControls`) and the `opsReadout` footer,
+each rendered in its own palette. Center-viewport touch drives the **map**, not
+the vehicle: drag to pan, pinch to zoom, two-finger twist to rotate. Heading and
+speed come from the GPS fix, never from tapping the viewport.
+
+Colour system (semantic, set 2026-07-04, in `ui/concepts/ConceptTheme`): pure
+black background; **green `#00FF66`** for all chrome, controls, buttons and
+labels; **blue `#00BFFF`** for status only (link/GPS state, "this is selected");
+**purple `#C77DFF`** for live data values (heading, speed, range, zoom, clock,
+distance, gauge needles, ego marker, map landmarks); **red `#FF5555`** for faults
+and extreme warnings only. **Amber is banned.** DRIVER overrides these with a
+dimmer night set for dark adaptation.
 
 ## Conventions
 
-- **Kotlin 2.0.21**, JDK 17, Compose BOM 2024.11.00, AGP 8.7.3
-- Detekt config at `config/detekt/detekt.yml` — `MagicNumber`, `MaxLineLength`, `LongMethod` disabled; `ReturnCount` relaxed to 3 (guard-clause validation), `TooManyFunctions` bumped for the canonical screen/ViewModel, `FunctionNaming` loosened for lowercase composables. Broad `catch (Exception)` at hardware/IO boundaries is `@Suppress`ed locally with a rationale rather than rule-disabled.
-- KtLint in Android mode, strict (fails on violations)
-- Landscape-only, minSdk 30, targetSdk 35
-- Test with JUnit 4 + kotlinx-coroutines-test (`runTest`, `advanceUntilIdle`)
-- Tests use a `MainDispatcherRule` TestWatcher for coroutine dispatcher setup
+- **Kotlin 2.0.21**, JDK 17, Compose BOM 2024.11.00, AGP 8.7.3, Gradle 8.10.2
+- `:app` minSdk **28**, `:beacon` minSdk **29**, both targetSdk/compileSdk 35
+- `screenOrientation="fullUser"` — every concept reflows for landscape *or*
+  portrait
+- Detekt config at `config/detekt/detekt.yml` — `MagicNumber`, `MaxLineLength`,
+  `LongMethod` disabled; `ReturnCount` relaxed to 3; `LongParameterList` and
+  `TooManyFunctions` (22 in classes) raised with a written rationale each. Broad
+  `catch (Exception)` at hardware/IO boundaries is `@Suppress`ed locally with a
+  reason rather than rule-disabled.
+- KtLint in Android mode, strict. Android Lint `abortOnError = true` in both
+  modules.
+- Composables are lowercase-named (detekt's `FunctionNaming` is loosened for it)
+- JUnit 4 + `kotlinx-coroutines-test` (`runTest`, `advanceUntilIdle`), with a
+  `MainDispatcherRule` `TestWatcher` for dispatcher setup
+
+## What is fake — get this right
+
+- **Every vehicle transport is fake.** `FakeTransportAdapter` is the only
+  `TransportAdapter` implementation; `FakeTelemetryRepository` the only production
+  `TelemetryRepository`. Real vehicle data arrives **only** via
+  `NetworkLocationSource` and `NetworkThreatSource` — never through the gateway.
+- The GPS location sources, by contrast, have real System/BLE/USB/Network
+  implementations.
+- MAP's cell gauges and throttle trace are hard-coded literals.
+- The Jetson has no trained detector and no camera has been attached to the box.
+- The tracker light's aim constants are uncalibrated placeholders.
 
 ## Workspace
 
 - `tasks/open.md` — active work items; `tasks/done.md` — completed
-- `design/` — UI concept docs and vehicle wireframe references
-- Tone: direct, technical, code over commentary. The user is a hardware/systems engineer.
+- `design/` — UI concept docs, burn-in design, performance backlog, surround-HUD
+  design
+- `protocol/` — cross-language wire contracts
+- Tone: direct, technical, code over commentary. The user is a hardware/systems
+  engineer.
 
 ## How we work
 
-- **`SYNC.md` is append-only.** Anything significant we decide, learn, or build gets a dated entry there. Newest entries on top; never rewrite past entries — supersede with a new one. This is the project's working memory.
-- **`README.md` is the public-facing snapshot.** Update it whenever a major feature ships or the architecture changes (new layer, new dependency category, new build step). Don't log progress there — that's what SYNC.md is for.
-- **Commit regularly and keep CI green.** Land work in small, runnable commits rather than big batches. Before each commit: run `./gradlew ktlintCheck detekt testDebugUnitTest assembleDebug` (the CI gates) and fix anything red. Never mark a task complete with the build broken.
-- **Phased features get phased commits.** When a feature has phases (data → render → integrate), each phase is its own commit and leaves the app runnable.
-- **Push to `origin/main` after each phase commit.** GitHub Actions CI runs the same gates on every push, so anything green locally should stay green upstream. Pause and confirm before any destructive remote operation (force-push, branch delete, history rewrite).
+- **`SYNC.md` is append-only.** Anything significant decided, learned or built
+  gets a dated entry, newest on top. Never rewrite past entries — supersede with
+  a new one. This is the project's working memory.
+- **`README.md` is the public-facing snapshot.** Update it when a major feature
+  ships or the architecture changes. Don't log progress there — that is
+  `SYNC.md`'s job.
+- **Commit regularly and keep CI green.** Small, runnable commits. Run the gates
+  before each commit and fix anything red. Never mark a task complete with the
+  build broken.
+- **Phased features get phased commits** (data → render → integrate), each leaving
+  the app runnable.
+- **Push to `origin/main` after each phase commit.** Pause and confirm before any
+  destructive remote operation (force-push, branch delete, history rewrite).

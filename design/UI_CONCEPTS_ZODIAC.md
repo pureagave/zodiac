@@ -1,6 +1,22 @@
 # Zodiac UI Concepts (Aliens/80s Sci‑Fi Inspired)
 
-> **Superseded (2026-06-14).** This is the original pre-build concept exploration (Tactical Grid / CRT Vector / Dropship Console). The shipped app carries four different runtime concepts — A CRT VECTOR, B PERSPECTIVE, C TRACKER, D BAY. See README "Current build" for what actually ships; kept here for design history.
+> **Superseded — design history only. Nothing below describes the shipped app.**
+>
+> This is the original pre-build concept exploration (Tactical Grid / CRT Vector /
+> Dropship Console), written 2026-04. None of the three was built as specified.
+>
+> What actually shipped: **three** runtime concepts — `RADAR` (Aliens M41A motion
+> tracker), `MAP` (Alien Nostromo instrument bay) and `DRIVER` (an OLED night
+> HUD). Two earlier ones, A CRT VECTOR and B PERSPECTIVE, were dropped on
+> 2026-07-04 and the survivors lost their letter tags; DRIVER was added later.
+> The palette below is also obsolete — the shipped semantic palette is in
+> `ui/concepts/ConceptTheme` and **amber is banned**. The minSdk figure below is
+> wrong too: the app targets **28**, not 30, and is `fullUser` orientation rather
+> than landscape-first.
+>
+> See [`../README.md`](../README.md) and [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+> for what exists. Kept because the mood boards and the reference-capture plan are
+> still the source of the aesthetic.
 
 ## App Naming (Android conventions)
 

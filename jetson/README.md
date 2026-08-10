@@ -15,17 +15,26 @@ same contacts and — when idle — pulses to the beacon's `$ZAUD` audio (see th
                                             tablets: NetworkThreatSource ▶ DRIVER HUD
 ```
 
-The wire format (`zvision/threat_protocol.py`) is a **byte-exact mirror** of the
-tablet's Kotlin `ThreatProtocol` — the two sides share no code, only the frozen
-protocol. The round-trip tests here also guard that contract.
+The wire format (`zvision/threat_protocol.py`) and the tablet's Kotlin
+`ThreatProtocol` are **two hand-written implementations of the same grammar, and
+neither is authoritative.** The shared truth is the measured golden corpus at
+`protocol/threat-protocol-golden.json`, which both test suites read and both fail
+loudly on rather than skipping if it is missing. Before it existed the two sides
+had silently drifted in ten measured ways. See `protocol/README.md` and
+`docs/PROTOCOLS.md` §3.
 
 ## Quick start (no hardware needed)
 
 ```bash
 cd jetson
 python3 -m zvision --source fake -v        # emit synthetic contacts, print each frame
-python3 -m unittest discover -s tests -t . # the whole suite, standard library only
+python3 -m unittest discover -s tests -t . # the whole suite — no third-party packages needed
 ```
+
+The suite needs no `numpy`, `opencv`, `StreamDeck` or `PIL`. It does need the
+**repository root**: `tests/test_threat_protocol_golden.py` reads
+`protocol/threat-protocol-golden.json` two directories up and fails if it is
+missing, so run it from a full checkout rather than a copy of `jetson/` alone.
 
 `--source fake` needs nothing installed — it's how you prove the bus and light
 up the HUD before any camera or model exists. Point it at a tablet on the same
@@ -69,11 +78,18 @@ you find out the ring doesn't close now rather than by wondering why someone
 standing behind the car never appeared:
 
 ```
-     thermal: fake /dev/video0 az=+0° fov=160°h equidistant -> covers -80°..+80°
-    stbd-aft: fake /dev/video0 az=+120° fov=90°h equidistant -> covers +75°..+165°
-    port-aft: fake /dev/video0 az=-120° fov=90°h equidistant -> covers -165°..-75°
+     thermal: thermal /dev/video0 az=+0° fov=160°h equidistant -> covers -80°..+80°
+    stbd-aft: rgb /dev/video2 az=+120° fov=90°h rectilinear -> covers +75°..+165°
+    port-aft: rgb /dev/video4 az=-120° fov=90°h rectilinear -> covers -165°..-75°
   blind: +166°..+195°
 ```
+
+> **Note the `fov=160°h` in that first line.** `--fov-ref` defaults to horizontal,
+> so a camera declared `fov=160` is treated as covering ±80°. `HARDWARE.md` §1
+> concludes the Lepton Ultra Wide's quoted 160° is the **diagonal** (±64°
+> horizontal), and the tablet already assumes ±64°. Until the Python default or
+> the examples change, add `fovref=d` to the thermal camera's spec if you want the
+> two sides of the vehicle to agree — see `docs/PROTOCOLS.md` §4.
 
 A camera that won't open, or starts throwing mid-run, costs you its arc — not
 the run. If *nothing* opens, the runner exits rather than broadcasting a
@@ -116,17 +132,36 @@ in [DEPLOY.md §8](DEPLOY.md#8-tuning-on-playa-laptop-only--no-keyboard-mouse-or
 | `zvision/dmx.py` | DMX transport — `FakeDmxSink` (stdlib) + `OlaDmxSink` (posts to `olad`) |
 | `zvision/recorder.py` | frame + weak-label dump for model training (`--record`) |
 | `zvision/audio_bus.py` | `$ZAUD` listener — beacon mic levels for the idle sound-reactive show |
+| `zvision/normalize.py` | the array-free arithmetic — contrast stretch window, track-id assignment, re-baseline guard (exists so the suite runs without numpy) |
+| `zvision/dmxpark.py` | fail-safe: zeroes all 512 slots, with retries. Also the operator kill: `python3 -m zvision.dmxpark` |
+| `zvision/tracklog.py` | breadcrumb recorder — joins the telemetry group, writes daily NMEA-derived CSV |
+| `zvision/trackserve.py` | read-only HTTP server for those CSVs, port 8087, `/index.json` listing |
+| `zvision/threat.py` | the `DriverThreat` record |
 | `zvision/app.py` | CLI runner / broadcast + tracker loop |
-| `systemd/zvision.service` | auto-start unit |
-| `scripts/install.sh` | provision to `/opt/zodiac/jetson` + enable service |
+| **`zdeck/`** | the Stream Deck control surface — `model.py` (pure key/DMX state), `surface.py` (protocol + fake), `hardware.py` (vendor lib + PIL, isolated), `app.py` (runner). See [DECK.md](DECK.md) |
+| `systemd/zvision.service` | auto-start unit for the vision runner |
+| `systemd/zodiac-deck.service` | auto-start unit for the Stream Deck runner |
+| `systemd/zodiac-track.service` | auto-start unit for the breadcrumb recorder |
+| `systemd/zodiac-track-serve.service` | auto-start unit for the CSV HTTP server |
+| `systemd/70-zodiac-streamdeck.rules` | udev rule giving `plugdev` access to the deck |
+| `scripts/install.sh` | copy **`zvision` only** to `/opt/zodiac/jetson`, write `/etc/default/zvision`, enable + start `zvision.service` |
 | `scripts/install-ola.sh` | OLA (`olad`) + `ftdidmx` plugin, CPU-pinned, on-boot |
+| `scripts/preflight-flash.sh` | read-only pre-flash checks on the Linux flash host; `--command` prints the flash command |
+
+> `install.sh` installs **only** `zvision` and **only** `zvision.service`. The
+> deck, track and track-serve units, the udev rule, and the `zdeck` package itself
+> are installed by hand. `zdeck` must end up under `/opt/zodiac/jetson`, because
+> that is the `WorkingDirectory` its unit runs `-m zdeck` from.
 
 ## Docs
 
 - **[DEPLOY.md](DEPLOY.md)** — full hardware bring-up (flash → network → prove-with-fake → camera → permanent → DMX tracker light)
 - **[HARDWARE.md](HARDWARE.md)** — edge-box bill of materials, wiring, power & thermal budget
+- **[MOVING-HEAD.md](MOVING-HEAD.md)** — the DMX fixture: channel map, the measured pan/tilt ranges (the manual is wrong about tilt), and the bench log
+- **[DECK.md](DECK.md)** — the Stream Deck control surface, its deployment, and the unresolved DMX arbitration
 - **[DETECTOR.md](DETECTOR.md)** — roadmap from today's motion blobs to the trained thermal model
 - **[TRAINING.md](TRAINING.md)** — what actually needs training (RGB: nothing), what the big GPU is and isn't for, and the recording workflow that feeds it
+- **[../docs/PROTOCOLS.md](../docs/PROTOCOLS.md)** — the `ZTHREAT` wire format in full, and the NMEA channels this box listens to
 
 ## Recording training data
 
@@ -136,7 +171,11 @@ python3 -m zvision --record /data/drive-01 --record-hz 1 --camera thermal:/dev/v
 
 Writes frames per camera plus an `index.jsonl` carrying the **pixel boxes** the
 motion detector found — weak labels, so an annotator corrects rather than draws.
-Thermal goes to lossless PNG, RGB to JPEG, capped at 20 GB by default so a long
-night can't fill the boot disk. Failures are reported once and never interrupt
+Small frames go to lossless PNG and large ones to JPEG — the split is by **pixel
+count**, not by camera kind, so the 160×120 thermal lands on PNG and a full-size
+RGB frame lands on JPEG. (The threshold was originally 128×128, chosen for a
+sensor believed to be 120×120, which silently JPEG'd the thermal.) Capped at
+20 GB by default, shared across all cameras, so a long night can't fill the boot
+disk. Failures are reported once and never interrupt
 detection. Footage can only be captured while the rig is on the vehicle; GPU
 time can be rented any evening — which is why this exists before any model work.

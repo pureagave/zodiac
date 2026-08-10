@@ -20,7 +20,20 @@ Each box is proven before the next; each maps to a section below.
 - [ ] **Make permanent**: set the real source in `/etc/default/zvision`, `systemctl restart zvision` — §6
 - [ ] *(optional, any time)* **DMX light**: `sudo jetson/scripts/install-ola.sh`, patch the dongle, `--dmx ola` — §7
 
-Prereqs already in hand: Jetson kit + PSU, Lepton+PureThermal, RGB cam, DMX dongle+cables+head, router. Still needed before a *field* install (not for bench bring-up): germanium thermal window, vents, vibration pads, short USB cables. Software is 100% ready — the box just needs to boot.
+Before you start, run the read-only pre-flight on the flash host:
+`jetson/scripts/preflight-flash.sh` checks the BSP staging, the host tools, the
+`qemu-aarch64-static` symlink, the baked-in user, the t234 flash XML and free
+space, and `--command` prints the exact flash command. It changes nothing.
+
+Prereqs already in hand: Jetson kit + PSU, Lepton+PureThermal, RGB cam, DMX dongle+cables+head, router. Still needed before a *field* install (not for bench bring-up): germanium thermal window, vents, vibration pads, short USB cables.
+
+**Software status, honestly:** the bus, the rig, the broadcaster and the tracker
+are built and tested and the box can boot straight into them. Two things are
+*not* finished and are not software bugs: the tracker light's aim constants
+(`tilt_far_deg` / `tilt_near_deg` / `pan_center_deg`) are **uncalibrated
+placeholders** that must be set on the actual mount before enabling `--dmx ola`,
+and DMX arbitration between `zvision` and `zodiac-deck` is **unresolved** — see
+[DECK.md §3](DECK.md), do not run both with real DMX output.
 
 ---
 
@@ -252,9 +265,21 @@ cd /opt/zodiac
 sudo jetson/scripts/install.sh          # installs the systemd service
 ```
 
-This installs a systemd service (disabled-to-fake by default) and a config file
-at `/etc/default/zvision` — **outside** the repo, so a `git pull` never clobbers
-the rig's configuration.
+This installs a systemd service and a config file at `/etc/default/zvision` —
+**outside** the repo, so a `git pull` never clobbers the rig's configuration.
+
+Note what `install.sh` actually does, because it is less than it sounds:
+
+- it **enables and starts** `zvision.service` immediately — the service is not
+  left disabled. It is *configured to fake* (`ZVISION_ARGS=--source fake --hz 10`)
+  until you edit that file, which means it will broadcast three synthetic
+  contacts, one of them a recurring phantom collision, to every tablet on the
+  network. Fine on a bench; do not leave it that way on the vehicle.
+- it copies **only the `zvision` package** — not `zdeck`, not `tests`.
+- it installs **only `zvision.service`** — not `zodiac-deck.service`,
+  `zodiac-track.service`, `zodiac-track-serve.service` or the Stream Deck udev
+  rule. Those are installed by hand (see [DECK.md](DECK.md) for the deck).
+- it does not create `/var/lib/zodiac/track`, which the breadcrumb logger needs.
 
 ### Credentials: none live on this box
 
@@ -326,7 +351,9 @@ enumerate:
 v4l2-ctl --list-devices          # find which /dev/videoN is which
 v4l2-ctl -d /dev/video0 --all    # sanity: resolution/format
 ```
-Lepton Ultra Wide is 120×120. Each RGB camera will be a further `/dev/videoN`.
+Lepton Ultra Wide is **160×120**, not the 120×120 originally assumed — measured
+on the real sensor, see §7b and `capture.py`. Each RGB camera will be a further
+`/dev/videoN`.
 
 Run the real detector:
 ```bash
@@ -402,8 +429,19 @@ Then plug in the USB→DMX dongle and patch it once (needs the port enumerated):
 ```bash
 ola_dev_info                                  # find the ftdidmx device + port
 ola_patch -d <device> -p <port> -u 0          # patch to universe 0  (or web UI :9090)
-ola_set_dmx -u 0 -d 128,0,128,0,255           # pan/tilt/dimmer test — the head should move
+ola_set_dmx -u 0 -d 128,0,128,0,0,0,0,255     # pan/tilt/dimmer test — head centres AND lights
 ```
+
+> **Do not use `-d 128,0,128,0,255` for this** — the older form of this command,
+> still printed by `install-ola.sh`. In the 11-channel mode this fixture runs in,
+> the fifth slot is the **colour wheel**, and 255 there means "auto colour change,
+> fast". The **dimmer is channel 8**, so that command pans and tilts a head that
+> stays dark while spinning colours — indistinguishable from a dead fixture, and
+> precisely the trap [MOVING-HEAD.md §7](MOVING-HEAD.md) documents.
+> The eight values above are pan, pan-fine, tilt, tilt-fine, colour, 0, 0, dimmer.
+>
+> If the head still does nothing, **check it completed its power-up homing sweep**
+> before blaming software — see MOVING-HEAD.md §8.2.
 
 Prove the pipeline, then go live:
 ```bash
@@ -555,7 +593,7 @@ manages that station, so changes get logged there as well as here.
 | `no cameras opened`, exit 3 | none of the rig's devices enumerated — `v4l2-ctl --list-devices`, check USB power/hub |
 | a camera vanished but the run continued | by design — check stderr for `camera <name> failing, dropped`; that arc is blind until it's back |
 | contacts flicker / bad ids | motion detector is bring-up-grade; the trained model replaces it — for now raise `--hz` and ensure a stable mount |
-| `--dmx ola` runs but the head doesn't move | universe not patched (`ola_dev_info` → `ola_patch`), or the wrong universe (`--dmx-universe`). Confirm with `ola_set_dmx -u 0 -d 128,0,128`. |
+| `--dmx ola` runs but the head doesn't move | **First: did it complete its power-up homing sweep?** An un-homed head accepts DMX and silently discards it (MOVING-HEAD.md §8.2). Then: universe not patched (`ola_dev_info` → `ola_patch`), or the wrong universe (`--dmx-universe`). Confirm with `ola_set_dmx -u 0 -d 128,0,128,0,0,0,0,255` — the trailing 255 is the ch8 dimmer, without it the head moves in the dark. |
 | DMX flickers / stutters | another OLA plugin is fighting for the FT232 (leave only `ftdidmx` on), or olad isn't CPU-pinned — re-run `install-ola.sh`; check `systemctl show olad -p CPUAffinity` |
 | olad won't grab the dongle | kernel `ftdi_sio` may hold it as `/dev/ttyUSB0`; ftdidmx uses libftdi and should detach it — if not, `sudo modprobe -r ftdi_sio` (or blacklist it) |
 | head moves but never pulses to music | no `$ZAUD` arriving (beacon not broadcasting / different subnet), or `--dmx-no-sound` set. The sound show only runs when *idle* (no contact to follow). |
@@ -568,10 +606,26 @@ ZTHREAT;<id>:<relAzDeg>:<size>:<collision>;<id>:<relAzDeg>:<size>:<collision>...
 ```
 `collision` is `0`/`1`; a bare `ZTHREAT` means **all clear**. `relAzDeg` is a
 **full-circle** bearing off the nose, ±180 (it was capped at ±90 while there was
-only a forward camera). Defined in `zvision/threat_protocol.py`, mirrored from
-the tablet's Kotlin `core/vision/ThreatProtocol.kt`. Changing it means changing
-both sides.
+only a forward camera). A frame carries at most **32 contacts**, prioritised
+collision-first then largest-first, so it stays inside one MTU — a fragmented
+multicast datagram over lossy WiFi essentially never arrives.
 
-> The DRIVER HUD still *draws* only the forward half — it places a contact by
-> `az / THERMAL_HALF_FOV_DEG` — so rear contacts ride the bus today but aren't
-> displayed. The surround HUD layout is the follow-up.
+`zvision/threat_protocol.py` and the tablet's Kotlin
+`core/vision/ThreatProtocol.kt` are **two hand-written implementations, and
+neither is authoritative.** The shared truth is the measured golden corpus at
+`protocol/threat-protocol-golden.json`, which both test suites read and both fail
+loudly on if it is missing. Before it existed the two sides had silently drifted
+in ten measured ways — `0x1p3` in an azimuth field became a live contact bearing
+8° on the driver's HUD while this side rejected the same frame. Both sides now
+check explicit numeric grammars (`-?[0-9]{1,9}` for ids,
+`-?[0-9]{1,9}(\.[0-9]{1,6})?` for numbers) rather than delegating to the host
+language's parser.
+
+**Changing the format means changing three things**: this side, the Kotlin side,
+and regenerating the corpus by re-running the differential comparison. Do not
+hand-edit the JSON — see `protocol/README.md` and `docs/PROTOCOLS.md` §3.
+
+> The DRIVER HUD's *perspective* view draws only the forward arc, but the
+> **surround ring carries every contact** all the way round — so rear contacts are
+> displayed, just as plan-view blips rather than wireframe figures. See
+> `design/surround-driver-hud.md`.

@@ -739,7 +739,6 @@ wrong.
 | mDNS service discovery | Not built. |
 | Proximity alarm | Not built. |
 | Map touch interaction tests | None. |
-| `:beacon` in CI | **Not covered.** `android-ci.yml` is `:app`-scoped. |
 
 ---
 

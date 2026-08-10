@@ -8,12 +8,22 @@ doc captures everything **not yet done**, so it survives outside the workflow's 
 output.
 
 Target hardware: Amazon Fire HD 10 (weak GPU/CPU, GC-sensitive). The cockpit draws a
-live Black Rock City map on a Compose `Canvas` at ~60fps; Concept C (Motion Tracker)
+live Black Rock City map on a Compose `Canvas` at ~60fps; RADAR (`MotionTrackerScreen`)
 is the worst case — a `withFrameNanos` sweep drives 60fps redraws.
 
 > **Caveat for every item below:** these are *principled static-analysis* wins
 > (allocation / recomposition / overdraw reduction), **not device-profiled**. Confirm the
 > felt improvement on a real tablet before and after — see [Measuring](#measuring-on-device).
+
+> **Naming note (2026-08-10).** The audit predates the concept rename. The
+> concepts are now **RADAR** (`MotionTrackerScreen`, the sweep scope — the worst
+> case here), **MAP** (`InstrumentBayScreen`, the gauge wall) and **DRIVER**
+> (`DriverNightScreen`, the night HUD, which did not exist when this was written
+> and is not covered by any item below). The old A `CRTVectorScreen` and
+> B `PerspectiveScreen` were **deleted**, so any item referring to them has lost
+> that half. Also note the Fire HD 10 is the perf floor but **not** a visual
+> reference — it takes a different graphics precision path than the Samsungs, so
+> the Tier-1 halo-blending checks must be eyeballed on both.
 
 ---
 
@@ -21,7 +31,7 @@ is the worst case — a `withFrameNanos` sweep drives 60fps redraws.
 
 The audit's central insight: the geometry pipeline is already well-cached (`ProjectedMap`,
 viewport, label layouts — see SYNC render-perf rounds 2/3), **but nothing caches the
-rasterized pixels**. So under the Concept-C sweep (and in TILT mode) the entire CRT Skia
+rasterized pixels**. So under the RADAR sweep (and in TILT mode) the entire CRT Skia
 call-list — `drawProjectedMap` = halo pair ×4 + 4 stroke paths + point batches + ~50 art
 circles + endpoint dots — **replays every frame** even though the base map only changes at
 the 2Hz GPS cadence. The 2026-06-14 pass removed the *recomposition* cost of this (the
@@ -35,10 +45,10 @@ it only re-rasterizes on camera change, or an explicit `rememberGraphicsLayer()`
 | # | Where | What | Risk |
 |---|-------|------|------|
 | **1.1** | `PlayaMapPanel.mapBaseCanvas` | Promote the base map to a cached layer; re-rasterize only on viewport change. **Dominates 1.2.** | Behavior-preserving **in principle**, but offscreen-compositing the translucent CRT halos changes the blend order (halos composite into the layer, then the layer blends over the background) — **needs a visual sanity check on-device**. |
-| **1.2** | `PlayaMapPanel.drawSweptProjectedMap` | The Concept-C "ping": re-blits the **whole** map (incl. full CRT halo + endpoints) clipped to the rotating wedge, every frame. If the lit map is cached once (per `projected` + `litPalette`) and only `clipPath(wedge){ drawLayer }` runs per frame, the per-frame re-issue disappears. | Same offscreen-compositing caveat; antialiasing at stroke edges may differ subtly from a live re-stroke. Validate. |
+| **1.2** | `PlayaMapPanel.drawSweptProjectedMap` | The RADAR "ping": re-blits the **whole** map (incl. full CRT halo + endpoints) clipped to the rotating wedge, every frame. If the lit map is cached once (per `projected` + `litPalette`) and only `clipPath(wedge){ drawLayer }` runs per frame, the per-frame re-issue disappears. | Same offscreen-compositing caveat; antialiasing at stroke edges may differ subtly from a live re-stroke. Validate. |
 | **1.3** | `PlayaMapPanel.kt` `clipCircular` (`Modifier.clip(CircleShape)`) | A non-rectangular clip forces a render-to-texture + masked composite for the **entire** stacked subtree (base + swept + ego + arm) on each invalidation. If 1.1 is adopted, apply the circular clip to that single cached layer instead of as an ancestor of the live subtree. | Behavior-preserving (structure). Memory-bandwidth bound. |
-| **1.4** | `mapBaseCanvas` TILT branch (`rotationX` graphicsLayer) + `CRTVectorScreen` tilt | In TILT the `graphicsLayer` is used purely for the 3D transform, so it gets the worst of both worlds — an offscreen buffer **and** a full re-record of the map every frame. Same fix: cache the content, transform the cached layer. | Behavior-preserving. Medium impact in TILT only. |
-| **1.5** | `PlayaMapPanel.egoOverlayCanvas` (+ `CRTVectorScreen` ego) | The ego marker is a function of `(egoFix, headingDeg, viewRotationDeg, viewport)` — all ≤2Hz — yet its full-screen sibling Canvas re-invalidates at sweep cadence. Promote to its own cached layer, or at minimum keep its draw lambda from capturing `sweepDeg`. Pairs with 1.1. | Behavior-preserving. Low impact. |
+| **1.4** | `mapBaseCanvas` TILT branch (`rotationX` graphicsLayer) (the `CRTVectorScreen` half of this item is gone — that concept was deleted) | In TILT the `graphicsLayer` is used purely for the 3D transform, so it gets the worst of both worlds — an offscreen buffer **and** a full re-record of the map every frame. Same fix: cache the content, transform the cached layer. | Behavior-preserving. Medium impact in TILT only. |
+| **1.5** | `PlayaMapPanel.egoOverlayCanvas` (the `CRTVectorScreen` ego half is gone — that concept was deleted) | The ego marker is a function of `(egoFix, headingDeg, viewRotationDeg, viewport)` — all ≤2Hz — yet its full-screen sibling Canvas re-invalidates at sweep cadence. Promote to its own cached layer, or at minimum keep its draw lambda from capturing `sweepDeg`. Pairs with 1.1. | Behavior-preserving. Low impact. |
 
 **Recommended approach:** prototype 1.1 behind a quick on-device A/B (`dumpsys gfxinfo`
 before/after), eyeball the halo blending against the current build, then extend to 1.2–1.5.
@@ -54,7 +64,7 @@ These were verified behavior-preserving but left for a focused pass. None need s
   forward cone allocate a fresh `Path` + 24-point trig loop **inside the draw lambda every
   frame**. Hold a remembered `Path` and `rewind()` + re-trace it instead of `Path()`. The
   geometry depends on `sweepDeg` so it must re-trace per frame, but the **allocation** can go.
-  (Concept C only; low individual impact but it's on the 60fps path.)
+  (RADAR only; low individual impact but it's on the 60fps path.)
 - **Reuse the ego-marker `Path`** — `EgoMarkers.drawEgoMarkerAt` / `drawHexEgoMarkerAt`
   allocate a `Path()` per draw. Same pattern. Compose draw is single-threaded, so a
   function-scoped reused `Path` (rewind) is safe.
@@ -108,14 +118,14 @@ The adversarial-verify pass refuted these — recorded so they aren't re-investi
   `flatMapLatest` to the collector; a stationary vehicle does **not** drive
   `CockpitUiState.copy()`. A `FakeLocationSource` dedup was implemented then **reverted** as a
   no-op (commit `7f6331d` message).
-- **Concept-B retro grid** — already path-cached and viewport-keyed; no per-frame rebuild.
+- **The retro grid** (TILT mode) — already path-cached and viewport-keyed; no per-frame rebuild.
 - **Projection inner loop** — `projectInline` / `toScreenInline` confirmed allocation-free and
   cached; no boxing. No action.
 - **`navCueBar` / `vectorText` per-redraw allocations** — flagged but **not on the hot path**
   once the `sweepDeg` deferral stopped 60fps recomposition; the `remember(text, style)` glyph
   cache and 2Hz cadence make them cheap.
 - **InstrumentBay full-state read / throttle-trace `floatArrayOf`** — real allocations but
-  **not hot** (Concept D has no animation loop; recomposes at 2Hz, not 60fps).
+  **not hot** (MAP has no animation loop; recomposes at 2Hz, not 60fps).
 
 ---
 
@@ -125,7 +135,7 @@ Before/after any of the above, on a real Fire HD 10:
 
 - **Jank percentiles:** `adb shell dumpsys gfxinfo org.pureagave.zodiac.control framestats`
   (and the histogram / "Number Janky frames"). Reset with `dumpsys gfxinfo <pkg> reset`,
-  exercise Concept C for ~30s, dump.
+  exercise RADAR for ~30s, dump.
 - **Recomposition counts:** Android Studio **Layout Inspector → Recomposition counts** while
   the sweep runs — the Motion Tracker header/stat composables should now tick at ~2Hz, not
   60fps (regression check for the shipped deferral; baseline for Tier 2).
@@ -134,8 +144,8 @@ Before/after any of the above, on a real Fire HD 10:
   restartable and whether `CockpitUiState` is `stable` (relevant to the Tier-2 `@Immutable`
   item).
 - **Frame timing in CI-ish form:** a Macrobenchmark with `FrameTimingMetric` over a scripted
-  Concept-C session gives a repeatable P50/P90/P99 frame-duration number.
-- **GC pressure:** Android Studio Profiler → Memory, watch allocation rate while Concept C
+  RADAR session gives a repeatable P50/P90/P99 frame-duration number.
+- **GC pressure:** Android Studio Profiler → Memory, watch allocation rate while RADAR
   runs (Tier-2 allocation items target this).
 
 ---

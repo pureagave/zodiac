@@ -316,8 +316,7 @@ Measured 2026-08-10, all green: **`:app` 817 tests**, **`:beacon` 77**,
 CI runs on push and PR to `main`:
 
 - `.github/workflows/android-ci.yml` — ktlint, detekt, Android Lint, unit tests,
-  assembleDebug. **Scoped to `:app` only — `:beacon` is not built or tested by
-  CI**, so its gates must be run locally.
+  assembleDebug, unscoped so both `:app` and `:beacon` are covered.
 - `.github/workflows/jetson-ci.yml` — path-filtered to `jetson/**` and
   `protocol/**`; runs the Python suite plus a one-frame emit check.
 

@@ -21,12 +21,22 @@ OLED; the cheap parts run everywhere.
   location/connection `StateFlow`s (read-only) + a narrow `BurnInConfigStore`
   persistence port — the cockpit ViewModel is untouched.
 - **`burnInScaffold`** (Compose) — wraps the whole `cockpitScreen` dispatch from
-  a single node, so mitigation cascades to all four concepts + overlays.
-  Translates phase + config into the actual offset / brightness / window
-  backlight. Animation frame ticker is read only inside the
+  a single node, so mitigation cascades to all three concepts, the passenger
+  display and every overlay. Translates phase + config into the actual offset /
+  brightness / window backlight, and is the **single writer** of
+  `window.attributes.screenBrightness` — the `$ZENV` ambient auto-dim is folded in
+  here as a ceiling that can only reduce, never as a second writer (that was
+  audit finding C2). The animation frame ticker is read only inside the
   `offset`/`graphicsLayer` lambdas (layout/draw phase), never the composable
-  body — matching the Concept-C recomposition-storm avoidance.
-- **`BurnInDeviceProfile`** — the OLED gate (`Build.MANUFACTURER != "Amazon"`).
+  body — matching the RADAR recomposition-storm avoidance. It runs on a **Long
+  nanosecond baseline**, not an accumulating `Float`: a Float's ULP exceeds a
+  frame delta at about 6.1 days of uptime, which would have frozen the animation
+  partway through a 14-day burn (audit finding C3).
+- **`BurnInDeviceProfile`** — the OLED gate, and that string comparison is the
+  entire detection: `Build.MANUFACTURER != "Amazon"`, case-insensitive. There is
+  no panel-type query available.
+- **`BurnInLedger`** — cumulative on-time per `<concept>/<phase>` zone, reported
+  into the rolling log (see "Deferred" below — this shipped).
 - **`standbyScreen`**, **`burnInTuningPanel`** — the deep-idle CRT screen and the
   hidden tuning panel.
 
@@ -52,8 +62,8 @@ dashboard.
 - **Brightness breathe / dim** — one global `graphicsLayer` alpha
   (`CompositingStrategy.ModulateAlpha` — cheap, no offscreen composite,
   blend-preserving). Chosen over per-element alpha threading (~40 static call
-  sites across four concepts) for the same wear-distribution benefit with far
-  less surface area. **OLED-gated.**
+  sites across the concepts, four at the time this was written) for the same
+  wear-distribution benefit with far less surface area. **OLED-gated.**
 - **Idle escalation** — DIM → STANDBY → black, plus backlight stepping (applied
   on every device, including the Fire, for power).
 
@@ -84,11 +94,18 @@ clamped), so a tampered or stale persisted value can never seed a bad config —
 mirroring how `DataStoreCockpitPreferences` clamps zoom/tilt on read. Persisted
 as individual DataStore keys via `readBurnInConfig`/`setBurnInConfig`.
 
-## Deferred (Phase 5, optional)
+## The stress ledger — built, at coarser granularity than first planned
 
-Per-region burn-in **stress-accounting ledger** — log cumulative lit-time per
-screen region to a file to identify highest-risk regions and rotate UI between
-burns. Pairs with the M10 Timber logging task; not built. See `tasks/open.md`.
+`BurnInLedger` ships. It accumulates on-time per **zone**, where a zone is
+`<concept>/<phase>` (e.g. `RADAR/ACTIVE`, `MAP/DIM`), and reports into the
+rolling file log, which already survives reboots — so it needs no persistence of
+its own.
+
+The originally-planned *per-screen-region* accounting was deliberately **not**
+built. The app does not measure which pixels are lit, so a per-region risk figure
+would be invented data, and an invented burn-risk number is worse than none. A
+backwards clock is guarded too (elapsed is floored at zero), so it cannot credit
+negative time and quietly reduce a figure.
 
 ## Verifying on device
 
