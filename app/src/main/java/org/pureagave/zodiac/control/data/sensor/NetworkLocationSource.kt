@@ -118,6 +118,17 @@ class NetworkLocationSource(
     private val _audioLevel = MutableStateFlow<AudioLevel?>(null)
     val audioLevel: StateFlow<AudioLevel?> = _audioLevel.asStateFlow()
 
+    // Dedup state for $ZSHK (AUDIT-2026-08-09 C7): the beacon sends every
+    // sentence to both the multicast group and the subnet-broadcast
+    // fallback, and this source binds wildcard *and* joins the group — so on
+    // any AP that forwards multicast, each datagram arrives twice. Every
+    // other channel is idempotent full-state (a repeat just overwrites
+    // itself with the same value); shockCount is a monotonic counter, so a
+    // duplicate doubles it. See [isDuplicateShockLine].
+    @Volatile private var lastShockLine: String? = null
+
+    @Volatile private var lastShockLineMs: Long = 0L
+
     override suspend fun start() {
         if (job?.isActive == true) {
             // Already running. CockpitViewModel init calls `select(saved)`
@@ -280,8 +291,28 @@ class NetworkLocationSource(
         NmeaParser.parseBeaconHealth(line)?.let { h -> _beaconSensors.update { it.copy(beaconHealth = h) } }
         NmeaParser.parseOdometer(line)?.let { o -> _beaconSensors.update { it.copy(odometer = o) } }
         NmeaParser.parseShockEvent(line)?.let { s ->
+            if (isDuplicateShockLine(line)) return@let
             _beaconSensors.update { it.copy(lastShockG = s.peakG, shockCount = it.shockCount + 1) }
         }
+    }
+
+    /**
+     * True if [line] is byte-identical to the immediately preceding `$ZSHK`
+     * line and arrived within [SHOCK_DEDUP_WINDOW_MS] of it — i.e. the AP's
+     * second copy of the same datagram, not a second impact. The wire format
+     * carries no sequence number, so exact-bytes-within-a-short-window is the
+     * only signal available; the beacon's own shock detector has a 500 ms
+     * refractory before it emits a second real event, well outside this
+     * window. Always updates the dedup state, whether or not this call
+     * reports a duplicate, so the *next* line is compared against the one
+     * just seen.
+     */
+    private fun isDuplicateShockLine(line: String): Boolean {
+        val now = nowMs()
+        val duplicate = line == lastShockLine && now - lastShockLineMs <= SHOCK_DEDUP_WINDOW_MS
+        lastShockLine = line
+        lastShockLineMs = now
+        return duplicate
     }
 
     private fun nowMs(): Long = System.nanoTime() / NANOS_PER_MS
@@ -310,6 +341,16 @@ class NetworkLocationSource(
         /** Proprietary prefix the Sensor Hub's own channels share (`$Z…`). */
         const val HUB_SENTENCE_PREFIX: String = "\u0024Z"
         const val NANOS_PER_MS: Long = 1_000_000L
+
+        /**
+         * How long a byte-identical repeat of a `$ZSHK` line is attributed to
+         * the AP delivering the same physical impact twice rather than a
+         * genuine second one (AUDIT-2026-08-09 C7). The beacon's own
+         * refractory between real events is 500 ms; 200 ms comfortably covers
+         * dual multicast/broadcast delivery of one datagram without eating
+         * into that margin.
+         */
+        const val SHOCK_DEDUP_WINDOW_MS: Long = 200L
     }
 }
 

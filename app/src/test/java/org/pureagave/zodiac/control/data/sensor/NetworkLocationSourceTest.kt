@@ -742,6 +742,77 @@ class NetworkLocationSourceTest {
             }
         }
 
+    // --- $ZSHK double-delivery dedup (AUDIT-2026-08-09 C7): the beacon sends
+    // every sentence to both the multicast group and the subnet-broadcast
+    // fallback, and this source binds wildcard *and* joins the group, so on
+    // an AP that forwards multicast the identical datagram arrives twice. ---
+
+    @Test
+    fun a_duplicated_zshk_datagram_counts_once() =
+        runBlocking {
+            // Mutation: delete the isDuplicateShockLine() guard in
+            // ingestSensorChannels.
+            val port = 10302
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                val line = nmea("ZSHK,2.35")
+                assertTrue(
+                    "precondition: the first copy registers",
+                    waitUntil(4_000) {
+                        sendUdp(line, port)
+                        source.beaconSensors.value.shockCount >= 1
+                    },
+                )
+                // The AP's second copy of the exact same datagram — not a new
+                // impact.
+                sendUdp(line, port)
+                sendUdp(line, port)
+                Thread.sleep(200)
+                assertEquals(
+                    "duplicated datagrams within the dedup window must not double-count",
+                    1,
+                    source.beaconSensors.value.shockCount,
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun two_genuine_impacts_outside_the_dedup_window_both_count() =
+        runBlocking {
+            // Mutation: widen SHOCK_DEDUP_WINDOW_MS to swallow a real second
+            // impact, or dedup on something coarser than exact line bytes.
+            val port = 10303
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkLocationSource(scope = scope, port = port)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: first impact registers",
+                    waitUntil(4_000) {
+                        sendUdp(nmea("ZSHK,2.35"), port)
+                        source.beaconSensors.value.shockCount >= 1
+                    },
+                )
+                // A real second impact well outside the ~200 ms dedup window
+                // (identical peak-g is realistic — two similar bumps) must
+                // not be swallowed as a duplicate of the first.
+                Thread.sleep(400)
+                sendUdp(nmea("ZSHK,2.35"), port)
+                assertTrue(
+                    "a genuine second impact outside the dedup window must count",
+                    waitUntil(4_000) { source.beaconSensors.value.shockCount >= 2 },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
     // --- start() must be genuinely idempotent (AUDIT-2026-08-09 C5):
     // CockpitViewModel init calls select(saved) — which already starts the
     // source — then calls start() again unconditionally. Before this fix
