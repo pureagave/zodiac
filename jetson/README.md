@@ -84,12 +84,12 @@ standing behind the car never appeared:
   blind: +166°..+195°
 ```
 
-> **Note the `fov=160°h` in that first line.** `--fov-ref` defaults to horizontal,
-> so a camera declared `fov=160` is treated as covering ±80°. `HARDWARE.md` §1
-> concludes the Lepton Ultra Wide's quoted 160° is the **diagonal** (±64°
-> horizontal), and the tablet already assumes ±64°. Until the Python default or
-> the examples change, add `fovref=d` to the thermal camera's spec if you want the
-> two sides of the vehicle to agree — see `docs/PROTOCOLS.md` §4.
+> **That transcript predates 2026-08-10 and shows `fov=160°h -> ±80°`.**
+> `--fov-ref` now defaults to **`d`**, so the same command prints `fov=160°d ...
+> covers -64°..+64°`. The Lepton Ultra Wide's quoted 160° is the **diagonal** —
+> argued from physics in `HARDWARE.md` §1 and since confirmed by measurement (a
+> true 40.4° target reported at 42.5°; the horizontal reading predicts 32.3°).
+> The tablet's `SurroundRing.COVERED_ARCS` carries the matching ±64°.
 
 A camera that won't open, or starts throwing mid-run, costs you its arc — not
 the run. If *nothing* opens, the runner exits rather than broadcasting a

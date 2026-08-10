@@ -226,19 +226,17 @@ API contract, not real OS scheduling.
 
 ### Surfaced by the 2026-08-10 documentation audit
 
-- [ ] **DOC-1 (P1) — Resolve the fov-ref disagreement between the two sides.**
-      `HARDWARE.md` §1 concludes the Lepton UW's 160° is the **diagonal** (±64°
-      horizontal) and the tablet already carries ±64° in
-      `SurroundRing.COVERED_ARCS`. But `zvision`'s `--fov-ref` defaults to `h`
-      (`rig.py:90`, `geometry.FOV_HORIZONTAL`) and no documented example rig sets
-      `fovref=d`, so the Python side computes ±80°. The runner prints it plainly:
-      `fov=160°h ... covers -80°..+80°`. **Up to 16° of bearing error at the frame
-      edge — ~2.8 m of miss on a person at 10 m, which is exactly where the
-      tracker light gets pointed.** Either flip the Python default to `d` (and
-      update the examples) or widen the tablet's arc. **Do not close this by
-      editing docs — it is a code decision.** ⚠️ Settled position on record is
-      "under-claim coverage", which points at flipping Python to `d`. Flagged in
-      four docs so it cannot be lost.
+- [x] **DOC-1 — DONE 2026-08-10, and measured.** `zvision`'s `--fov-ref` defaulted
+      to `h` (±80°) while the tablet carried ±64° in `SurroundRing.COVERED_ARCS`.
+      The **deployed** rig already passed `fovref=d` explicitly, so the vehicle
+      never carried the error — the exposure was latent, for the next camera added
+      without the flag. Default flipped to `d` in `rig.CameraMount` and the CLI;
+      `FovReferenceDefaultTest` pins it and both mutations were run (reverting
+      either default goes red). **Confirmed physically:** a cold target at 85 cm
+      off centre at 1.0 m (true 40.4°) was reported at 42.5°, implying a ~61°
+      horizontal half-FOV vs the 64° assumed; the horizontal reading predicts
+      32.3°, so ±80° is ruled out by observation. Rob declined further refinement
+      — 61 vs 64 is inside the measurement's own slop.
 - [x] **DOC-2 — DONE 2026-08-10.** `jetson/scripts/install-ola.sh` printed
       `ola_set_dmx -u 0 -d 128,0,128,0,255`, writing ch5=255 (colour auto-spin)
       and never touching the ch8 dimmer, so the head moved in the dark. Now
@@ -258,7 +256,11 @@ API contract, not real OS scheduling.
       (~2 mm standoff) while the same file's fov-ref section concludes the true
       half-angle is 64°. The 2 mm figure is the conservative one, so building to
       it is safe, but the 5.7× rule should not be quoted until one half-angle is
-      chosen. Same root cause as DOC-1.
+      chosen. **The half-angle question is now answered (DOC-1, measured
+      2026-08-10): 64° horizontal.** What remains is purely the optics
+      arithmetic — recompute the standoff with tan 64° ≈ 2.05 and reconcile
+      the ~2 mm / ~1.7 mm / 5.7× figures to one number. Building to the
+      conservative 2 mm stays safe in the meantime.
 
 ### P3 — hygiene, and the structural items
 

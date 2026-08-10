@@ -464,11 +464,11 @@ fallback. On a deployed vehicle the demo source is disabled, so a dead feed read
 **Field-of-view reference.** The tablet treats the forward thermal camera as
 covering ±64° (`SurroundRing.COVERED_ARCS`), following the conclusion in
 `jetson/HARDWARE.md` that the Lepton Ultra Wide's quoted 160° is a *diagonal*.
-`zvision`'s `--fov-ref` still defaults to `h` (horizontal), and the documented
-example rigs omit `fovref=d`, so the Python side computes bearings as if the
-camera covered ±80°.
+**As of 2026-08-10 `zvision`'s `--fov-ref` defaults to `d` too**, so both sides
+compute ±64° by default and agree without anyone remembering a flag.
 
-**The two sides currently disagree by up to 16° at the frame edge.** This is a
-code decision, not a documentation one — it is recorded here so that anyone
+**Confirmed by measurement, not argument:** a cold target at a true 40.4° was
+reported at 42.5° (implying a ~61° horizontal half-FOV); the horizontal reading
+would have reported 32.3°. The historical note below is kept so that anyone
 reading a bearing off the bus knows the edge values are unverified until it is
 resolved.

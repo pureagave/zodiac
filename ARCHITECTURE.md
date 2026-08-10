@@ -749,11 +749,16 @@ Recorded rather than quietly fixed, because fixing them is a code change.
 **Field-of-view reference disagrees across the two sides of the vehicle.**
 `jetson/HARDWARE.md` concludes — with a physics argument — that the Lepton Ultra
 Wide's quoted 160° is the *diagonal*, giving ±64° horizontal, and the tablet
-agrees: `SurroundRing.COVERED_ARCS` is `-64f..64f`. But `zvision`'s `--fov-ref`
-defaults to `h`, and every documented example rig omits `fovref=d`, so the Python
-side computes bearings as if the camera covered ±80°. **The two sides currently
-disagree by up to 16° at the frame edge.** Either the Python default flips or the
-tablet's covered arc widens; until then, treat edge bearings as unverified.
+agrees: `SurroundRing.COVERED_ARCS` is `-64f..64f`. **`zvision`'s `--fov-ref` now
+defaults to `d` as well (2026-08-10), so the two sides agree by default.**
+
+That was confirmed physically rather than settled on argument: a cold target at
+85 cm off centre at 1.0 m — a true 40.4° — was reported by the running rig at
+42.5°, implying a ~61° horizontal half-FOV against the 64° assumed. The
+horizontal reading would have made the same contact report as 32.3°, which is
+nothing like the observation. The deployed rig already passed `fovref=d`
+explicitly, so the vehicle never carried the error; the risk was the *next*
+camera added without the flag.
 
 **Camp coordinate is estimated, not geocoded.** `Camp.GALACTIC_RELAY` is a
 geometric projection of "Heiau & 2:15" onto the 2026 grid. The authoritative

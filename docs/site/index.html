@@ -234,16 +234,21 @@ fall where a feature list would suggest.</p>
   contrast, are real: there are working System, BLE, USB and Network implementations.</p>
 </div>
 
-<div class="note bug">
-  <span class="label">Known open bug &mdash; the two sides of the vehicle disagree about bearings</span>
-  <p><code>jetson/HARDWARE.md</code> concludes, with a physics argument, that the Lepton Ultra
+<div class="note">
+  <span class="label">Resolved 2026-08-10 &mdash; both sides agree on bearings, and it was measured</span>
+  <p><code>jetson/HARDWARE.md</code> concluded, with a physics argument, that the Lepton Ultra
   Wide's quoted 160&deg; field of view is the <em>diagonal</em>, giving &plusmn;64&deg; horizontal,
-  and the tablet agrees: <code>SurroundRing.COVERED_ARCS</code> is <span class="val">-64f..64f</span>.
-  But <code>zvision</code>'s <code>--fov-ref</code> still defaults to <code>h</code>, and every
-  documented example rig omits <code>fovref=d</code>, so the Python side computes bearings as if
-  the camera covered &plusmn;80&deg;.</p>
-  <p><strong>The two sides currently disagree by up to 16&deg; at the frame edge.</strong> Until
-  the default flips or the tablet's covered arc widens, treat edge bearings as unverified.
+  and the tablet agreed: <code>SurroundRing.COVERED_ARCS</code> is <span class="val">-64f..64f</span>.
+  <code>zvision</code>'s <code>--fov-ref</code> defaulted to <code>h</code> (&plusmn;80&deg;), so a
+  camera spec that omitted <code>fovref=d</code> inherited the wrong convention. The default is now
+  <code>d</code>.</p>
+  <p><strong>Confirmed by measurement, not argument.</strong> A cold target at 85&nbsp;cm off centre
+  at 1.0&nbsp;m &mdash; a true <span class="val">40.4&deg;</span> &mdash; was reported by the running
+  rig at <span class="val">42.5&deg;</span>, implying a ~61&deg; horizontal half-FOV against the
+  64&deg; assumed. The horizontal reading would have reported
+  <span class="val">32.3&deg;</span>, nothing like the observation, so &plusmn;80&deg; is ruled out.
+  The deployed rig already passed <code>fovref=d</code> explicitly, so the vehicle never carried the
+  error &mdash; the exposure was latent, for the next camera added without the flag.
   <a href="protocols/fov-discrepancy.html">Full detail</a>.</p>
 </div>
 

@@ -30,7 +30,7 @@ from typing import List, Optional
 from . import fleet_bus
 from .broadcaster import ThreatBroadcaster
 from .detector import DetectorTuning
-from .geometry import FOV_HORIZONTAL, LENS_EQUIDISTANT, LENS_MODELS
+from .geometry import FOV_DIAGONAL, LENS_EQUIDISTANT, LENS_MODELS
 from .recorder import (
     DEFAULT_MAX_MB,
     DEFAULT_RECORD_HZ,
@@ -70,8 +70,9 @@ def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
     p.add_argument(
         "--fov-ref",
         choices=["h", "d"],
-        default=FOV_HORIZONTAL,
-        help="is --hfov measured across the frame width (h) or its diagonal (d)?",
+        default=FOV_DIAGONAL,
+        help="is --hfov measured across the frame width (h) or its diagonal (d)? "
+        "defaults to diagonal, which is how fisheye lenses are specified",
     )
     p.add_argument(
         "--camera",

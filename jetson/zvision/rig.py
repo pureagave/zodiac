@@ -87,7 +87,15 @@ class CameraMount:
     device: str = "/dev/video0"
     mount_az_deg: float = 0.0
     fov_deg: float = 160.0
-    fov_ref: str = FOV_HORIZONTAL
+    # DIAGONAL, not horizontal: the default fov_deg above is the Lepton Ultra
+    # Wide's headline 160°, and that figure is the diagonal. Measured 2026-08-10
+    # against a known target — a contact at a true 40.4° was reported at 42.5°,
+    # which implies a ~61° horizontal half-FOV and rules out the 80° the
+    # horizontal reading would give (it would have reported 32.3°). Defaulting to
+    # `h` here silently stretched every bearing by 1.25x for any camera whose
+    # spec omitted fovref, which is up to 16° of error at the frame edge — and
+    # the tracker light is aimed from these bearings.
+    fov_ref: str = FOV_DIAGONAL
     lens: str = LENS_EQUIDISTANT
     width: int = 160
     height: int = 120

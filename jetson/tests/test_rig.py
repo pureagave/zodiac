@@ -7,7 +7,7 @@ import io
 import unittest
 
 from zvision.detector import DetectorTuning, FakeDetector
-from zvision.geometry import FOV_DIAGONAL, LENS_EQUIDISTANT, LENS_RECTILINEAR
+from zvision.geometry import FOV_DIAGONAL, FOV_HORIZONTAL, LENS_EQUIDISTANT, LENS_RECTILINEAR
 from zvision.rig import (
     DEFAULT_DEDUP_DEG,
     ID_STRIDE,
@@ -217,14 +217,45 @@ class TuningSpecTest(unittest.TestCase):
         self.assertEqual(0.09, seen["tuning"].min_area_frac)
 
 
+class FovReferenceDefaultTest(unittest.TestCase):
+    """The default is DIAGONAL, and that is a measured fact, not a preference.
+
+    Measured 2026-08-10 against a known target at 85 cm off centre, 1.0 m away
+    (a true 40.4°): the running rig reported 42.5°, implying a ~61° horizontal
+    half-FOV. The horizontal reading of the same 160° spec would have put the
+    half-FOV at 80° and made that contact report as 32.3° — nothing like the
+    observation. Defaulting to horizontal stretched every bearing by 1.25x for
+    any camera spec that omitted fovref, and the tracker light is aimed from
+    these bearings.
+    """
+
+    def test_the_default_fov_reference_is_diagonal(self):
+        self.assertEqual(FOV_DIAGONAL, CameraMount("t").fov_ref)
+
+    def test_the_default_ultra_wide_camera_covers_64_not_80(self):
+        left, right = CameraMount("t", fov_deg=160.0, width=160, height=120).arc()
+        self.assertAlmostEqual(-64.0, left, places=3)
+        self.assertAlmostEqual(64.0, right, places=3)
+
+    def test_the_cli_default_matches_the_dataclass_default(self):
+        # Two defaults for one decision is how they drift apart.
+        from zvision.app import _parse_args
+
+        self.assertEqual(CameraMount("t").fov_ref, _parse_args([]).fov_ref)
+
+
 class ArcTest(unittest.TestCase):
     def test_forward_ultra_wide_arc(self):
-        left, right = CameraMount("t", fov_deg=160.0).arc()
+        # Width-quoted explicitly: this test is about the arc arithmetic, not
+        # about which convention happens to be the default.
+        left, right = CameraMount("t", fov_deg=160.0, fov_ref=FOV_HORIZONTAL).arc()
         self.assertAlmostEqual(-80.0, left)
         self.assertAlmostEqual(80.0, right)
 
     def test_rear_camera_arc_wraps_the_seam(self):
-        left, right = CameraMount("r", mount_az_deg=180.0, fov_deg=90.0).arc()
+        left, right = CameraMount(
+            "r", mount_az_deg=180.0, fov_deg=90.0, fov_ref=FOV_HORIZONTAL
+        ).arc()
         self.assertAlmostEqual(135.0, left)
         self.assertAlmostEqual(-135.0, right)
 
@@ -238,10 +269,14 @@ class ArcTest(unittest.TestCase):
         self.assertAlmostEqual(-64.0, left, places=3)
 
     def test_a_width_quoted_fov_still_covers_exactly_its_number(self):
-        # The default path must be unchanged: every lens model puts the frame
-        # edge at fov/2 when the FOV is quoted across the width.
+        # Every lens model puts the frame edge at fov/2 when the FOV is quoted
+        # across the width. Stated explicitly rather than relying on the
+        # default, which is diagonal.
         for lens in ("equidistant", "rectilinear", "equisolid", "linear"):
-            m = CameraMount("c", fov_deg=100.0, lens=lens, width=1280, height=720)
+            m = CameraMount(
+                "c", fov_deg=100.0, lens=lens, width=1280, height=720,
+                fov_ref=FOV_HORIZONTAL,
+            )
             self.assertAlmostEqual(50.0, m.half_h_fov_deg(), places=3, msg=lens)
 
 
@@ -436,7 +471,7 @@ class MultiDetectorTest(unittest.TestCase):
 
 class CoverageGapsTest(unittest.TestCase):
     def test_single_ultra_wide_leaves_the_rear_blind(self):
-        gaps = coverage_gaps([CameraMount("t", fov_deg=160.0)])
+        gaps = coverage_gaps([CameraMount("t", fov_deg=160.0, fov_ref=FOV_HORIZONTAL)])
         self.assertEqual(1, len(gaps))
         start, end = gaps[0]
         # 1° sampling, so the reported edges land within a step of the true arc.
@@ -444,7 +479,10 @@ class CoverageGapsTest(unittest.TestCase):
         self.assertAlmostEqual(280.0, end, delta=1.5)  # sweeps clockwise through astern
 
     def test_a_closed_ring_reports_no_gaps(self):
-        ring = [CameraMount(f"c{i}", mount_az_deg=i * 90.0, fov_deg=100.0) for i in range(4)]
+        ring = [
+            CameraMount(f"c{i}", mount_az_deg=i * 90.0, fov_deg=100.0, fov_ref=FOV_HORIZONTAL)
+            for i in range(4)
+        ]
         self.assertEqual([], coverage_gaps(ring))
 
     def test_no_cameras_is_entirely_blind(self):
@@ -466,9 +504,15 @@ class CoverageGapsTest(unittest.TestCase):
         ]
         self.assertNotEqual([], coverage_gaps(ring))
         as_widths = [
-            CameraMount("f", fov_deg=160.0, width=160, height=120),
-            CameraMount("s", mount_az_deg=120.0, fov_deg=120.0, width=1280, height=720),
-            CameraMount("p", mount_az_deg=-120.0, fov_deg=120.0, width=1280, height=720),
+            CameraMount("f", fov_deg=160.0, width=160, height=120, fov_ref=FOV_HORIZONTAL),
+            CameraMount(
+                "s", mount_az_deg=120.0, fov_deg=120.0, width=1280, height=720,
+                fov_ref=FOV_HORIZONTAL,
+            ),
+            CameraMount(
+                "p", mount_az_deg=-120.0, fov_deg=120.0, width=1280, height=720,
+                fov_ref=FOV_HORIZONTAL,
+            ),
         ]
         self.assertEqual([], coverage_gaps(as_widths))
 

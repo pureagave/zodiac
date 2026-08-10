@@ -93,6 +93,26 @@
   <article class="page">
 <p class="kicker">Protocols &#183; the seams</p>
 <h1>Known discrepancy: the field-of-view reference</h1>
+
+<div class="note">
+  <span class="label">RESOLVED 2026-08-10 &mdash; this page is now history, not a live warning</span>
+  <p><code>zvision</code>'s <code>--fov-ref</code> now defaults to <code>d</code>
+  (<code>rig.CameraMount</code> and the CLI), so both sides of the vehicle compute
+  &plusmn;64&deg; by default. <code>FovReferenceDefaultTest</code> pins it, and both
+  mutations were run &mdash; reverting either default turns the suite red.</p>
+  <p><strong>The diagonal reading was confirmed physically.</strong> A cold target at
+  85&nbsp;cm off centre at 1.0&nbsp;m (a true <span class="val">40.4&deg;</span>) was
+  reported by the running rig at <span class="val">42.5&deg;</span> &mdash; implying a
+  ~61&deg; horizontal half-FOV, against 64&deg; assumed, which agrees to about 5%.
+  Had the 160&deg; been horizontal (80&deg; half-FOV) the same contact would have been
+  reported at <span class="val">32.3&deg;</span>. &plusmn;80&deg; is ruled out by
+  observation, not by argument.</p>
+  <p>Note also that the <em>deployed</em> rig always passed <code>fovref=d</code>
+  explicitly, so the running vehicle never carried this error. The exposure was
+  latent: the next camera added to the rig without the flag would have inherited
+  &plusmn;80&deg;. The argument below is retained because it is what led to the
+  measurement.</p>
+</div>
 <p class="standfirst">The tablet and the edge box currently disagree about how wide the forward thermal camera
     sees. The consequence is up to <span class="val">16&deg;</span> of bearing error at the frame
     edge &mdash; on the number that both draws the driver's HUD and aims a spotlight at a person.</p>
