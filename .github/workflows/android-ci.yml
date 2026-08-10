@@ -28,17 +28,22 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Deliberately UNSCOPED (not :app:). :beacon had no CI of any kind until
+      # 2026-08-10 -- its 77 unit tests, ktlint, detekt, lint and assemble had
+      # never run on a push, on the one module that must survive a reboot and run
+      # unattended for a week. Unscoping also means a fourth module is covered the
+      # day it is added, rather than the day someone remembers to add a step.
       - name: Ktlint
-        run: ./gradlew :app:ktlintCheck --stacktrace
+        run: ./gradlew ktlintCheck --stacktrace
 
       - name: Detekt
-        run: ./gradlew :app:detekt --stacktrace
+        run: ./gradlew detekt --stacktrace
 
       - name: Android Lint
-        run: ./gradlew :app:lintDebug --stacktrace
+        run: ./gradlew lintDebug --stacktrace
 
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: ./gradlew testDebugUnitTest --stacktrace
 
       - name: Assemble debug
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace

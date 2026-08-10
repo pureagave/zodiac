@@ -204,11 +204,13 @@ API contract, not real OS scheduling.
 - [ ] **`BleLocationSource` `Error` is still terminal** — NET got capped re-bind
       plus a silence-triggered rejoin on 2026-08-10; BLE has the same shape and
       did not.
-- [ ] **`:beacon` has no CI at all.** Every step in `android-ci.yml` is
-      `:app`-scoped, so beacon's 77 unit tests, ktlint, detekt, lint and assemble
-      have never run on a push — on the one module that must survive a reboot
-      unattended for a week. Now that beacon lint is green, the fix is to drop the
-      `:app:` prefix from all five steps (verified green locally 2026-08-10).
+- [x] **DONE 2026-08-10** — `:beacon` had no CI at all: every step in
+      `android-ci.yml` was `:app`-scoped, so beacon's 77 unit tests, ktlint,
+      detekt, lint and assemble had never run on a push, on the one module that
+      must survive a reboot unattended for a week. All five gates unscoped;
+      verified by running them exactly as CI does and confirming
+      `:beacon:{ktlintCheck,detekt,lintDebug,testDebugUnitTest,assembleDebug}`
+      actually execute.
 - [ ] **The beacon's API 34/35 foreground-service branches are still argued, not
       observed** — lint cannot validate them and the only beacon device on hand is
       API 29. Needs one boot test on an API 34+ phone before Burn.
