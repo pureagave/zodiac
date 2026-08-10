@@ -19,8 +19,10 @@ complexity:
     # a real data source (visionFeedFlow, the tri-state DRIVER HUD feed-health
     # signal, was the latest; before it, poisFlow for playa-discovery contacts).
     # Bumped from the default 7 to keep just above the current count (10 params).
-    # NOTE: the VM is a god-object due for a split (drive-to / map-camera / sensor
-    # delegates) before it grows further.
+    # The VM's god-object split (see TooManyFunctions) moved behaviour into
+    # delegates it constructs internally, so it did not shrink this list — these
+    # 10 are all genuine external collaborators. A new *source* still costs a
+    # param; a new *action* should not.
     constructorThreshold: 11
     # Compose components idiomatically take theme + a few data/callbacks + a
     # trailing Modifier; e.g. driveToBar (theme, active, bathActive, onSelect,
@@ -34,16 +36,17 @@ complexity:
     # arguments, which is what actually makes a call site unreadable.
     ignoreDefaultParameters: true
   TooManyFunctions:
-    # Default 11 was tight for CockpitViewModel which exposes one method per
-    # discrete cockpit operation. Bumped each time a discrete cockpit action
-    # is added (concept cycling; the private sendCommand dispatch helper;
-    # setNavTarget; driveToNearestToilet; recomputeRoute; setAddressEntryOpen +
-    # driveToAddress for the address keypad were the latest); kept just above the
-    # actual count. NOTE: the VM is becoming a god-object — due for a split
-    # (drive-to / map-camera / GPS delegates) before it grows much further.
-    # retryMapLoad (C10: the map-load error state finally has a retry path)
-    # pushed it to 25.
-    thresholdInClasses: 25
+    # Default 11 was tight for CockpitViewModel, which exposes one method per
+    # discrete cockpit operation, and the number crept up with every new action
+    # until it hit 25 — at which point the rule was doing its job and the answer
+    # was to split the class, not the number. Done: the mechanism now lives in
+    # three plain delegates the VM owns and forwards to (MapCameraController,
+    # NavigationController, GpsController), so what's left in the class is the
+    # facade plus the orchestration that genuinely belongs there (map-load
+    # retry, command dispatch, transport, concept). 22 is just above that count.
+    # If a new cockpit action would push past it, put it on the delegate that
+    # owns its state — do not bump this again.
+    thresholdInClasses: 22
     # CRTVectorScreen.kt is the canonical screen — header / left / right
     # rail / center viewport / chips all live as private composables in
     # one file. DriverNightScreen.kt then pushed higher: it's a hand-drawn
