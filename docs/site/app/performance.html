@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Performance backlog · Zodiac</title>
+<meta name="description" content="The render-audit backlog for the Fire HD 10: what has not been done, what was dismissed, and how to measure it.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :app — the cockpit <span aria-hidden="true">/</span> <em>Performance backlog</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html" aria-current="page">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:app &#183; the cockpit</p>
+<h1>Performance backlog</h1>
+<p class="standfirst">The cockpit draws a live Black Rock City map on a Compose <code>Canvas</code> at ~60&nbsp;fps.
+    RADAR is the worst case &mdash; a <code>withFrameNanos</code> sweep drives 60&nbsp;fps redraws.
+    Target hardware is the Amazon Fire HD 10: weak GPU and CPU, GC-sensitive.</p>
+<div class="prose">
+
+
+<div class="note caveat">
+  <span class="label">Caveat for every item on this page</span>
+  <p>These are <strong>principled static-analysis wins</strong> (allocation, recomposition and
+  overdraw reduction) from a 2026-06-14 render audit &mdash; <strong>not device-profiled</strong>.
+  Confirm the felt improvement on a real tablet before and after. The behaviour-preserving subset of
+  that audit already shipped; this page is what has <em>not</em> been done.</p>
+</div>
+
+<div class="note">
+  <span class="label">Naming note</span>
+  <p>The audit predates the concept rename. The concepts are now RADAR
+  (<code>MotionTrackerScreen</code>, the sweep scope &mdash; the worst case here), MAP
+  (<code>InstrumentBayScreen</code>) and DRIVER (<code>DriverNightScreen</code>, which did not exist
+  when the audit was written and is not covered by any item below). The old A
+  <code>CRTVectorScreen</code> and B <code>PerspectiveScreen</code> were <strong>deleted</strong>,
+  so any item that referred to them has lost that half.</p>
+</div>
+
+<h2 id="tier1">Tier 1 &mdash; cache the map's pixels, not just its geometry</h2>
+
+<p>The audit's central insight: the geometry pipeline is already well cached
+(<code>ProjectedMap</code>, viewport, label layouts), <strong>but nothing caches the rasterised
+pixels</strong>. Under the RADAR sweep, and in TILT mode, the entire CRT Skia call list &mdash;
+halo pair &times;4 + 4 stroke paths + point batches + ~50 art circles + endpoint dots &mdash;
+replays every frame, even though the base map only changes at the 2&nbsp;Hz GPS cadence. The
+2026-06-14 pass removed the <em>recomposition</em> cost; the <em>drawing</em> cost remains.</p>
+
+<p>The fix family is <strong>GPU layer promotion</strong>: render the static base map into a cached
+layer keyed so it only re-rasterises on camera change, then blit one texture per frame instead of
+replaying the call list.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th class="num">#</th><th>Where</th><th>What</th><th>Risk</th></tr></thead>
+<tbody>
+<tr><td class="num">1.1</td><td><code>PlayaMapPanel.mapBaseCanvas</code></td><td>Promote the base map to a cached layer; re-rasterise only on viewport change. <strong>Dominates 1.2.</strong></td><td>Behaviour-preserving <em>in principle</em>, but offscreen-compositing the translucent CRT halos changes the blend order &mdash; <strong>needs a visual sanity check on-device</strong>.</td></tr>
+<tr><td class="num">1.2</td><td><code>PlayaMapPanel.drawSweptProjectedMap</code></td><td>The RADAR &ldquo;ping&rdquo; re-blits the <em>whole</em> map clipped to the rotating wedge, every frame. Cache the lit map once and run only <code>clipPath(wedge){ drawLayer }</code> per frame.</td><td>Same compositing caveat; antialiasing at stroke edges may differ subtly from a live re-stroke.</td></tr>
+<tr><td class="num">1.3</td><td><code>clipCircular</code> (<code>Modifier.clip(CircleShape)</code>)</td><td>A non-rectangular clip forces render-to-texture + masked composite for the <strong>entire</strong> stacked subtree on each invalidation. If 1.1 lands, apply the circular clip to that single cached layer instead.</td><td>Behaviour-preserving. Memory-bandwidth bound.</td></tr>
+<tr><td class="num">1.4</td><td><code>mapBaseCanvas</code> TILT branch</td><td>In TILT the <code>graphicsLayer</code> is used purely for the 3D transform, so it gets the worst of both worlds &mdash; an offscreen buffer <em>and</em> a full re-record every frame.</td><td>Behaviour-preserving. Medium impact, TILT only.</td></tr>
+<tr><td class="num">1.5</td><td><code>PlayaMapPanel.egoOverlayCanvas</code></td><td>The ego marker is a function of inputs that all move at &le;2&nbsp;Hz, yet its full-screen sibling Canvas re-invalidates at sweep cadence.</td><td>Behaviour-preserving. Low impact. Pairs with 1.1.</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><strong>Do not land this cluster blind</strong> &mdash; it is the one that can shift the tuned CRT
+look. Prototype 1.1 behind an on-device A/B, eyeball the halo blending against the current build,
+then extend.</p>
+
+<h2 id="tier2">Tier 2 &mdash; behaviour-preserving, pixel-identical</h2>
+
+<p>Verified behaviour-preserving and left for a focused pass. None need sign-off.</p>
+
+<ul>
+<li><strong>Reuse the wedge / cone <code>Path</code> objects</strong> &mdash; both allocate a fresh
+<code>Path</code> plus a 24-point trig loop <em>inside the draw lambda every frame</em>. The geometry
+depends on <code>sweepDeg</code> so it must re-trace per frame, but the allocation can go.</li>
+<li><strong>Reuse the ego-marker <code>Path</code></strong> &mdash; same pattern. Compose draw is
+single-threaded, so a function-scoped reused <code>Path</code> is safe.</li>
+<li><strong>Narrow the RADAR format scope</strong> &mdash; <code>MotionTrackerScreen</code> reads the
+whole state at top scope for its <code>String.format</code>s, so the input slice buys nothing for
+those. Hoist the formatted strings into a child composable that takes only the fields it reads.</li>
+<li><strong>Batch major art</strong> &mdash; ~50 hollow <code>drawCircle</code>s in DOT mode could
+batch into a single <code>Path</code> of <code>addOval</code>s. (Hollow stroke prevents
+<code>drawPoints</code>; a Path works.)</li>
+<li><strong><code>CockpitUiState</code> stability</strong> &mdash; the data class embeds
+<code>PlayaMap</code> (which holds <code>DoubleArray</code>s) and <code>NavigationCue</code>, so the
+Compose compiler treats it as <strong>unstable</strong> and full-state child composables cannot
+smart-skip even when the reference is unchanged. <strong>Care:</strong> <code>@Immutable</code> is a
+correctness <em>promise</em> &mdash; getting it wrong causes missed recompositions that unit tests
+will not catch.</li>
+<li><strong><code>TextMeasurer</code> hygiene</strong> &mdash; mostly allocation hygiene; lowest
+priority in this tier.</li>
+</ul>
+
+<h2 id="tier3">Tier 3 &mdash; changes the rendered look, needs sign-off</h2>
+
+<ul>
+<li><strong><code>crtBeam = false</code> on <code>TrackerLitPalette</code></strong> drops 8 halo
+<code>drawPath</code>s and 3 endpoint <code>drawPoints</code> from the lit re-blit inside the wedge.
+The wedge still brightens features via the lit core strokes, so the M41A ping still reads &mdash;
+but it loses its doubled phosphor bloom and white corner dots. One-line change, biggest
+cost/effort ratio of the re-blit cuts. The cleaner alternative is the 1.2 layer cache, with no
+visual change. Pick one after seeing both on-device.</li>
+</ul>
+
+<h2 id="dismissed">Investigated and dismissed &mdash; do not re-chase</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Suspicion</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><th>Parked-GPS 2&nbsp;Hz state churn</th><td><strong>False.</strong> <code>LocationSourceState.Active</code> and <code>GpsFix</code> are data classes, so <code>MutableStateFlow</code> already conflates identical fixes to the collector; a stationary vehicle does not drive <code>CockpitUiState.copy()</code>. A dedup was implemented and then reverted as a no-op.</td></tr>
+<tr><th>The retro grid (TILT)</th><td>Already path-cached and viewport-keyed; no per-frame rebuild.</td></tr>
+<tr><th>Projection inner loop</th><td>Confirmed allocation-free and cached; no boxing.</td></tr>
+<tr><th><code>navCueBar</code> / <code>vectorText</code> allocations</th><td>Flagged but <strong>not on the hot path</strong> once the <code>sweepDeg</code> deferral stopped 60&nbsp;fps recomposition.</td></tr>
+<tr><th>MAP full-state read / throttle-trace array</th><td>Real allocations but <strong>not hot</strong> &mdash; MAP has no animation loop and recomposes at 2&nbsp;Hz.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="measure">Measuring on device</h2>
+
+<p>Before and after any of the above, on a real Fire HD 10:</p>
+
+<ul>
+<li><strong>Jank percentiles:</strong>
+<code>adb shell dumpsys gfxinfo org.pureagave.zodiac.control framestats</code>. Reset with
+<code>dumpsys gfxinfo &lt;pkg&gt; reset</code>, exercise RADAR for ~30&nbsp;s, dump.</li>
+<li><strong>Recomposition counts:</strong> Android Studio Layout Inspector while the sweep runs
+&mdash; the header and stat composables should tick at ~2&nbsp;Hz, not 60&nbsp;fps.</li>
+<li><strong>Compose stability:</strong> build with
+<code>-Pandroidx.enableComposeCompilerMetrics=true</code> and
+<code>-Pandroidx.enableComposeCompilerReports=true</code>.</li>
+<li><strong>Frame timing:</strong> a Macrobenchmark with <code>FrameTimingMetric</code> over a
+scripted RADAR session gives a repeatable P50 / P90 / P99.</li>
+<li><strong>GC pressure:</strong> Android Studio Profiler &rarr; Memory, watching allocation rate
+while RADAR runs.</li>
+</ul>
+
+<p>The Fire is on the bench, so this whole backlog is unblocked. It is a profiling campaign, worth
+scoping before starting.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>design/PERFORMANCE.md</code> &middot; <code>tasks/open.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/operations.html"><span class="pager-dir">Previous</span><span class="pager-name">Displays &amp; operations</span></a><a class="next" href="../beacon/index.html"><span class="pager-dir">Next</span><span class="pager-name">Overview</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

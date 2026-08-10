@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The seven synthesized channels · Zodiac</title>
+<meta name="description" content="What each of the beacon&#x27;s seven synthesized NMEA channels is for, and the fail-closed rules behind them.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :beacon — the sensor hub <span aria-hidden="true">/</span> <em>The seven channels</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html" aria-current="page">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:beacon &#183; the sensor hub</p>
+<h1>The seven synthesized channels</h1>
+<p class="standfirst">Beyond forwarding raw GNSS, the beacon synthesizes seven sentences. Two are standard-ish
+    (<code>$GPHDT</code>, and <code>$ZTLM</code> which is proprietary), and five are the proprietary
+    sensor channels that make this a sensor hub rather than a GPS repeater.</p>
+<div class="prose">
+
+
+<p>The exact field layouts, formats, ranges and examples live in the protocol reference &mdash;
+this page is what each channel is <em>for</em>.</p>
+
+<p><a href="../protocols/nmea.html">Byte-level field tables for every sentence &rarr;</a></p>
+
+<h2 id="gphdt">$GPHDT &mdash; true compass heading</h2>
+
+<p>The reason the whole sensor hub exists rather than a GPS puck. GPS <em>course</em> is only
+meaningful when moving, and an art car spends most of its time barely moving. Compass heading fills
+that gap, so the map stays track-up while parked and the drive-to arrow keeps pointing.</p>
+
+<p>Derived from <code>TYPE_ROTATION_VECTOR</code> and corrected to true north with
+<code>GeomagneticField</code>. Emitted only when a heading is available.</p>
+
+<div class="note caveat">
+  <span class="label">Caveat</span>
+  <p><code>GeomagneticField</code> needs a position. <strong>Until the first GPS fix arrives,
+  <code>$GPHDT</code> carries <em>magnetic</em> heading labelled <code>T</code></strong> &mdash;
+  roughly 13&deg; off at Black Rock City.</p>
+</div>
+
+<h2 id="ztlm">$ZTLM &mdash; IMU tilt and speed</h2>
+
+<p>Pitch, roll and ground speed. Speed is the GNSS fix's speed &times;&nbsp;3.6, and is
+<span class="val">0.0</span> when there is no fix.</p>
+
+<p>Unlike <code>$GPHDT</code> and <code>$ZENV</code>, this channel has <strong>no absent-sensor
+suppression</strong> &mdash; a device with no rotation-vector sensor broadcasts
+<span class="val">0.0</span> pitch and roll rather than staying silent.</p>
+
+<h2 id="zaud">$ZAUD &mdash; microphone level</h2>
+
+<p>RMS, peak, and a beat flag &mdash; three scalars, computed per audio frame (1024 samples at
+16&nbsp;kHz &asymp; <span class="val">15.6&nbsp;Hz</span>).</p>
+
+<p><code>AudioLevels</code> normalises rms and peak to 0..1 and derives the beat flag from an energy
+comparison against a decaying running average. The first frame never beats (no baseline), and
+sustained loudness stops beating as the average catches up.</p>
+
+<p>Two consumers: the tablet's passenger oscilloscope, and <code>zvision</code>'s
+<code>audio_bus</code>, which drives the tracker light's idle sound-reactive show when there is
+nothing to follow.</p>
+
+<div class="note">
+  <span class="label">Privacy</span>
+  <p>The only audio API used is <code>AudioRecord</code>. The PCM buffer is a reused coroutine-local
+  array reduced to three scalars in place; nothing audio-derived is written to storage or sent.
+  <code>RECORD_AUDIO</code> is optional at every layer, and a background or boot-started service
+  passes <code>micEnabled = false</code> and never requests the microphone foreground-service
+  type.</p>
+</div>
+
+<h2 id="zenv">$ZENV &mdash; ambient light</h2>
+
+<p>Raw lux from <code>TYPE_LIGHT</code>. Its job on the tablet is automatic screen dimming: a log-10
+interpolation between <span class="val">5&nbsp;lux</span> (floor <span class="val">0.05</span>) and
+<span class="val">2000&nbsp;lux</span> (<span class="val">1.0</span>), applied as a <em>ceiling</em>
+inside the burn-in scaffold. <a href="../app/burn-in.html#brightness">The single-writer rule &rarr;</a></p>
+
+<p>Emitted <strong>only when a reading exists</strong>. A phone with no light sensor emits nothing
+and the tablet shows <code>-- lx (no sensor)</code>. Absence is deliberately unrepresentable as a
+value, because a fabricated <span class="val">0.0</span> would pin the fleet to minimum brightness
+in daylight.</p>
+
+<h2 id="zshk">$ZSHK &mdash; shock and impact</h2>
+
+<p>Event-driven, from <code>TYPE_LINEAR_ACCELERATION</code>. A window opens when acceleration
+crosses <span class="val">1.5&nbsp;g</span>, tracks the peak for
+<span class="val">120&nbsp;ms</span>, and reports <strong>the peak of the impulse rather than its
+onset</strong> &mdash; reporting the first threshold crossing was systematically under-reading
+severity. The <span class="val">500&nbsp;ms</span> refractory period starts when the window
+<em>closes</em>, so one bump produces one sentence.</p>
+
+<p>Cost of the change: up to <span class="val">120&nbsp;ms</span> of added latency. Acceptable for a
+logged severity readout, <strong>not</strong> for an interlock.</p>
+
+<p>Because every datagram is sent twice, the tablet de-duplicates byte-identical lines inside a
+<span class="val">200&nbsp;ms</span> window &mdash; on the bench a single AP looked fine; on the
+playa the count would have doubled. Consumers diff a monotonic <code>shockCount</code> rather than
+watching the value.</p>
+
+<h2 id="zbcn">$ZBCN &mdash; beacon health</h2>
+
+<p>Battery percentage, GNSS fix quality, satellite count and service uptime. Fields 2 and 3 are
+<em>sniffed</em> from passing GGA sentences; if none has arrived, the previous values persist rather
+than resetting.</p>
+
+<p>This is the channel that gives hours of warning before the hub dies, which is what makes the
+battery-versus-Doze trade acceptable: roughly 2&ndash;4 days on battery if vehicle power fails,
+versus weeks asleep &mdash; and a sleeping beacon is operationally identical to a dead one.</p>
+
+<p>The tablet's ops footer flags battery <span class="val">&le;&nbsp;20&nbsp;%</span> and either
+<code>fixQuality &le; 0</code> or <code>satellites &lt; 5</code> in red.</p>
+
+<h2 id="zodo">$ZODO &mdash; odometer</h2>
+
+<p>Trip distance since service start, and a persisted lifetime total. Both in <strong>metres</strong>
+&mdash; the on-screen readouts divide by 1000, the sentence does not.</p>
+
+<p><code>TripOdometer</code> accumulates haversine distance with three fail-closed gates:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Gate</th><th>Rule</th><th>Why</th></tr></thead>
+<tbody>
+<tr><th>Accuracy</th><td>Must be present and <span class="val">&le; 20&nbsp;m</span> &mdash; applied to the <strong>first</strong> fix too</td><td>So a poor cold-start fix never becomes the anchor</td></tr>
+<tr><th>Jitter floor</th><td>Steps below <span class="val">5&nbsp;m</span> ignored</td><td>Stationary GPS noise must not accumulate</td></tr>
+<tr><th>Teleport</th><td>Any step implying <span class="val">&gt; 160&nbsp;kph</span> rejected, as are non-positive time deltas</td><td>Multipath. The ceiling is the app's own <code>SetSpeed</code> limit, so a real highway drive to the event is never rejected while a teleport implying thousands of km/h always is</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>A rejected step <strong>holds the anchor</strong> and adds zero, so a bad fix cannot poison the
+next comparison and recovery is automatic. Fail-closed throughout, because
+<code>totalMeters</code> is unrecoverable once written.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>docs/PROTOCOLS.md &sect;2</code> &middot; <code>ARCHITECTURE.md &sect;5</code> &middot; <code>README.md</code> &middot; <code>docs/AUDIT-2026-08-09.md C1, C7, C8</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../beacon/index.html"><span class="pager-dir">Previous</span><span class="pager-name">Overview</span></a><a class="next" href="../beacon/service.html"><span class="pager-dir">Next</span><span class="pager-name">Service &amp; sensors</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

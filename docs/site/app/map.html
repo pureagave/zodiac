@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playa map and navigation · Zodiac</title>
+<meta name="description" content="The Black Rock City map pipeline, projection, street-following routing and drive-to targets.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :app — the cockpit <span aria-hidden="true">/</span> <em>Playa map &amp; navigation</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html" aria-current="page">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:app &#183; the cockpit</p>
+<h1>Playa map and navigation</h1>
+<p class="standfirst">The centre of every concept renders a live Black Rock City map driven by the GPS source.
+    Active year is a single source of truth: <code>GoldenSpike.ACTIVE = Y2026</code>. The 2026 city
+    moved <span class="val">~583&nbsp;m</span> south-west from 2025 but did <strong>not</strong>
+    rotate &mdash; the 12:00 axis is still <span class="val">45.0&deg;</span> true.</p>
+<div class="prose">
+
+
+<h2 id="pipeline">Data pipeline</h2>
+
+<pre class="diagram"><code>GeoJSON assets &#8594; GeoJsonParser &#8594; typed PlayaMap &#8594; PlayaMapBinaryCache</code></pre>
+
+<p>The cache is a hand-rolled big-endian format (magic <code>0x504C4159</code> = <code>PLAY</code>,
+schema version <span class="val">2</span>, year in the header) written to a <code>.tmp</code> and
+renamed for atomicity. A magic, version or year mismatch is a silent miss that falls through to
+re-parsing the JSON.</p>
+
+<p><code>PlayaMapRepository</code> publishes the map <em>first</em> and writes the cache
+fire-and-forget, so serialisation never delays time-to-first-map. A load failure surfaces as
+<code>MapLoadResult.Failed</code> and is rendered with a RETRY control.</p>
+
+<p>The parser reads <strong>both schemas</strong>: 2025 used <code>type</code> and a string
+<code>width</code>; 2026 uses <code>source</code> and an integer <code>width_ft</code>. That dual
+read is why the cache schema version is 2.</p>
+
+<div class="note caveat">
+  <span class="label">How that was found</span>
+  <p>The 2026 GIS renamed <code>type</code>&rarr;<code>source</code>/<code>kind</code>,
+  <code>width</code>&rarr;<code>width_ft</code> and <code>Name</code>&rarr;<code>name</code>, which
+  had left every street kind-less &mdash; an empty city model, so no cues and no routes &mdash; and
+  every plaza label null. <code>BundledGisTest</code> now guards it and is the acceptance gate on a
+  new dataset drop. The map-load error overlay that surfaces such a failure is
+  <strong>visual-only and unverified</strong>: the state transitions are tested, but the rendering
+  needs a device.</p>
+</div>
+
+<h2 id="geometry">Geometry</h2>
+
+<p><code>PlayaProjection</code> is equirectangular anchored on the Golden Spike
+(<code>R = 6&thinsp;371&thinsp;000&nbsp;m</code>), with an allocation-free inline variant for the
+renderer's polyline walk. <code>PlayaViewport</code> is track-up with a configurable anchor, so TOP
+mode centres the ego and TILT mode anchors it to the lower third.</p>
+
+<h2 id="year">Active year</h2>
+
+<p><code>GoldenSpike.ACTIVE = Y2026</code>. Every 2026 radial still puts the 12:00 axis at
+<span class="val">45.0&deg;</span> true, verified against the shipped GIS &mdash; the 4:30 portal
+lands at exactly <span class="val">180.0&deg;</span>.</p>
+
+<p>Base assets are in <code class="path">app/src/main/assets/brc/2026/</code>. The 2026 GIS ships
+<strong>no art layer</strong>; art and camp markers come from the BM API and stay hidden until BM
+releases the 2026 data, roughly three weeks pre-event.</p>
+
+<div class="note caveat">
+  <span class="label">Waiting on the world</span>
+  <p><code>location</code> and <code>location_string</code> are null on all
+  <span class="val">332</span> art records. Everything else &mdash; artist, hometown, description,
+  programme, images &mdash; is published and already in the app. When BM publishes placements, the
+  map markers, the ART card and the approach detection all light up with no code change.</p>
+</div>
+
+<h2 id="nav">Navigation</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Component</th><th>Does</th></tr></thead>
+<tbody>
+<tr><th><code>ClockBearing</code></th><td>Converts between BRC clock positions and true bearings about the 45&deg; axis</td></tr>
+<tr><th><code>PlayaCityModel</code></th><td>Derives the ring radii and street polylines from the loaded map rather than an idealised circle</td></tr>
+<tr><th><code>PlayaNavigator</code></th><td>Snaps the ego to the nearest street within <span class="val">15&nbsp;m</span> and produces a <code>NavigationCue</code> &mdash; on a radial inbound/outbound, on a named arc at a clock position, or heading toward/away from a clock position across open playa</td></tr>
+<tr><th><code>PlayaRoute</code></th><td>Decides in-city vs open-playa (clock 2&ndash;10, outside Esplanade, inside the outer ring) and, when in-city, routes out to the nearest entrance radial, in to Esplanade, along the ring, to the address &mdash; <strong>snapping every corner to a real GIS street vertex</strong>. <code>nextWaypoint</code> is stateless, so it survives any recomposition.</td></tr>
+<tr><th><code>StreetRingRadiiM</code></th><td>Mean centreline radius of every ring, <em>measured</em> from the shipped GIS (Esplanade <span class="val">761.5&nbsp;m</span> through K <span class="val">1753&nbsp;m</span>) and re-measured by <code>BundledGisTest</code> against the assets</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>That re-measurement is how a nine-metre error in the old Esplanade value was found
+(<span class="val">752.0</span> &rarr; <span class="val">761.5&nbsp;m</span>).</p>
+
+<h2 id="targets">Drive-to targets</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Target</th><th>Resolves to</th></tr></thead>
+<tbody>
+<tr><th>HOME</th><td>Camp <code>GALACTIC_RELAY</code>, &ldquo;Heiau &amp; 2:15&rdquo;</td></tr>
+<tr><th>MAN</th><td>The active Golden Spike</td></tr>
+<tr><th>TEMPLE</th><td>The 2026 GIS CPN</td></tr>
+<tr><th>BATH</th><td>Nearest toilet, resolved dynamically and re-resolved live</td></tr>
+<tr><th>ADDR</th><td>Built from a typed clock time + ring letter on a full-screen keypad, with a <span class="val">10&nbsp;s</span> heading flash before live nav</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><code>NavTarget</code> itself has exactly three entries; BATH and ADDR are derived.</p>
+
+<div class="note caveat">
+  <span class="label">Unverified &mdash; the camp coordinate is an estimate</span>
+  <p><code>Camp.GALACTIC_RELAY</code> is a <strong>geometric projection</strong> of &ldquo;Heiau
+  &amp; 2:15&rdquo; onto the 2026 grid, not a geocode. The authoritative placement comes from the BM
+  API the Sunday before gates.</p>
+</div>
+
+<div class="note caveat">
+  <span class="label">Outstanding &mdash; on-device address check</span>
+  <p>Typing <code>2:15 &amp; H</code> on the S9+ gives <code>HEADING 112&deg;, 1.6&nbsp;km</code>,
+  identical to the HOME preset, which was verified 2026-08-08. The broader 2026 base-map check
+  &mdash; typing a range of known addresses and confirming each lands on the right corner &mdash;
+  remains outstanding, because the city has moved.</p>
+</div>
+
+<h2 id="labels">Zoom-gated labels</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Layer</th><th class="num">Appears at (px/m)</th></tr></thead>
+<tbody>
+<tr><th>Plazas</th><td class="num">0.20</td></tr>
+<tr><th>Major art</th><td class="num">0.30</td></tr>
+<tr><th>Streets</th><td class="num">0.45</td></tr>
+<tr><th>CPNs</th><td class="num">0.65</td></tr>
+<tr><th>Minor art</th><td class="num">1.10</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Street labels are de-duplicated across the GIS's per-segment features so each logical street
+draws once.</p>
+
+<h2 id="touch">Touch</h2>
+
+<p>Centre-viewport touch drives the <strong>map</strong>, not the vehicle: drag to pan, pinch to
+zoom, two-finger twist to rotate (<code>ui/playamap/MapTouchInput</code>). Heading and speed are set
+programmatically or by the GPS, never by tapping the viewport.</p>
+
+<div class="note absent">
+  <span class="label">No automated coverage</span>
+  <p>The gesture state machine has no tests. Extracting a pure <code>PinchSession</code> from
+  <code>MapTouchInput</code>, so it is unit-testable without <code>awaitPointerEventScope</code>,
+  is an open task.</p>
+</div>
+
+<h2 id="discovery">Playa discovery cache</h2>
+
+<p>Offline-first cache of the Burning Man API's art and camp records, stored in
+<code>filesDir</code> &mdash; <strong>not</strong> <code>cacheDir</code>, because Android may purge
+that and this is the only copy for up to 14 unattended days, with no bundled fallback the way the
+map has one.</p>
+
+<ul>
+<li>Refreshes daily when there is internet; a failed or partial fetch never clobbers a good
+cache.</li>
+<li>Atomic temp+rename write, copying <code>PlayaMapBinaryCache</code>.</li>
+<li><code>refresh()</code> merges <strong>by kind</strong>, so an art-only fetch cannot destroy
+cached camps.</li>
+<li>A plausibility gate rejects placements more than <span class="val">5&nbsp;km</span> from the
+spike &mdash; swapped or zeroed coordinates land thousands of km out.</li>
+<li>One log line per refresh outcome, which on a Fire is the only way to answer &ldquo;why are there
+no art markers&rdquo;.</li>
+</ul>
+
+<div class="note caveat">
+  <span class="label">Unverified</span>
+  <p>The storage-location change has no test &mdash; <code>ZodiacApplication</code> wiring is not
+  unit-testable without a Robolectric harness this repository does not have. Verified by review and
+  compile only.</p>
+</div>
+
+<p>Without a <code>BM_API_KEY</code> in <code>local.properties</code> (as on CI) the key compiles to
+<code>""</code> and the discovery fetch fails its HTTP call. That is not fatal:
+<code>DiscoveryRepository</code> keeps serving whatever is in its on-disk cache and logs the
+failure. Art and camp markers simply never appear.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>ARCHITECTURE.md &sect;4.8</code> &middot; <code>README.md</code> &middot; <code>tasks/open.md</code> &middot; <code>docs/BUILD.md &sect;1</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/gps.html"><span class="pager-dir">Previous</span><span class="pager-name">GPS sourcing</span></a><a class="next" href="../app/vision.html"><span class="pager-dir">Next</span><span class="pager-name">Threats &amp; the DRIVER HUD</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

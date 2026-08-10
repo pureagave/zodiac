@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design commitments · Zodiac</title>
+<meta name="description" content="The two principles that explain Zodiac&#x27;s structure, the decision log behind them, and the playa constraints that force them.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> The vehicle <span aria-hidden="true">/</span> <em>Design commitments</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html" aria-current="page">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">The vehicle</p>
+<h1>Design commitments</h1>
+<p class="standfirst">Two principles explain most of the structure of all three codebases, and a third governs
+    how the code gets written. Everything else on this site is downstream of them.</p>
+<div class="prose">
+
+
+<h2 id="offline">Offline-first, LAN-local</h2>
+
+<p>Every realtime, safety-relevant path runs on the vehicle's own WiFi with no dependence on the
+internet. Starlink is aboard but treated as unreliable. Only non-safety extras &mdash; the Burning
+Man API discovery cache &mdash; touch the WAN, and those are cached offline-first with a stale
+cache strictly preferred over an empty one.</p>
+
+<h2 id="one-to-many">One-to-many by default</h2>
+
+<p>Sensors are shared: <em>one</em> GPS, <em>one</em> camera ring, <em>every</em> screen. Sources
+publish on fixed multicast groups; any number of subscribers listen. Nothing unicasts, nothing
+handshakes, nothing has a hardcoded IP.</p>
+
+<p>The fleet target is 8&ndash;10 tablets in one vehicle. Per-tablet GPS receivers do not scale for
+that &mdash; Bluetooth GPS pucks cap at roughly five simultaneous clients &mdash; which is the whole
+reason for a single shared sensor hub. <a href="../protocols/index.html">How the bus works &rarr;</a></p>
+
+<h2 id="measure">Measure, don't guess</h2>
+
+<p>A fixture manual said the moving head's tilt range was <span class="val">270&deg;</span>; it is
+<span class="val">180&deg;</span>, and believing the manual scaled every tilt command by
+<span class="val">1.5&times;</span>. Where a number in this repository came from a datasheet rather
+than a measurement, the code says so.</p>
+
+<p>That discipline shows up all over: the DMX channel map was re-derived by mutation testing
+rather than read from the menu, the colour wheel was measured with the rig's own camera, and the
+Esplanade ring radius was corrected from <span class="val">752.0&nbsp;m</span> to
+<span class="val">761.5&nbsp;m</span> by re-measuring the shipped GIS.
+<a href="../jetson/tracker-light.html">The bench log &rarr;</a></p>
+
+<h2 id="decisions">Why the system is shaped this way</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Decision</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><th>Fleet bus on fixed multicast groups</th><td>Dynamic-DHCP-proof, no hardcoded IPs, fully offline, one-to-many by nature. The subnet-broadcast copy exists because real access points drop multicast.</td></tr>
+<tr><th>Broadcast the whole sensor hub, not just GPS</th><td>Compass heading fills the gap GPS course leaves at low speed &mdash; and an art car spends most of its time barely moving. One hub, one rich shared truth.</td></tr>
+<tr><th>Camera on a dedicated edge box; broadcast detections, not video</th><td>Right physical location, isolates sensor failure, tiny payload, and every viewer is a first-class subscriber rather than a client of one tablet.</td></tr>
+<tr><th>Classical CV first, trained model later on public thermal data</th><td>No playa data collection and no self-labelling required to ship the safety core.</td></tr>
+<tr><th>DMX tracker slaved to detections</th><td>Illuminating the pedestrian is both the safety function and the spectacle.</td></tr>
+<tr><th>The demo threat source defaults to nothing</th><td>A fabricated collision on a driver's HUD is worse than a blank one; <code>ABSENT</code> is a legible state.</td></tr>
+<tr><th>A card with no data leaves the rotation</th><td>A passenger display cycling through blank panels reads as broken hardware.</td></tr>
+<tr><th>Everything realtime is link-local</th><td>The vehicle stays fully functional with the internet down, which on the playa is the normal case.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="environment">Environment constraints behind the choices</h2>
+
+<p>Every constraint below is why something in the design looks the way it does.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Constraint</th><th>What it forces</th></tr></thead>
+<tbody>
+<tr><th>Heat</th><td>Dark devices in direct sun throttle or shut down. Vented mounts, shade, and insulation between the roof and the device.</td></tr>
+<tr><th>Dust</th><td>Alkaline playa dust penetrates everything. IP-rated devices and sealed enclosures &mdash; and note that <strong>thermal optics foul, and glass blocks LWIR</strong>. A germanium or other IR-transmissive window is required, not a glass one.</td></tr>
+<tr><th>Power</th><td>A moving head, a Jetson, ten tablets and Starlink is a real 12&nbsp;V budget.</td></tr>
+<tr><th>Vibration</th><td>Damped mounts. This is also the camera stabilisation strategy: mechanical damping plus a software detection tracker, not video stabilisation.</td></tr>
+<tr><th>14 days unattended</th><td>Nothing may depend on someone noticing a failure.</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>That last one is the most structurally load-bearing. It is why the discovery cache lives in
+<code>filesDir</code> rather than <code>cacheDir</code> (Android may purge the latter, and it is the
+only copy for up to 14 unattended days), why the rolling log counts its own losses rather than
+silently dropping lines, why the <code>zvision</code> systemd unit refuses to start when
+misconfigured rather than starting wrong, and why nothing in the system ever gives up
+restarting.</p>
+
+<h2 id="drift">Where docs and code disagree</h2>
+
+<p>The repository's own convention, and the one this site follows: <strong>where a doc and the code
+disagree, the code wins.</strong> Where something cannot be verified from the repository &mdash; it
+needs hardware, a device, or the owner's knowledge &mdash; the doc says so rather than guessing,
+and that framing is carried through here. Three such items are open:</p>
+
+<div class="note caveat">
+  <span class="label">Outstanding</span>
+  <ul>
+    <li><strong>Field-of-view reference disagrees across the two sides of the vehicle.</strong>
+    Up to 16&deg; at the frame edge. <a href="../protocols/fov-discrepancy.html">Detail</a>.</li>
+    <li><strong>The camp coordinate is estimated, not geocoded.</strong>
+    <code>Camp.GALACTIC_RELAY</code> is a geometric projection of &ldquo;Heiau &amp; 2:15&rdquo; onto
+    the 2026 grid. The authoritative placement comes from the BM API shortly before the event.</li>
+    <li><strong>The 2026 base map has not been fully checked on-device.</strong> The city has moved;
+    typing a known address and confirming it lands on the right corner is the outstanding check.</li>
+  </ul>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>ARCHITECTURE.md &sect;1, &sect;9, &sect;10, &sect;11</code> &middot; <code>docs/DEVICES.md &sect;6</code> &middot; <code>docs/README.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../index.html"><span class="pager-dir">Previous</span><span class="pager-name">The system</span></a><a class="next" href="../system/devices.html"><span class="pager-dir">Next</span><span class="pager-name">Devices &amp; roles</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

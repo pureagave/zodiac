@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layers and state · Zodiac</title>
+<meta name="description" content="How the cockpit app is layered: manual DI, one StateFlow, three ViewModel delegates, and two routers with deliberately opposite lifecycles.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :app — the cockpit <span aria-hidden="true">/</span> <em>Layers &amp; state</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html" aria-current="page">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:app &#183; the cockpit</p>
+<h1>Layers and state</h1>
+<p class="standfirst">Reactive core: delegates fold repository and source flows into <strong>one</strong>
+    <code>StateFlow&lt;CockpitUiState&gt;</code> that the whole UI reads. Dependency injection is
+    manual. The rule the codebase follows consistently is <strong>no new logic in a
+    composable</strong>.</p>
+<div class="prose">
+
+
+<h2 id="layers">Layer map</h2>
+
+<pre class="diagram"><code>MainActivity &#9472; immersive chrome, permission gate, kiosk engage
+     &#9474;
+CockpitScreen &#9472; burnInScaffold &#8594; theme &#8594; dispatch on CockpitConcept
+     &#9474;            &#9500;&#9472;&#9472; RADAR   MotionTrackerScreen
+     &#9474;            &#9500;&#9472;&#9472; MAP     InstrumentBayScreen
+     &#9474;            &#9500;&#9472;&#9472; DRIVER  DriverNightScreen
+     &#9474;            &#9492;&#9472;&#9472; passengerScreen (when this device holds the passenger role)
+     &#9474;
+CockpitViewModel &#9472; one StateFlow&lt;CockpitUiState&gt;
+     &#9474;   &#9500;&#9472;&#9472; MapCameraController    pan / zoom / rotate / tilt / recenter
+     &#9474;   &#9500;&#9472;&#9472; NavigationController   drive-to targets, routing, street + art callouts
+     &#9474;   &#9492;&#9472;&#9472; GpsController          source selection, fake-GPS nudges
+     &#9474;
+data/ &#9472; VehicleConnectionGateway &#183; TelemetryRepository &#183; LocationSource
+        ThreatSource &#183; PlayaMapRepository &#183; DiscoveryRepository &#183; CockpitPreferences
+     &#9474;
+core/ &#9472; pure logic, no Android: geo &#183; navigation &#183; ops &#183; vision &#183; telemetry
+        sensor &#183; model &#183; connection &#183; log &#183; net &#183; passenger &#183; permission</code></pre>
+
+<p><code>core/</code> is where every decision that can be tested without a device lives. Draw code
+turns decisions into pixels; the decisions live in <code>core/</code> with tests.
+<code>SurroundRing</code> / <code>SurroundRingCanvas</code> is the clearest example of that
+split.</p>
+
+<h2 id="di">Dependency injection</h2>
+
+<p><strong>Manual, in <code>ZodiacApplication.kt</code></strong> &mdash; no Hilt or Dagger.
+Everything is <code>by lazy</code> in a process-lifetime
+<code>CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)</code>, so construction order is
+first-access order. <code>onCreate</code> does the only ordered work: plant the debug
+<code>Timber</code> tree, plant the file log tree, install the crash logger, then log a boot line
+naming the device, API level, active BRC year and log path.</p>
+
+<p>Two objects are deliberately hoisted out of their registries so a second consumer can reach the
+<em>same instance</em>: <code>fakeLocationSource</code> (the debug nudge chips drive it) and
+<code>networkLocationSource</code> (the ViewModel reads its <code>beaconSensors</code> and
+<code>audioLevel</code> flows).</p>
+
+<h2 id="vm">The ViewModel and its delegates</h2>
+
+<p><code>ui/viewmodel/</code> is four files. <code>CockpitViewModel</code>
+(<span class="val">457</span> lines, <span class="val">20</span> public functions) owns the single
+<code>MutableStateFlow&lt;CockpitUiState&gt;</code>, the flow subscriptions, and the vehicle-command
+actions. It constructs and delegates to three controllers that share that state handle.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>File</th><th>Owns</th></tr></thead>
+<tbody>
+<tr><th><code>CockpitViewModel.kt</code></th><td>State ownership, <code>init</code> flow wiring, heading / speed / transport / concept actions, map-load retry</td></tr>
+<tr><th><code>MapCameraController.kt</code></th><td><code>setMapMode</code>, <code>setTiltDeg</code>, <code>setPixelsPerMeter</code>, <code>panBy</code>, <code>nudgeViewRotation</code>, <code>recenterPan</code>, auto-recenter scheduling</td></tr>
+<tr><th><code>NavigationController.kt</code></th><td><code>setNavTarget</code>, <code>driveToNearestToilet</code>, address entry, route recomputation, street-crossing and passing callouts</td></tr>
+<tr><th><code>GpsController.kt</code></th><td><code>selectLocationSource</code>, <code>restartLocationSource</code>, fake-GPS nudge / reset</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The public API of <code>CockpitViewModel</code> is unchanged by the split &mdash; the delegates
+are internal collaborators, not a new surface. The split followed the project's own standing rule,
+&ldquo;split the file, don't bump the number&rdquo;: <code>TooManyFunctions</code> was reverted
+25&nbsp;&rarr;&nbsp;<span class="val">22</span> rather than raised.</p>
+
+<h2 id="validation">Input validation lives in the ViewModel layer</h2>
+
+<p>Not in the UI &mdash; so every entry point (chip, gesture, synthetic GPS, persisted preference) is
+bounded by the same rules.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Quantity</th><th>Bound</th></tr></thead>
+<tbody>
+<tr><th>Heading</th><td class="num">0&ndash;359</td></tr>
+<tr><th>Speed</th><td class="num">0&ndash;160 kph</td></tr>
+<tr><th>Tilt</th><td class="num">0&ndash;80&deg;</td></tr>
+<tr><th>Zoom</th><td class="num">0.05&ndash;5.0 px/m</td></tr>
+<tr><th>Camera pan</th><td class="num">&plusmn;5000 m per axis</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="state">CockpitUiState</h2>
+
+<p>One immutable data class of <span class="val">37</span> fields, updated with <code>.copy()</code>.
+That is a known cost &mdash; a per-frame field change copies the whole state &mdash; tracked as item
+A5 in <code class="path">tasks/open.md</code>.</p>
+
+<div class="note">
+  <span class="label">Why it stays one flow</span>
+  <p>The targeted alternative (splitting into three flows) was considered and declined. One
+  StateFlow is why all three concepts always render the same world and a concept switch can never
+  show a different one. Three flows can be observed mid-update in inconsistent states &mdash; on a
+  display that carries collision alerts. The recomposition half of the problem is already solved by
+  <code>MapUiInputs</code>, an input slice that lets the map subtree smart-skip when unrelated state
+  changes. If profiling ever justifies more, the move is <em>more</em> input slices, not more
+  flows.</p>
+</div>
+
+<h2 id="routers">Two routers, deliberately opposite lifecycles</h2>
+
+<p><code>RoutedLocationSource.select()</code> <strong>stops</strong> the old source before starting
+the new one. <code>RoutedVehicleGateway.selectTransport()</code> <strong>leaves</strong> the old
+adapter connected. Both are documented in place and pinned by tests.
+<code>FailoverLocationSource</code> exists precisely because the location policy makes
+failover-on-top-of-routing impossible any other way.</p>
+
+<p>A proposal to collapse the <code>Routed&lt;T&gt;</code> shapes into one generic was declined:
+there are only two real routers (<code>RoutedThreatSource</code> is not a router at all &mdash; it
+is a fixed two-source <code>combine</code> with a demo-fallback policy and no selection), and a
+generic would need a policy parameter just to preserve the opposite switch semantics.</p>
+
+<h2 id="commands">The vehicle command path is entirely simulated</h2>
+
+<div class="note absent">
+  <span class="label">Not built</span>
+  <div class="tablewrap">
+  <table>
+  <thead><tr><th>Type</th><th>Implementations</th></tr></thead>
+  <tbody>
+  <tr><th><code>TransportAdapter</code></th><td><strong><code>FakeTransportAdapter</code> only.</strong> Three instances registered, one per <code>TransportType</code> (BLE / USB / WIFI).</td></tr>
+  <tr><th><code>TelemetryRepository</code></th><td><strong><code>FakeTelemetryRepository</code> only</strong> in production.</td></tr>
+  <tr><th><code>VehicleCommand</code></th><td><code>SetHeading(Int)</code>, <code>SetSpeed(Int)</code> &mdash; the entire vocabulary.</td></tr>
+  </tbody>
+  </table>
+  </div>
+  <p>Real vehicle data does not travel this path at all. It arrives through
+  <code>NetworkLocationSource</code> and <code>NetworkThreatSource</code>. The gateway is a boundary
+  kept warm for a vehicle bus that does not exist yet.</p>
+</div>
+
+<h2 id="render">Rendering pipeline</h2>
+
+<p><code>PlayaMapPanel</code> is the shared map host used by both RADAR and MAP. It caches
+aggressively because the Fire HD 10 is the floor.</p>
+
+<pre class="diagram"><code>PlayaMap &#8594; ProjectedMap (paths + point batches, cached per camera change)
+         &#8594; drawProjectedMap (per frame)
+         &#8594; drawProjectedLabels (zoom-gated, same pass)</code></pre>
+
+<p>Polylines are held as flat <code>DoubleArray</code>s and walked with inline projection straight
+into a <code>Path</code> cursor, so the inner loop allocates nothing. Labels are measured
+colour-agnostically so a palette change never invalidates the layout cache.</p>
+
+<p>What is <em>not</em> cached is the rasterised pixels &mdash; see
+<a href="performance.html">the performance backlog</a>.</p>
+
+<h2 id="prefs">Preferences</h2>
+
+<p><code>DataStoreCockpitPreferences</code> persists <span class="val">21</span> keys in one
+Preferences DataStore &mdash; GPS source, map mode, tilt, zoom, concept, passenger role, and every
+burn-in parameter.</p>
+
+<ul>
+<li>Enums are stored <strong>by name</strong>, so a renamed constant falls back to the default
+rather than mis-mapping.</li>
+<li>Every numeric read is clamped to the same range the UI enforces, so a tampered or stale file
+cannot strand the UI.</li>
+<li>A <code>ReplaceFileCorruptionHandler</code> is installed because a torn file would otherwise be
+a crash loop on a kiosked tablet with no Settings access.</li>
+<li>The default persisted GPS source is <strong><code>NET</code>, not <code>FAKE</code></strong>
+&mdash; a corrupt-prefs recovery on a deployed tablet should land on real GPS, not on a plausible
+synthetic map parked at the Golden Spike. Recovery also resets <code>passengerMode</code>, so a
+corrupted passenger tablet returns as a driver cockpit; it comes back <em>running</em>, and the role
+flip is one hidden-panel action.</li>
+</ul>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>ARCHITECTURE.md &sect;4.1&ndash;4.4, &sect;4.9, &sect;4.13</code> &middot; <code>tasks/open.md</code> &middot; <code>SYNC.md 2026-08-10</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/concepts.html"><span class="pager-dir">Previous</span><span class="pager-name">The three concepts</span></a><a class="next" href="../app/gps.html"><span class="pager-dir">Next</span><span class="pager-name">GPS sourcing</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

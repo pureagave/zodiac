@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jetson/ — the edge box · Zodiac</title>
+<meta name="description" content="The Zodiac edge box: zvision turns camera frames into threat contacts on the fleet bus, and zdeck gives the cab a physical control surface.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> jetson/ — the edge box <span aria-hidden="true">/</span> <em>Overview</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html" aria-current="page">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">jetson/ &#183; the edge box</p>
+<h1>jetson/ &mdash; the edge box</h1>
+<p class="standfirst">A roof-mounted <strong>Jetson Orin Nano Super</strong> running two Python packages:
+    <code>zvision</code>, which turns camera frames into vehicle-relative threat contacts on the
+    fleet bus and aims a DMX moving head at them, and <code>zdeck</code>, a six-key physical control
+    surface for that light.</p>
+<div class="prose">
+
+
+<h2 id="pipeline">zvision, end to end</h2>
+
+<pre class="diagram"><code>camera ring &#9472;&#9472;&#9658; detector &#9472;&#9472;&#9658; rig merge &#9472;&#9472;&#9658; ThreatBroadcaster &#9472;&#9472;&#9658; 239.7.7.20:10120
+ per camera     per camera   full-circle    ZTHREAT frames        + subnet broadcast
+ (az, lens,     (rel_az,     bearings +     10 Hz, TTL 1                &#9474;
+  fov)           size, id)   overlap dedup                              &#9660;
+                                                       tablets &#9658; DRIVER HUD
+                                    &#9474;
+                                    &#9492;&#9472;&#9472;&#9658; Tracker &#9472;&#9472;&#9658; olad &#9472;&#9472;&#9658; DMX moving head</code></pre>
+
+<p>Each camera is declared on the command line with its mounting bearing, field of view and lens
+model. <code>rig.py</code> unprojects pixels through a real lens model, rotates bearings into
+vehicle terms, namespaces track ids per camera, and collapses the same person seen by two
+overlapping cameras into one contact.</p>
+
+<p>On start-up it prints each camera's covered arc <strong>and the blind sectors</strong>, so a ring
+that does not close is found immediately rather than by wondering why nobody astern ever
+appears. <a href="zvision.html">The rig in detail &rarr;</a></p>
+
+<h2 id="honest">Two things to know before anything else</h2>
+
+<div class="note absent">
+  <span class="label">The detector is background subtraction, not a model</span>
+  <p>There is <strong>no TensorRT, ONNX, YOLO or PyTorch anywhere in the tree, and no weights
+  file</strong>. The trained thermal model is a roadmap. <code>zvision</code> ships a
+  <code>--record</code> mode that dumps frames plus the motion detector's boxes as weak labels to
+  feed it. <a href="detector.html">The roadmap &rarr;</a></p>
+</div>
+
+<div class="note absent">
+  <span class="label">No camera has been connected to the box</span>
+  <p>Everything downstream &mdash; the bus, the merge, the broadcaster, the HUD &mdash; is proved
+  with <code>--source fake</code>. <code>FakeDetector</code>, three deterministic synthetic contacts,
+  is the default source, and as shipped by <code>install.sh</code> there are <strong>zero real
+  cameras</strong> in the service config.</p>
+</div>
+
+<h2 id="deps">Zero declared dependencies, deliberately</h2>
+
+<p>The <code>zvision</code> core is <strong>standard library only</strong>, with <code>numpy</code>
+and <code>opencv-python</code> as an optional <code>camera</code> extra imported lazily. That is why
+the whole test suite &mdash; and the <code>--source fake</code> bus proof &mdash; runs anywhere.
+<code>zvision/normalize.py</code> exists precisely so the array-free arithmetic is testable without
+them.</p>
+
+<p><code>zdeck</code> needs <code>streamdeck</code> + <code>pillow</code>, installed into a
+<em>separate</em> venv on the box so they never land in the Python <code>zvision</code> runs
+on.</p>
+
+<h2 id="failure">Failure behaviour</h2>
+
+<ul>
+<li>A camera that will not open, or starts throwing mid-run, <strong>costs its arc, not the
+run</strong>.</li>
+<li>If <em>nothing</em> opens, the runner exits with code <span class="val">3</span> rather than
+broadcasting a confident all-clear while blind.</li>
+<li>On shutdown it always emits one final <strong>empty frame</strong> &mdash; an explicit all-clear
+&mdash; parks the light, and zeroes the DMX universe.</li>
+<li><code>OlaDmxSink</code> swallows its own send failures by design: a lighting concern must never
+be able to stall the threat broadcaster. It counts them and reports once per outage.</li>
+<li>A separate <code>dmxpark</code> module zeroes the whole universe as a fail-safe and is wired as
+<code>ExecStopPost</code> on every DMX-touching unit, which systemd runs on crash and kill &mdash;
+not just a clean stop.</li>
+</ul>
+
+<h2 id="pages">In this section</h2>
+
+<ul class="cards">
+  <li class="card"><h3><a href="zvision.html">zvision &mdash; the camera rig</a></h3>
+    <p>Modules, the pipeline, camera declaration, cross-camera fusion, lens models and field
+    tuning.</p></li>
+  <li class="card"><h3><a href="detector.html">Detector and training</a></h3>
+    <p>What the detector does today, why a model is needed, and the honest calendar answer.</p></li>
+  <li class="card"><h3><a href="tracker-light.html">The DMX tracker light</a></h3>
+    <p>Channel map, the measured fixture facts (the manual is wrong about tilt), and the bench
+    log.</p></li>
+  <li class="card"><h3><a href="zdeck.html">zdeck &mdash; control surface</a></h3>
+    <p>Six keys in the cab, and the unresolved arbitration with the tracker.</p></li>
+  <li class="card"><h3><a href="hardware.html">Hardware and enclosure</a></h3>
+    <p>Bill of materials, the germanium window problem, cooling, power.</p></li>
+  <li class="card"><h3><a href="deploy.html">Bring-up runbook</a></h3>
+    <p>Flash, network, prove-with-fake, camera, permanent, DMX &mdash; each stage verifiable on its
+    own.</p></li>
+</ul>
+
+<h2 id="services">Services</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Unit</th><th>Runs</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><th><code>zvision.service</code></th><td><code>python3 -m zvision $ZVISION_ARGS</code></td><td><code>EnvironmentFile</code> <strong>without</strong> a <code>-</code> prefix, so a missing config fails the unit rather than starting wrong; <code>StartLimitIntervalSec=0</code> so repeated crashes never permanently disable it</td></tr>
+<tr><th><code>zodiac-deck.service</code></th><td><code>python -m zdeck</code> from a separate venv</td><td><code>After=olad</code>, deliberately <strong>not</strong> <code>After=zvision</code></td></tr>
+<tr><th><code>zodiac-track.service</code></th><td><code>python3 -m zvision.tracklog</code></td><td>NMEA breadcrumb CSV, fsynced per row</td></tr>
+<tr><th><code>zodiac-track-serve.service</code></th><td><code>python3 -m zvision.trackserve</code></td><td>Read-only HTTP on <span class="val">:8087</span>, hardened</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>All the DMX-touching units carry
+<code>ExecStopPost=-&hellip; zvision.dmxpark</code>.</p>
+
+<div class="note caveat">
+  <span class="label"><code>install.sh</code> does less than it sounds</span>
+  <p>It copies <strong>only</strong> the <code>zvision</code> package &mdash; not <code>zdeck</code>,
+  not <code>tests</code> &mdash; installs <strong>only</strong> <code>zvision.service</code>, does
+  not create the breadcrumb logger's directory, and writes a config of
+  <code>ZVISION_ARGS=--source fake --hz 10</code>. It also <em>enables and starts</em> the service
+  immediately, so on a fresh install the box begins broadcasting three synthetic contacts &mdash;
+  one a recurring phantom collision &mdash; to every tablet on the network. Fine on a bench; do not
+  leave it that way on the vehicle.</p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>jetson/README.md</code> &middot; <code>ARCHITECTURE.md &sect;6</code> &middot; <code>docs/BUILD.md &sect;4</code> &middot; <code>jetson/DEPLOY.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../beacon/service.html"><span class="pager-dir">Previous</span><span class="pager-name">Service &amp; sensors</span></a><a class="next" href="../jetson/zvision.html"><span class="pager-dir">Next</span><span class="pager-name">zvision: the camera rig</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

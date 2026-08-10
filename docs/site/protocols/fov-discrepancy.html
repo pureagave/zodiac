@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Known discrepancy: the field-of-view reference · Zodiac</title>
+<meta name="description" content="The open field-of-view disagreement between zvision and the tablet: up to 16 degrees of bearing error at the frame edge.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Protocols — the seams <span aria-hidden="true">/</span> <em>Known discrepancy: FOV</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html" aria-current="page">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">Protocols &#183; the seams</p>
+<h1>Known discrepancy: the field-of-view reference</h1>
+<p class="standfirst">The tablet and the edge box currently disagree about how wide the forward thermal camera
+    sees. The consequence is up to <span class="val">16&deg;</span> of bearing error at the frame
+    edge &mdash; on the number that both draws the driver's HUD and aims a spotlight at a person.</p>
+<div class="prose">
+
+
+<div class="note bug">
+  <span class="label">Open &mdash; recorded, not fixed</span>
+  <p>This is a <strong>code</strong> decision, not a documentation one. It is written down so that
+  anyone reading a bearing off the bus knows the edge values are unverified until it is
+  resolved.</p>
+</div>
+
+<h2 id="two">What the two sides believe</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Side</th><th>Believes the forward thermal covers</th><th>Where</th></tr></thead>
+<tbody>
+<tr><th>Tablet (<code>:app</code>)</th><td><span class="val">&plusmn;64&deg;</span></td><td><code>SurroundRing.COVERED_ARCS</code> = <code>-64f..64f</code></td></tr>
+<tr><th>Edge box (<code>zvision</code>)</th><td><span class="val">&plusmn;80&deg;</span></td><td><code>--fov-ref</code> defaults to <code>h</code>; <code>geometry.FOV_HORIZONTAL</code>; <code>rig.CameraMount.fov_ref</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Every documented example rig &mdash; in <code>jetson/README.md</code>,
+<code>jetson/DEPLOY.md</code>, <code>jetson/HARDWARE.md</code> and
+<code>jetson/TRAINING.md</code> &mdash; omits <code>fovref=d</code>, so following any of them
+reproduces the &plusmn;80&deg; reading.</p>
+
+<h2 id="argument">Why &plusmn;64&deg; is the settled reading</h2>
+
+<p>FLIR never states which axis the Lepton Ultra Wide's quoted 160&deg; refers to &mdash; the
+product page, GroupGets, and the R200 dewarping note all just say &ldquo;160&deg;&rdquo;. So it was
+settled on physics rather than on a document:</p>
+
+<ul>
+<li>The board emits <span class="val">160&times;120</span> &mdash; a 4:3 frame, measured on the real
+board on 2026-08-07 (it had first been recorded as 120&times;120).</li>
+<li>160&deg; across the <em>width</em> of a 4:3 f-theta frame would demand a
+<span class="val">~200&deg;</span> diagonal &mdash; not a lens that exists. On the square
+120&times;120 &ldquo;usable&rdquo; area FLIR quotes, it would be
+<span class="val">226&deg;</span>.</li>
+<li>Read as the <em>diagonal</em>, it is an ordinary fisheye and the true horizontal half-angle is
+<span class="val">80&deg; &times; 80/100 = 64&deg;</span>. The camera covers
+<span class="val">&plusmn;64&deg;</span>, not <span class="val">&plusmn;80&deg;</span>.</li>
+</ul>
+
+<p><code>LeptonUwFovReferenceTest</code> pins that arithmetic, and the tablet's
+<code>SurroundRing.COVERED_ARCS</code> carries the matching &plusmn;64&deg;.</p>
+
+<h2 id="cost">Why it is not cosmetic</h2>
+
+<p><code>fov_ref</code> feeds <code>pixel_to_bearing</code>, so the wrong choice mis-aims
+<strong>every edge bearing by up to 16&deg;</strong> &mdash; about
+<span class="val">2.8&nbsp;m</span> of miss on a person <span class="val">10&nbsp;m</span> away,
+which is exactly where the tracker light gets pointed.</p>
+
+<h2 id="policy">The policy behind the choice</h2>
+
+<div class="note">
+  <span class="label">Under uncertainty, under-claim coverage</span>
+  <p>Under-claiming coverage costs a little caution. Over-claiming is the confident all-clear that
+  the blind-arc report exists to prevent. Widen the arc only against a real measurement, or a FLIR
+  figure that names the axis.</p>
+</div>
+
+<h2 id="fix">What resolving it looks like</h2>
+
+<p>Either the Python default flips to <code>d</code>, or the tablet's covered arc widens. Until
+one of those happens:</p>
+
+<ul>
+<li>Add <code>fovref=d</code> by hand to the thermal camera's <code>--camera</code> spec if you want
+the two sides of the vehicle to agree.</li>
+<li>Treat edge bearings as unverified.</li>
+</ul>
+
+<pre><code>--camera thermal:/dev/video0:az=0:fov=160:fovref=d:lens=fisheye:name=thermal</code></pre>
+
+<h2 id="related">A second, unreconciled number</h2>
+
+<div class="note caveat">
+  <span class="label">Unreconciled &mdash; optics, not bearings</span>
+  <p>The germanium window sizing in <code>jetson/HARDWARE.md</code> uses an
+  <span class="val">80&deg;</span> half-angle (required radius &asymp; standoff &times; tan&nbsp;80&deg;
+  &asymp; standoff &times; 5.7), giving a <span class="val">~1.7&ndash;2&nbsp;mm</span> maximum
+  standoff for the ordered D20 window. The FOV-reference decision concludes the true horizontal
+  half-angle is <span class="val">64&deg;</span> (tan&nbsp;64&deg; &asymp; 2.05), which would allow
+  roughly <span class="val">4.9&nbsp;mm</span> of standoff for the same window.</p>
+  <p>The optics number was not revised when the bearing number was. The 2&nbsp;mm figure is the
+  <em>conservative</em> one, so building to it is safe &mdash; but the 5.7&times; rule should not be
+  quoted elsewhere without deciding which half-angle applies.</p>
+</div>
+
+<p>See also <a href="../jetson/hardware.html#window">the thermal window</a> and
+<a href="../app/vision.html#coverage">how the tablet draws uncovered arcs</a>.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>docs/PROTOCOLS.md &sect;4</code> &middot; <code>ARCHITECTURE.md &sect;9</code> &middot; <code>jetson/HARDWARE.md &sect;1</code> &middot; <code>jetson/README.md</code> &middot; <code>docs/DEVICES.md &sect;4</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../protocols/golden-corpus.html"><span class="pager-dir">Previous</span><span class="pager-name">The golden corpus</span></a><a class="next" href="../app/index.html"><span class="pager-dir">Next</span><span class="pager-name">Overview</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

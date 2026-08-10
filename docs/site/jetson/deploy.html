@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bring-up runbook · Zodiac</title>
+<meta name="description" content="Flash to broadcasting: the Jetson bring-up runbook, where every stage is verifiable on its own.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> jetson/ — the edge box <span aria-hidden="true">/</span> <em>Bring-up runbook</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html" aria-current="page">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">jetson/ &#183; the edge box</p>
+<h1>Bring-up runbook</h1>
+<p class="standfirst">From box to broadcasting live threats on the vehicle bus. The design goal:
+    <strong>every stage is verifiable on its own.</strong> You prove the network path with
+    <code>--source fake</code> before a camera is ever attached, so if something breaks later you
+    know it is the camera, not the bus.</p>
+<div class="prose">
+
+
+<h2 id="checklist">Checklist</h2>
+
+<ol>
+<li><strong>Flash</strong> JetPack 7.2 / L4T 39.2 to the NVMe from the Linux flash host, first boot,
+confirm MAXN Super</li>
+<li><strong>Network</strong>: Ethernet &rarr; travel router; note the Jetson's IP for
+<code>--iface-ip</code></li>
+<li><strong>Install</strong>: <code>sudo jetson/scripts/install.sh</code></li>
+<li><strong>Prove the bus, no camera</strong>: <code>python3 -m zvision --source fake -v</code>
+&rarr; a tablet's DRIVER HUD shows the moving demo. <em>This is the big one.</em></li>
+<li><strong>Attach camera(s)</strong>: <code>v4l2-ctl --list-devices</code>, then
+<code>--source thermal</code>, and walk in front of it</li>
+<li><strong>Make permanent</strong>: set the real source in
+<code class="path">/etc/default/zvision</code>, <code>systemctl restart zvision</code></li>
+<li><em>(optional, any time)</em> <strong>DMX light</strong>:
+<code>sudo jetson/scripts/install-ola.sh</code>, patch the dongle, <code>--dmx ola</code></li>
+</ol>
+
+<p>Before starting, run the read-only pre-flight on the flash host:
+<code>jetson/scripts/preflight-flash.sh</code> checks the BSP staging, the host tools, the
+<code>qemu-aarch64-static</code> symlink, the baked-in user, the t234 flash XML and free space.
+<code>--command</code> prints the exact flash command. It changes nothing.</p>
+
+<div class="note caveat">
+  <span class="label">Software status, honestly</span>
+  <p>The bus, the rig, the broadcaster and the tracker are built and tested, and the box can boot
+  straight into them. Two things are <em>not</em> finished and are not software bugs: the tracker
+  light's aim constants are <strong>uncalibrated placeholders</strong> that must be set on the actual
+  mount before enabling <code>--dmx ola</code>, and <strong>DMX arbitration between
+  <code>zvision</code> and <code>zodiac-deck</code> is unresolved</strong> &mdash;
+  <a href="zdeck.html#arbitration">do not run both with real DMX output</a>.</p>
+</div>
+
+<h2 id="flash">1. Flash JetPack</h2>
+
+<p><strong>Not SDK Manager.</strong> It is a GUI app, useless over SSH, and its supported hosts are
+Ubuntu 20.04/22.04. The Jetson Linux BSP's own CLI flasher &mdash; which SDK Manager only wraps
+&mdash; is used instead: no GUI, no NVIDIA login, headless, and it is the documented path for
+external NVMe.</p>
+
+<p>The flash host is an x86 Ubuntu machine. <strong>A Mac cannot do this</strong> &mdash; Tegra
+recovery is a USB protocol and needs an x86 Linux host. JetPack 7.2 / L4T 39.2 rather than 6.x
+because r39.2 added Orin Nano Dev Kit support and its newer toolchain is more tolerant of a newer
+host.</p>
+
+<h3>Host setup gotchas</h3>
+
+<div class="note">
+  <span class="label"><code>nfs-kernel-server</code> is required, not optional</span>
+  <p><code>l4t_initrd_flash.sh</code> boots a small initrd on the Jetson and serves the rootfs to it
+  over the USB link via NFS, so the flash aborts immediately without it. (An earlier note said it was
+  optional, on the strength of <code>exportfs</code> being guarded by <code>command -v</code> in one
+  code path &mdash; that guard is real and the requirement is still hard.)</p>
+</div>
+
+<div class="note">
+  <span class="label">Modern OpenSSH breaks the recovery-image build</span>
+  <p>L4T's <code>ota_make_recovery_img_dtb.sh</code> calls <code>ssh-keygen -t dsa</code>, and
+  OpenSSH &ge; 9.8 removed DSA entirely. The failure lands on a bare <code>check_error</code>, so all
+  you see is <code>command is failed</code> / <code>Error: failed to generate images</code> with no
+  hint. Comment that one line out &mdash; the initrd's sshd config only ever references
+  rsa/ecdsa/ed25519, so the DSA key it generates is never used.</p>
+</div>
+
+<p>Also: on 26.04 <code>qemu-user-static</code> no longer exists &mdash; it is <code>qemu-user</code>
+(still static-pie linked), and L4T's scripts hard-code the <code>-static</code> name, hence a symlink.
+And apt aborts the <em>whole</em> transaction on one bad package name, so a typo silently installs
+nothing; verify with <code>dpkg -s</code>.</p>
+
+<h3>Bake in the login before flashing</h3>
+
+<p>A stock image first-boots into <code>oem-config</code>, the interactive account wizard &mdash;
+with no monitor attached the Jetson just sits there and looks like a failed flash. Pre-seed the
+account instead:</p>
+
+<pre><code>sudo ./tools/l4t_create_default_user.sh -u &lt;user&gt; -p &lt;pass&gt; -n &lt;hostname&gt; --accept-license</code></pre>
+
+<h3>Force Recovery</h3>
+
+<p>J14 button header, on the board edge under the module. Read the silkscreen, do not count pins
+&mdash; authoritative pinout from carrier board spec SP-11324-001, Table 3-4:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th class="num">Pin</th><th>Signal</th><th class="num">Pin</th><th>Signal</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td>PC_LED&minus;</td><td class="num">7</td><td>GND</td></tr>
+<tr><td class="num">2</td><td>PC_LED+</td><td class="num">8</td><td>SYS_RESET*</td></tr>
+<tr><td class="num">3</td><td>UART2_RXD (debug, 3.3&nbsp;V)</td><td class="num">9</td><td>GND</td></tr>
+<tr><td class="num">4</td><td>UART2_TXD (debug, 3.3&nbsp;V)</td><td class="num">10</td><td><strong>FORCE_RECOVERY*</strong></td></tr>
+<tr><td class="num">5</td><td>AC OK</td><td class="num">11</td><td>GND</td></tr>
+<tr><td class="num">6</td><td>Auto-Power-On disable</td><td class="num">12</td><td>SLEEP/WAKE* (power button)</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>No pin carries a supply rail, so a slip onto a neighbouring pair is at worst a reset or a
+power-button press &mdash; not damage. The kit ships no jumpers; ATX front-panel momentary switches
+fit (2.54&nbsp;mm, 2-pin female) and are far easier than a jumper cap in that cramped spot.</p>
+
+<ol>
+<li>Board <strong>unpowered</strong>. NVMe seated in the M.2 Key-M slot &mdash; the kit ships with
+<strong>no storage</strong>, and without it the flash has no target.</li>
+<li>Bridge FC_REC &harr; GND (pins 10 &harr; 9).</li>
+<li><strong>USB-C</strong> from the Jetson's C port (J5, the <em>only</em> port that can flash; the
+Type-A ports are hosts) to the flash host.</li>
+<li>Plug in the 19&nbsp;V barrel jack &mdash; it powers on <strong>automatically</strong>, straight
+into recovery.</li>
+<li>Release FC_REC.</li>
+<li>Confirm: <code>lsusb | grep 0955</code> &rarr; <code>0955:7523</code>.</li>
+</ol>
+
+<p><em>Already powered?</em> Hold FC_REC, tap RESET (pins 8&harr;7), release FC_REC. With two buttons
+fitted you never touch the power cable &mdash; and recovery is repeatable, which matters during
+bring-up.</p>
+
+<h3>Flash</h3>
+
+<pre><code>sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
+     --external-device nvme0n1p1 \
+     -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml \
+     --showlogs --network usb0 \
+     jetson-orin-nano-devkit-super internal</code></pre>
+
+<ul>
+<li><code>t234</code> = Orin. (<code>t264</code> is Thor &mdash; wrong file, do not grab it by
+mistake.)</li>
+<li><code>--network usb0</code> runs the bulk transfer as ethernet-over-USB, which NVIDIA notes is
+more reliable than raw USB. Still just the one USB-C cable.</li>
+<li><code>internal</code> as rootdev writes <strong>QSPI as well as</strong> the NVMe. Going from
+shipped firmware to r39.2 is a big jump, so the bootloader update matters &mdash; <strong>do not
+interrupt the flash</strong>, a half-written QSPI is the one way to brick it.</li>
+<li>Add <code>--no-flash</code> to build the images with no board attached, which de-risks the
+toolchain before you are standing there holding a button.</li>
+</ul>
+
+<div class="note">
+  <span class="label">You can reach it over the flash cable</span>
+  <p>The Jetson brings up a USB gadget network on first boot and answers at
+  <strong><code>192.168.55.1</code></strong>. That works before any DHCP lease exists, and it is the
+  quickest way in if Ethernet is not ready.</p>
+</div>
+
+<h3>Power mode</h3>
+
+<pre><code>sudo nvpmodel -p --verbose | grep POWER_MODEL   # list the IDs first
+sudo nvpmodel -m 2        # MAXN_SUPER on JetPack 7.2
+nvpmodel -q               # confirm: "NV Power Mode: MAXN_SUPER"</code></pre>
+
+<div class="note bug">
+  <span class="label">The mode ID is not 0</span>
+  <p>On JetPack 7.2 / L4T 39.2 the table is <code>0=15W &middot; 1=25W &middot; 2=MAXN_SUPER</code>,
+  and the board ships on <strong>1</strong>. This runbook previously said <code>-m 0</code>, which
+  sets the <em>slowest</em> mode &mdash; following it left the box <strong>slower than
+  stock</strong> while reporting success. Verified on the real board 2026-08-06: MAXN_SUPER took GPU
+  max <span class="val">612 &rarr; 1020&nbsp;MHz</span> and CPU
+  <span class="val">1497 &rarr; 1728&nbsp;MHz</span>. <strong>Always list the modes rather than
+  trusting an ID.</strong></p>
+</div>
+
+<p>It reverts on every reboot unless the default in <code class="path">/etc/nvpmodel.conf</code> is
+changed.</p>
+
+<h3>OpenCV</h3>
+
+<p><strong>Not preinstalled</strong> &mdash; <code>import cv2</code> fails on a fresh JetPack 7.2.
+Only the <code>fake</code> source is stdlib-only, so the bus can be proven without it; any real
+camera needs it.</p>
+
+<pre><code>sudo apt-get install -y nvidia-opencv libopencv-python</code></pre>
+
+<p><code>nvidia-opencv</code> alone installs the C++ libraries but <strong>not</strong> the Python
+bindings &mdash; <code>libopencv-python</code> is the package that provides <code>cv2</code>. Still
+<strong>do not <code>pip install opencv-python</code></strong>: the apt build is the one matched to
+this JetPack, and pip would shadow it. Note it reports zero CUDA-enabled devices and carries no CUDA
+in its build info &mdash; fine, since the motion detector is pure CPU work and a trained model will
+run through TensorRT, not OpenCV CUDA.</p>
+
+<div class="note">
+  <span class="label">Serial console backstop</span>
+  <p>J14 pins 3/4 are a <strong>3.3&nbsp;V</strong> debug UART. A CP2102 USB-TTL cable gives console
+  into the Jetson from anywhere &mdash; worth wiring for a box that lives headless in a vehicle.
+  Crossover: adapter TXD&rarr;pin 3, RXD&rarr;pin 4, GND&rarr;pin 7/9/11, <strong>5&nbsp;V lead
+  unused</strong>. 115200 8N1. Receive-only (RXD+GND) gets the full boot log with zero risk to the
+  board.</p>
+</div>
+
+<h2 id="network">2. Get it on the vehicle network</h2>
+
+<p>Ethernet to the travel router is the most reliable for a fixed roof install. Alternatives: an
+Intel AX210 in the M.2 Key-E slot with two antennas, or a USB WiFi dongle.</p>
+
+<div class="note">
+  <span class="label">Multicast across a wired &harr; wireless bridge</span>
+  <p>If the Jetson is <em>wired</em> and the tablets are <em>wireless</em>, some routers drop
+  multicast at the bridge (IGMP snooping). <code>zvision</code> already sends a
+  <strong>subnet-broadcast copy</strong> of every frame, so it works regardless &mdash; but if you
+  ever see fake threats on a same-band test and nothing across the bridge, that is the cause, and the
+  broadcast leg is the fix.</p>
+</div>
+
+<h2 id="install">3. Install zvision</h2>
+
+<p><strong>Clone directly into <code class="path">/opt/zodiac</code></strong> &mdash; the same path the
+service runs from, so there is exactly one copy of the code on the box and <code>git log</code>
+always answers &ldquo;what is actually running&rdquo;. Before that discipline the box carried two
+untracked copies that had silently drifted four days behind <code>main</code>, and nothing on the box
+could tell you that.</p>
+
+<pre><code>sudo mkdir -p /opt/zodiac &amp;&amp; sudo chown "$USER:$USER" /opt/zodiac
+git clone https://github.com/pureagave/zodiac.git /opt/zodiac
+cd /opt/zodiac
+sudo jetson/scripts/install.sh</code></pre>
+
+<p>This installs a systemd service and a config file at
+<code class="path">/etc/default/zvision</code> &mdash; <strong>outside</strong> the repo, so a
+<code>git pull</code> never clobbers the rig's configuration.</p>
+
+<div class="note caveat">
+  <span class="label">What <code>install.sh</code> does not do</span>
+  <ul>
+    <li>It <strong>enables and starts</strong> the service immediately, configured to
+    <code>--source fake --hz 10</code> &mdash; which means it broadcasts three synthetic contacts,
+    one a recurring phantom collision, to every tablet on the network. Fine on a bench; do not leave
+    it that way on the vehicle.</li>
+    <li>It copies <strong>only the <code>zvision</code> package</strong> &mdash; not
+    <code>zdeck</code>, not <code>tests</code>.</li>
+    <li>It installs <strong>only <code>zvision.service</code></strong> &mdash; not the deck, track or
+    track-serve units, and not the Stream Deck udev rule.</li>
+    <li>It does not create <code class="path">/var/lib/zodiac/track</code>, which the breadcrumb
+    logger needs.</li>
+  </ul>
+</div>
+
+<h3>Credentials: none live on this box</h3>
+
+<p><strong>The repository is public, so pulling needs no key at all</strong> &mdash; the HTTPS clone
+above is anonymous. Do not put a deploy key on the Jetson for read access; it would protect nothing
+that is not already public.</p>
+
+<p>For <em>pushing</em> from the Jetson, use SSH agent forwarding rather than a resident key
+(<code>ssh -A</code>). <strong>Why not a read-write deploy key:</strong> this box lives unattended in
+a vehicle at Burning Man. A push credential stored on it is a push credential to <code>main</code> for
+anyone who walks off with the box or gets a shell on it. Agent forwarding grants that power only
+while you are logged in and leaves nothing behind. The trade-off is that unattended pushes are
+impossible &mdash; which is the correct answer for an art car.</p>
+
+<h2 id="prove">4. Prove the bus with NO camera</h2>
+
+<pre><code>cd /opt/zodiac/jetson
+python3 -m zvision --source fake -v</code></pre>
+
+<p>You should see one line per frame
+(<code>3 contacts -&gt; N targets  ZTHREAT;&hellip;</code>). Now on a <strong>tablet</strong>, switch
+to the DRIVER concept &mdash; three moving contacts, one going red as it closes.</p>
+
+<div class="note">
+  <span class="label">If that works, the network, multicast/broadcast and HUD are all proven</span>
+  <p>Everything after this is just swapping the fake detector for a real camera.</p>
+</div>
+
+<h2 id="camera">5. Attach the camera(s)</h2>
+
+<pre><code>v4l2-ctl --list-devices          # find which /dev/videoN is which
+v4l2-ctl -d /dev/video0 --all    # sanity: resolution/format
+
+python3 -m zvision --source thermal --device /dev/video0 --hz 10 --hfov 160 -v</code></pre>
+
+<p>Walk in front of the camera &mdash; contacts should appear, their <code>rel_az</code> tracking
+left/right and <code>size</code> growing as you approach, on both the console and the HUD.</p>
+
+<div class="note">
+  <span class="label">Sanity-check it physically</span>
+  <p>Stand at a known bearing (say 45&deg; off the nose, paced out on the ground) and confirm the
+  console's <code>rel_az</code> agrees. Do it once at the centre <em>and once near the frame
+  edge</em> &mdash; the edge is where a wrong lens model shows up, and it is the same number that
+  aims the tracker light. <a href="../protocols/fov-discrepancy.html">And note the open FOV-reference
+  bug &rarr;</a></p>
+</div>
+
+<p>For the surround rig, repeat <code>--camera</code> per camera with its mounting bearing and
+optics. <strong>Measure each camera's <code>az</code> against the vehicle's actual nose, not by
+eye</strong> &mdash; an error there rotates every contact from that camera and swings the tracker
+light onto the wrong person. <a href="zvision.html#declare">Rig declaration &rarr;</a></p>
+
+<h2 id="permanent">6. Make it permanent</h2>
+
+<pre><code>sudo nano /etc/default/zvision
+#   ZVISION_ARGS=--source thermal --device /dev/video0 --hz 10 --iface-ip 192.168.0.x
+sudo systemctl restart zvision
+journalctl -u zvision -f          # live logs
+systemctl status zvision          # confirm active + auto-start</code></pre>
+
+<h2 id="dmx">7. Bring up the DMX tracker light</h2>
+
+<p>Optional and independent of the camera &mdash; it is a downstream consumer of the same detection
+stream, so it needs no camera to test.</p>
+
+<pre><code>sudo jetson/scripts/install-ola.sh     # olad + ftdidmx plugin + CPU-pinned + on-boot
+
+ola_dev_info                                  # find the ftdidmx device + port
+ola_patch -d &lt;device&gt; -p &lt;port&gt; -u 0          # patch to universe 0
+ola_set_dmx -u 0 -d 128,0,128,0,0,0,0,255     # pan/tilt/dimmer test</code></pre>
+
+<div class="note bug">
+  <span class="label">Do not use the older <code>-d 128,0,128,0,255</code> form</span>
+  <p>It is still printed by <code>install-ola.sh</code>. In the 11-channel mode this fixture runs in,
+  the fifth slot is the <strong>colour wheel</strong>, and 255 there means &ldquo;auto colour change,
+  fast&rdquo;. The <strong>dimmer is channel 8</strong>, so that command pans and tilts a head that
+  stays dark while spinning colours &mdash; indistinguishable from a dead fixture. The eight values
+  above are pan, pan-fine, tilt, tilt-fine, colour, 0, 0, dimmer.</p>
+  <p>If the head still does nothing, <strong>check it completed its power-up homing sweep</strong>
+  before blaming software. <a href="tracker-light.html#bench">Detail &rarr;</a></p>
+</div>
+
+<pre><code>python3 -m zvision --source fake --dmx fake -v   # logs target/pan/tilt/dim, no hardware
+python3 -m zvision --source fake --dmx ola       # sends the universe to olad &rarr; dongle &rarr; head</code></pre>
+
+<p>Calibrate once on the vehicle: aim the head dead-ahead and set <code>--dmx-pan-center</code> to
+that fixture pan angle; <code>--dmx-pan-gain</code> (~1.0) maps camera az &rarr; pan.
+<code>--dmx-no-sound</code> disables the idle sound show.</p>
+
+<h2 id="tuning">8. Tuning on playa &mdash; laptop only</h2>
+
+<p>Assume the flashed image is final and the <em>tuning</em> is not. Nothing here needs a screen on
+the Jetson.</p>
+
+<p><strong>Access:</strong> the laptop joins the vehicle's travel-router WiFi and SSHes in &mdash;
+the Jetson is on Ethernet to the same router as the tablets and beacon, and no internet is required.
+Backstop if networking dies: the CP2102 serial console on J14 pins 3/4, 115200 8N1.</p>
+
+<div class="note">
+  <span class="label">Your monitor is the tablets</span>
+  <p>Change a value, restart, watch contacts appear or vanish on the DRIVER HUD. That is a better
+  feedback loop than a display on the Jetson, because you are seeing exactly what the driver
+  sees.</p>
+</div>
+
+<pre><code># 1. Try it in the foreground first and watch the contacts scroll by
+sudo systemctl stop zvision
+python3 -m zvision -v --camera thermal:/dev/video0:az=0:fov=160:minarea=0.02
+
+# 2. Happy? Validate the exact line before committing it to the service
+python3 -m zvision --check &lt;the same args&gt;
+
+# 3. Write it in and restart
+sudo nano /etc/default/zvision      # ZVISION_ARGS=...
+sudo systemctl restart zvision &amp;&amp; journalctl -u zvision -f</code></pre>
+
+<p><a href="zvision.html#tuning">What you will actually be tuning &rarr;</a></p>
+
+<h2 id="trouble">Troubleshooting</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Symptom</th><th>Cause / fix</th></tr></thead>
+<tbody>
+<tr><th>HUD shows fake demo threats, not the Jetson's</th><td>Tablet is not receiving &mdash; check the same subnet, and that the DRIVER source is network (fake is the fallback when no frames arrive)</td></tr>
+<tr><th>Console shows frames, HUD shows nothing</th><td>Multicast dropped at a router bridge &mdash; the broadcast leg should cover it; verify tablet and Jetson share a /24, check AP client-isolation is <strong>off</strong></td></tr>
+<tr><th><code>-&gt; 0 targets</code> in logs</th><td>No network route yet (<code>network-online.target</code> not reached) &mdash; check <code>ip addr</code>, set <code>--iface-ip</code></td></tr>
+<tr><th><code>could not open camera</code></th><td>Wrong <code>/dev/videoN</code>, or cv2 missing on a non-JetPack box</td></tr>
+<tr><th>Bearings compressed / stretched</th><td><code>--hfov</code> does not match the lens, or <code>--lens</code> has the wrong projection (fisheye = <code>equidistant</code>, ordinary = <code>rectilinear</code>); if the datasheet FOV is a diagonal, add <code>--fov-ref d</code></td></tr>
+<tr><th>One camera's contacts all sit at the wrong bearing</th><td>That camera's <code>az=</code> does not match how it is actually bolted on &mdash; measure it against the nose</td></tr>
+<tr><th>One person shows up twice in a camera overlap</th><td>Raise <code>--merge-deg</code>; lower it if two people standing close together get collapsed into one</td></tr>
+<tr><th><code>no cameras opened</code>, exit 3</th><td>None of the rig's devices enumerated &mdash; check USB power / hub</td></tr>
+<tr><th>A camera vanished but the run continued</th><td><strong>By design</strong> &mdash; check stderr for <code>camera &lt;name&gt; failing, dropped</code>; that arc is blind until it is back</td></tr>
+<tr><th>Contacts flicker / bad ids</th><td>The motion detector is bring-up grade; the trained model replaces it. For now raise <code>--hz</code> and ensure a stable mount</td></tr>
+<tr><th><code>--dmx ola</code> runs but the head does not move</th><td><strong>First: did it complete its power-up homing sweep?</strong> An un-homed head accepts DMX and silently discards it. Then: universe not patched, or the wrong universe. Confirm with <code>ola_set_dmx -u 0 -d 128,0,128,0,0,0,0,255</code> &mdash; the trailing 255 is the ch8 dimmer; without it the head moves in the dark</td></tr>
+<tr><th>DMX flickers / stutters</th><td>Another OLA plugin is fighting for the FT232 (leave only <code>ftdidmx</code>), or olad is not CPU-pinned</td></tr>
+<tr><th>olad will not grab the dongle</th><td>Kernel <code>ftdi_sio</code> may hold it as <code>/dev/ttyUSB0</code>; ftdidmx uses libftdi and should detach it &mdash; if not, <code>modprobe -r ftdi_sio</code></td></tr>
+<tr><th>Head moves but never pulses to music</th><td>No <code>$ZAUD</code> arriving (beacon not broadcasting, or a different subnet), or <code>--dmx-no-sound</code> is set. The sound show only runs when <em>idle</em></td></tr>
+</tbody>
+</table>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>jetson/DEPLOY.md</code> &middot; <code>docs/BUILD.md &sect;4</code> &middot; <code>jetson/README.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../jetson/hardware.html"><span class="pager-dir">Previous</span><span class="pager-name">Hardware &amp; enclosure</span></a><a class="next" href="../reference/build.html"><span class="pager-dir">Next</span><span class="pager-name">Build, test, CI</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zodiac — one system in three parts · Zodiac</title>
+<meta name="description" content="Zodiac: an art-car cockpit system in three parts — an Android tablet fleet, a phone sensor hub, and a Jetson vision edge box.">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><em>Zodiac</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group is-here">
+<ol>
+<li><a href="index.html" aria-current="page">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="system/principles.html">Design commitments</a></li>
+<li><a href="system/devices.html">Devices &amp; roles</a></li>
+<li><a href="system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="protocols/index.html">The fleet bus</a></li>
+<li><a href="protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="app/index.html">Overview</a></li>
+<li><a href="app/concepts.html">The three concepts</a></li>
+<li><a href="app/architecture.html">Layers &amp; state</a></li>
+<li><a href="app/gps.html">GPS sourcing</a></li>
+<li><a href="app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="app/burn-in.html">OLED burn-in</a></li>
+<li><a href="app/operations.html">Displays &amp; operations</a></li>
+<li><a href="app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="beacon/index.html">Overview</a></li>
+<li><a href="beacon/channels.html">The seven channels</a></li>
+<li><a href="beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="jetson/index.html">Overview</a></li>
+<li><a href="jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="reference/build.html">Build, test, CI</a></li>
+<li><a href="reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="reference/glossary.html">Glossary</a></li>
+<li><a href="reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">Galactic Relay &#183; Black Rock City</p>
+<h1>One system in three parts</h1>
+<p class="standfirst">Zodiac is the software for a Judge-Dredd-themed mutant vehicle (art car).
+    A fleet of Android tablets shows an 80s green-phosphor cockpit over a live Black Rock City
+    map; a phone acts as the vehicle's shared sensor hub; and a roof-mounted vision box watches
+    for people in the dark and tells every screen &mdash; and a spotlight &mdash; where they are.</p>
+<div class="prose">
+
+
+<p>Everything realtime runs on the vehicle's own WiFi. Starlink is aboard but is treated as
+unreliable; nothing safety-relevant depends on it.</p>
+
+<h2 id="flow">How the three parts talk</h2>
+
+<p>The three codebases <strong>share no code</strong>. They agree through two documented wire
+formats &mdash; NMEA sentences and <code>ZTHREAT</code> frames &mdash; and both are pinned by tests.
+Those two formats are the spine of the whole system, which is why
+<a href="protocols/index.html">Protocols</a> gets its own section here.</p>
+
+
+<figure class="flow">
+<svg viewBox="0 0 900 470" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">How the three parts of Zodiac talk to each other</title>
+  <desc id="flow-desc">The beacon phone broadcasts NMEA telemetry to multicast group 239.7.7.10 port 10110
+  plus a subnet broadcast copy. The Jetson vision box broadcasts ZTHREAT frames to 239.7.7.20 port 10120
+  plus a subnet broadcast copy. Both are received by the fleet of eight to ten Android tablets running the
+  cockpit app. The Jetson also listens to the beacon's audio-level channel, and drives a DMX moving-head
+  tracker light over a separate DMX cable, outside the network.</desc>
+
+  <!-- network boundary -->
+  <rect class="f-bound" x="20" y="40" width="860" height="300" rx="4"></rect>
+
+  <!-- $ZAUD back-link: beacon audio levels feed the tracker light's idle show -->
+  <path class="f-arrow-dim" d="M 140 90 V 66 H 760 V 82"></path>
+  <path class="f-head-dim" d="M 760 90 L 755.5 81 L 764.5 81 Z"></path>
+  <text class="f-sub" x="450" y="60" text-anchor="middle">$ZAUD mic level &#8594; tracker light idle show</text>
+
+  <!-- beacon -->
+  <rect class="f-node" x="50" y="90" width="180" height="86" rx="3"></rect>
+  <text class="f-title" x="68" y="118">:beacon</text>
+  <text class="f-sub" x="68" y="136">one Android phone, headless</text>
+  <text class="f-sub" x="68" y="150">GNSS &#183; compass &#183; IMU</text>
+  <text class="f-sub" x="68" y="164">mic level &#183; lux &#183; shock</text>
+
+  <!-- zvision -->
+  <rect class="f-node" x="670" y="90" width="180" height="86" rx="3"></rect>
+  <text class="f-title" x="688" y="118">jetson / zvision</text>
+  <text class="f-sub" x="688" y="136">Orin Nano Super, roof</text>
+  <text class="f-sub" x="688" y="150">camera ring &#8594; contacts</text>
+  <text class="f-sub" x="688" y="164">full-circle bearings</text>
+
+  <!-- tablets -->
+  <rect class="f-node" x="330" y="236" width="240" height="86" rx="3"></rect>
+  <text class="f-title" x="348" y="264">:app &#183; 8&#8211;10 tablets</text>
+  <text class="f-sub" x="348" y="284">RADAR / MAP / DRIVER</text>
+  <text class="f-sub" x="348" y="298">live Black Rock City map</text>
+  <text class="f-sub" x="348" y="312">threat HUD &#183; passenger cards</text>
+
+  <!-- beacon -> tablets -->
+  <path class="f-arrow" d="M 230 133 H 288 V 279 H 322"></path>
+  <path class="f-head" d="M 330 279 L 321 274.5 L 321 283.5 Z"></path>
+  <text class="f-wire" x="298" y="182">NMEA</text>
+  <text class="f-sub" x="298" y="196">239.7.7.10:10110</text>
+  <text class="f-sub" x="298" y="209">+ subnet broadcast</text>
+
+  <!-- zvision -> tablets -->
+  <path class="f-arrow-2" d="M 670 133 H 612 V 279 H 578"></path>
+  <path class="f-head-2" d="M 570 279 L 579 274.5 L 579 283.5 Z"></path>
+  <text class="f-wire-2" x="602" y="182" text-anchor="end">ZTHREAT</text>
+  <text class="f-sub" x="602" y="196" text-anchor="end">239.7.7.20:10120</text>
+  <text class="f-sub" x="602" y="209" text-anchor="end">+ subnet broadcast</text>
+
+  <!-- zvision -> moving head -->
+  <path class="f-arrow-2" d="M 760 176 V 382"></path>
+  <path class="f-head-2" d="M 760 390 L 755.5 381 L 764.5 381 Z"></path>
+  <text class="f-sub" x="772" y="248">DMX512</text>
+  <text class="f-sub" x="772" y="261">via local olad</text>
+  <text class="f-sub" x="772" y="274">&#8594; FTDI USB dongle</text>
+
+  <!-- moving head -->
+  <rect class="f-node-alt" x="670" y="390" width="180" height="56" rx="3"></rect>
+  <text class="f-title" x="688" y="414">moving head</text>
+  <text class="f-sub" x="688" y="431">tracker light</text>
+
+  <text class="f-scope" x="24" y="358">VEHICLE WIFI &#183; TRAVEL ROUTER (AP + DHCP) &#183; SINGLE /24 &#183; MULTICAST TTL 1 &#8212; NOTHING LEAVES THE VEHICLE</text>
+</svg>
+</figure>
+<p class="caption">Both realtime streams are one-to-many multicast with a subnet-broadcast copy. Nothing unicasts, nothing handshakes, nothing has a hardcoded IP.</p>
+
+
+<h2 id="parts">The three parts</h2>
+
+<ul class="cards">
+  <li class="card">
+    <p class="card-eyebrow">Kotlin / Jetpack Compose &#183; Android tablets and phones</p>
+    <h3>:app &mdash; Zodiac Control</h3>
+    <p>The cockpit. Three runtime-switchable &ldquo;concepts&rdquo; (RADAR / MAP / DRIVER), a live
+    BRC playa map, street-following navigation, a threat HUD, a passenger display, and OLED
+    burn-in mitigation.</p>
+    <p class="card-links"><a href="app/index.html">Overview</a>
+      <a href="app/concepts.html">Concepts</a>
+      <a href="app/architecture.html">Layers</a>
+      <a href="app/map.html">Playa map</a></p>
+  </li>
+  <li class="card">
+    <p class="card-eyebrow">Kotlin, headless &#183; one Android phone</p>
+    <h3>:beacon &mdash; Zodiac Beacon</h3>
+    <p>The vehicle's sensor hub. Reads GNSS, compass, IMU, mic level, ambient light, shock and
+    battery, and broadcasts them as NMEA over UDP multicast to the whole fleet.</p>
+    <p class="card-links"><a href="beacon/index.html">Overview</a>
+      <a href="beacon/channels.html">Channels</a>
+      <a href="beacon/service.html">Service</a></p>
+  </li>
+  <li class="card">
+    <p class="card-eyebrow">Python 3 &#183; Jetson Orin Nano Super</p>
+    <h3>jetson/ &mdash; zvision + zdeck</h3>
+    <p>The edge box. A ring of cameras becomes one full-circle threat list on the fleet bus, plus a
+    DMX moving-head tracker light and a six-key Stream Deck control surface.</p>
+    <p class="card-links"><a href="jetson/index.html">Overview</a>
+      <a href="jetson/zvision.html">zvision</a>
+      <a href="jetson/tracker-light.html">Tracker light</a>
+      <a href="jetson/deploy.html">Bring-up</a></p>
+  </li>
+</ul>
+
+<h2 id="honest">What is actually running</h2>
+
+<p>The single most useful thing to know about this system is where the seam between
+&ldquo;built&rdquo;, &ldquo;built but unproven&rdquo; and &ldquo;not built&rdquo; falls. It does not
+fall where a feature list would suggest.</p>
+
+<div class="note absent">
+  <span class="label">Not built &mdash; every vehicle transport is fake</span>
+  <p><code>FakeTransportAdapter</code> is the only implementation of <code>TransportAdapter</code>
+  in the repository, and <code>FakeTelemetryRepository</code> the only production
+  <code>TelemetryRepository</code>. The transport chips, CONNECT / DISCONNECT buttons,
+  <code>SetHeading</code> / <code>SetSpeed</code> commands and the thermal / mode / link readouts
+  they feed are scaffolding for a vehicle bus that does not exist yet.</p>
+  <p><strong>Real vehicle data reaches the app only through <code>NetworkLocationSource</code>
+  (NMEA) and <code>NetworkThreatSource</code> (ZTHREAT).</strong> The GPS location sources, by
+  contrast, are real: there are working System, BLE, USB and Network implementations.</p>
+</div>
+
+<div class="note bug">
+  <span class="label">Known open bug &mdash; the two sides of the vehicle disagree about bearings</span>
+  <p><code>jetson/HARDWARE.md</code> concludes, with a physics argument, that the Lepton Ultra
+  Wide's quoted 160&deg; field of view is the <em>diagonal</em>, giving &plusmn;64&deg; horizontal,
+  and the tablet agrees: <code>SurroundRing.COVERED_ARCS</code> is <span class="val">-64f..64f</span>.
+  But <code>zvision</code>'s <code>--fov-ref</code> still defaults to <code>h</code>, and every
+  documented example rig omits <code>fovref=d</code>, so the Python side computes bearings as if
+  the camera covered &plusmn;80&deg;.</p>
+  <p><strong>The two sides currently disagree by up to 16&deg; at the frame edge.</strong> Until
+  the default flips or the tablet's covered arc widens, treat edge bearings as unverified.
+  <a href="protocols/fov-discrepancy.html">Full detail</a>.</p>
+</div>
+
+<ul class="statboard">
+  <li>
+    <span class="statboard-name">:app &mdash; the cockpit</span>
+    <span class="chip ok">Built &amp; verified</span>
+    <span class="statboard-note">All three concepts, playa map, routing, GPS sourcing including
+    NET, burn-in, kiosk, logging, passenger display.</span>
+  </li>
+  <li>
+    <span class="statboard-name">:beacon &mdash; the sensor hub</span>
+    <span class="chip ok">Built &amp; verified</span>
+    <span class="statboard-note">GPS and compass proven end to end; all seven sentence types under
+    test. The five sensor channels have not yet been exercised in a moving vehicle.</span>
+  </li>
+  <li>
+    <span class="statboard-name">jetson/ &mdash; the edge box</span>
+    <span class="chip unproven">Software built, no camera yet</span>
+    <span class="statboard-note">ZTHREAT bus proven with <code>--source fake</code>; DMX fixture
+    characterised; Stream Deck driven on real hardware. <strong>No camera has been attached to the
+    box.</strong></span>
+  </li>
+  <li>
+    <span class="statboard-name">Vehicle transports</span>
+    <span class="chip none">Not built</span>
+    <span class="statboard-note">BLE / USB / WiFi adapters are one fake implementation registered
+    three times.</span>
+  </li>
+</ul>
+
+<p><a href="system/status.html">The full built / unproven / absent inventory &rarr;</a></p>
+
+<h2 id="start">Where to start reading</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>If you want to&hellip;</th><th>Read</th></tr></thead>
+<tbody>
+<tr><td>Understand how the parts fit together</td><td><a href="system/principles.html">Design commitments</a>, then <a href="protocols/index.html">The fleet bus</a></td></tr>
+<tr><td>Know what physically runs where</td><td><a href="system/devices.html">Devices and roles</a></td></tr>
+<tr><td>Read a bearing or a sentence off the wire</td><td><a href="protocols/nmea.html">NMEA telemetry</a> and <a href="protocols/zthreat.html">ZTHREAT frames</a></td></tr>
+<tr><td>Work on the tablet UI</td><td><a href="app/architecture.html">Layers and state</a>, then the concept and subsystem pages</td></tr>
+<tr><td>Bring the Jetson up from a box</td><td><a href="jetson/deploy.html">Bring-up runbook</a></td></tr>
+<tr><td>Build and test anything</td><td><a href="reference/build.html">Build, test and CI</a></td></tr>
+<tr><td>Know what is <em>not</em> true yet</td><td><a href="system/status.html">What is, and isn't, built</a></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="repo">Repository layout</h2>
+
+<pre class="diagram"><code>app/            :app      &#8212; the Android cockpit (org.pureagave.zodiac.control)
+beacon/         :beacon   &#8212; the headless sensor hub (org.pureagave.zodiac.beacon)
+jetson/         zvision + zdeck &#8212; the Python edge box, and its own docs
+protocol/       cross-language wire contracts (the ZTHREAT golden corpus)
+docs/           build, protocols, devices, kiosk provisioning, audits
+design/         UI concept docs and design history
+tasks/          open.md (active work) / done.md
+tools/          offline asset pipelines (art pre-render)
+SYNC.md         append-only decision log &#8212; the project's working memory</code></pre>
+
+<h2 id="data">Data sources and licence</h2>
+
+<p><strong>Black Rock City GIS</strong> &mdash; streets, plazas, blocks, trash fence, toilets and
+CPNs from <code>burningmantech/innovate-GIS-data</code>. The 2026 dataset is bundled in
+<code class="path">app/src/main/assets/brc/2026/</code>; 2025 is kept alongside for reference. Used
+under the Innovate Terms of Service.</p>
+
+<p><strong>Art and camp locations</strong> &mdash; the Burning Man API
+(<code>api.burningman.org</code>), fetched offline-first and cached. Embargoed until roughly three
+weeks pre-event. The 2025 art layer was bundled from <code>iBurnApp/iBurn-Data</code> (MIT); the
+2026 GIS ships no art layer at all.</p>
+
+<p>The project is Apache&nbsp;2.0. The bundled Black Rock City GIS data is <strong>not</strong>
+covered by that licence &mdash; it is used under the Innovate Terms of Service, and
+<code>NOTICE</code> in the repository carries the full third-party attribution.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md</code> &middot; <code>docs/PROTOCOLS.md</code> &middot; <code>docs/DEVICES.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="next" href="system/principles.html"><span class="pager-dir">Next</span><span class="pager-name">Design commitments</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="assets/site.js"></script>
+</body>
+</html>

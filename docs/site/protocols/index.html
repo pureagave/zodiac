@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The fleet bus · Zodiac</title>
+<meta name="description" content="The Zodiac fleet bus: two multicast channels, why every sender transmits twice, and where the constants live.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Protocols — the seams <span aria-hidden="true">/</span> <em>The fleet bus</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html" aria-current="page">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">Protocols &#183; the seams</p>
+<h1>The fleet bus</h1>
+<p class="standfirst">The three parts of Zodiac share no code. They agree through two wire formats on the fleet
+    bus. This section is the byte-level reference for both &mdash; it is the most valuable document
+    in the repository, because it is the only place the three codebases actually meet.</p>
+<div class="prose">
+
+
+<h2 id="channels">The two channels</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>Group</th><th class="num">Port</th><th>Sender</th><th>Receivers</th></tr></thead>
+<tbody>
+<tr><th>Telemetry (NMEA)</th><td><code>239.7.7.10</code></td><td class="num">10110</td><td><code>:beacon</code></td><td>Every <code>:app</code> tablet; <code>zvision</code>'s <code>$ZAUD</code> listener</td></tr>
+<tr><th>Threats (ZTHREAT)</th><td><code>239.7.7.20</code></td><td class="num">10120</td><td><code>zvision</code></td><td>Every <code>:app</code> tablet</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Multicast TTL is <span class="val">1</span> &mdash; nothing leaves the vehicle's subnet.
+<code>239.0.0.0/8</code> is administratively scoped.</p>
+
+<pre class="diagram"><code>TELEMETRY_GROUP = 239.7.7.10   TELEMETRY_PORT = 10110    TTL = 1
+THREAT_GROUP    = 239.7.7.20   THREAT_PORT    = 10120</code></pre>
+
+<h2 id="double">Every sender transmits twice</h2>
+
+<p>Each datagram goes out once to the multicast group and once to the /24 subnet-directed broadcast
+(falling back to <code>255.255.255.255</code> if the local IP cannot be determined). Some access
+points silently drop multicast, and a fleet that goes blind because of an AP setting is not
+acceptable.</p>
+
+<p><strong>Every receiver binds the wildcard address</strong> on the port <em>and</em> joins the
+group, so it gets whichever copy arrives. The consequence is duplicate delivery &mdash; which is
+why the tablet de-duplicates byte-identical <code>$ZSHK</code> lines within
+<span class="val">200&nbsp;ms</span>.</p>
+
+<div class="note">
+  <span class="label">Android multicast gotcha, handled</span>
+  <p>The WiFi driver filters broadcast and multicast frames from apps to save power unless the app
+  holds a <code>WifiManager.MulticastLock</code> (with <code>CHANGE_WIFI_MULTICAST_STATE</code>).
+  Both <code>NetworkLocationSource</code> and <code>NetworkThreatSource</code> hold one.</p>
+</div>
+
+<h2 id="constants">Where the constants live</h2>
+
+<p>Declared in three mirrored places. There is no shared header; keeping them in step is a
+discipline, not a mechanism.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Part</th><th>File</th></tr></thead>
+<tbody>
+<tr><th><code>:app</code></th><td><code class="path">app/src/main/java/org/pureagave/zodiac/control/core/net/FleetBus.kt</code></td></tr>
+<tr><th><code>:beacon</code></th><td><code class="path">beacon/src/main/java/org/pureagave/zodiac/beacon/TelemetryBroadcaster.kt</code></td></tr>
+<tr><th><code>zvision</code></th><td><code class="path">jetson/zvision/fleet_bus.py</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Note that <code>FleetBus.TTL</code> is declared on the app side but unused there &mdash;
+receivers do not set TTL; it is a sender concern.</p>
+
+<h2 id="all">All bus channels, including the ones that do not exist</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Channel</th><th>Source</th><th>Consumers</th><th>Payload</th><th>Status</th></tr></thead>
+<tbody>
+<tr><th>Vehicle telemetry</th><td><code>:beacon</code></td><td>All tablets</td><td>Raw GNSS NMEA verbatim + <code>$GPHDT</code> + <code>$ZTLM</code></td><td><span class="chip ok">Built</span></td></tr>
+<tr><th>Sensor channels</th><td><code>:beacon</code></td><td>All tablets</td><td><code>$ZAUD</code> <code>$ZENV</code> <code>$ZSHK</code> <code>$ZBCN</code> <code>$ZODO</code></td><td><span class="chip ok">Built</span></td></tr>
+<tr><th>Thermal threats</th><td><code>zvision</code></td><td>All tablets, DMX light</td><td><code>ZTHREAT</code> frames</td><td><span class="chip unproven">Both ends built, no camera yet</span></td></tr>
+<tr><th>Destination / nav</th><td>Hero dashboard</td><td>All tablets</td><td>Active drive-to target</td><td><span class="chip none">Planned</span></td></tr>
+<tr><th>Vehicle commands</th><td>&mdash;</td><td>Vehicle</td><td>Heading / speed</td><td><span class="chip none">Planned &mdash; transports are fake</span></td></tr>
+<tr><th>Raw thermal video</th><td><code>zvision</code></td><td>Opt-in viewers</td><td>MJPEG / RTSP</td><td><span class="chip none">Planned</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>mDNS / DNS-SD (<code>NsdManager</code>) for richer service discovery and health remains
+planned.</p>
+
+<h2 id="next">The two formats</h2>
+
+<ul class="cards">
+  <li class="card">
+    <p class="card-eyebrow">:beacon &#8594; :app</p>
+    <h3>NMEA telemetry</h3>
+    <p>Standard NMEA 0183 framing. Raw GNSS forwarded verbatim, plus seven synthesized sentence
+    types carrying heading, IMU, mic level, lux, shock, beacon health and the odometer.</p>
+    <p class="card-links"><a href="nmea.html">Read the field tables &rarr;</a></p>
+  </li>
+  <li class="card">
+    <p class="card-eyebrow">zvision &#8594; :app</p>
+    <h3>ZTHREAT frames</h3>
+    <p>One UDP datagram is one frame of contacts. Not NMEA: no leading <code>$</code>, no checksum,
+    an explicitly pinned numeric grammar, and a measured golden corpus that both test suites
+    read.</p>
+    <p class="card-links"><a href="zthreat.html">Read the frame format &rarr;</a>
+      <a href="golden-corpus.html">The corpus &rarr;</a></p>
+  </li>
+</ul>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>docs/PROTOCOLS.md &sect;1</code> &middot; <code>ARCHITECTURE.md &sect;3</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../system/status.html"><span class="pager-dir">Previous</span><span class="pager-name">What is and isn&#x27;t built</span></a><a class="next" href="../protocols/nmea.html"><span class="pager-dir">Next</span><span class="pager-name">NMEA telemetry</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

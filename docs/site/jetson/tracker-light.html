@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The DMX tracker light · Zodiac</title>
+<meta name="description" content="The DMX moving head: measured channel map, the 180-degree tilt correction, colour and gobo wheels, fail-safes and the behaviour backlog.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> jetson/ — the edge box <span aria-hidden="true">/</span> <em>The DMX tracker light</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html" aria-current="page">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">jetson/ &#183; the edge box</p>
+<h1>The DMX tracker light</h1>
+<p class="standfirst">A moving head that aims at whatever the detector sees and, when there is nothing to follow,
+    pulses to the beacon's <code>$ZAUD</code> level. Illuminating the pedestrian is both the safety
+    function and the spectacle. Everything on this page below the channel map was
+    <strong>measured on the bench</strong>, not read from the manual &mdash; and two of the numbers
+    contradict it.</p>
+<div class="prose">
+
+
+<h2 id="transport">Transport</h2>
+
+<p><strong>Not Art-Net, not direct serial.</strong> <code>OlaDmxSink</code> HTTP-POSTs a 512-channel
+frame to a local <code>olad</code>, which drives an FTDI FT232 USB-DMX dongle through the
+<code>ftdidmx</code> plugin. <code>olad</code> is pinned to a dedicated Orin core with a systemd
+<code>CPUAffinity</code> drop-in (default core 5) so vision work cannot jitter DMX timing. Verify
+with <code>systemctl show olad -p CPUAffinity</code>.</p>
+
+<p>Both sinks hold a persistent 512-slot frame and merge each send into it.
+<code>OlaDmxSink</code> <strong>swallows its own send failures by design</strong> &mdash; a lighting
+concern must never be able to stall the threat broadcaster &mdash; but counts them and reports once
+per outage. That is exactly why <a href="zdeck.html">zdeck</a>'s BLACKOUT bypasses it.</p>
+
+<h2 id="facts">Fixture facts, measured</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>Value</th><th>Provenance</th></tr></thead>
+<tbody>
+<tr><th>Channel mode</th><td class="num">11-channel</td><td>Measured three independent ways after the fixture arrived in 9-channel</td></tr>
+<tr><th>Pan range</th><td class="num">540&deg;</td><td>Manual, confirmed by measurement</td></tr>
+<tr><th><strong>Tilt range</strong></th><td class="num"><strong>180&deg;</strong></td><td><strong>Measured &mdash; the manual says 270&deg; and is wrong</strong></td></tr>
+<tr><th>Pan channels</th><td class="num">1 coarse, 2 fine</td><td>Measured</td></tr>
+<tr><th>Tilt channels</th><td class="num">3 coarse, 4 fine</td><td>Measured</td></tr>
+<tr><th>Colour wheel</th><td class="num">ch 5</td><td>Values <span class="val">&ge; 140</span> trigger auto colour-spin</td></tr>
+<tr><th>Dimmer</th><td class="num"><strong>ch 8</strong></td><td>Measured &mdash; <strong>not</strong> ch 5</td></tr>
+<tr><th>Never written</th><td class="num">ch 10, ch 11</td><td>Auto programs; mode-select / motor reset</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note bug">
+  <span class="label">Trap 1 &mdash; the dimmer is channel 8; channel 5 is the colour wheel</span>
+  <p>It was on 5, where 140&ndash;255 means &ldquo;auto colour change, fast&rdquo; &mdash; so the head
+  would have spun colours at full speed while the real dimmer sat at 0 and the fixture looked
+  <em>dead</em>. Found by reading the manual against the channel table. <code>test_tracker</code> now
+  asserts it, and <strong>both tests that had hardcoded channel 5 were agreeing with the bug.</strong></p>
+</div>
+
+<div class="note bug">
+  <span class="label">Trap 2 &mdash; channel 11 at 250&ndash;255 for five seconds is a motor reset</span>
+  <p>Mid-show, that is a head that stops obeying. It is never written, and a test asserts that.
+  Channel 10 above 59 hands control to the internal auto/sound programs, which fight explicit
+  pan/tilt writes &mdash; same treatment.</p>
+</div>
+
+<h2 id="tilt">Tilt is 180&deg;, not 270&deg;</h2>
+
+<p>Measured three independent ways:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Evidence</th><th>Reading</th></tr></thead>
+<tbody>
+<tr><th>DMX &rarr; angle progression</th><td>tilt 64 &rarr; 45&deg;, <strong>128 &rarr; dead vertical</strong>, 192 &rarr; 135&deg;</td></tr>
+<tr><th>Scale factor</th><td>64 DMX units = 45&deg;, so 255 units = <span class="val">179&deg;</span></td></tr>
+<tr><th>End stops</th><td>tilt 0 and tilt 255 are <strong>antiparallel</strong>, both just below horizontal</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Half-scale landing on vertical is the decisive one: under a 270&deg; span half-scale would be
+135&deg;, visibly past vertical. It is not, and it was called twice.</p>
+
+<div class="note bug">
+  <span class="label">Why it mattered</span>
+  <p><code>deg_to_dmx16</code> divides by this span, so the manual's number scaled <strong>every tilt
+  command by 1.5&times;</strong> &mdash; on the axis that decides how high up a person's body the
+  beam lands. <code>tilt_far_deg = 135</code> was being sent as half-scale and physically pointing
+  the head straight up.</p>
+  <p><code>tilt_range_deg</code> is now <span class="val">180.0</span>, pinned by tests that fail if
+  anyone restores the manual's figure. A test that hardcoded <code>270.0</code> rather than reading
+  the config had to be fixed alongside &mdash; it could only ever have confirmed the wrong number.
+  Same shape as the channel-5 dimmer bug.</p>
+</div>
+
+<h2 id="config">TrackerConfig</h2>
+
+<div class="note">
+  <span class="label">This table is a summary, not the source of truth</span>
+  <p><code>TrackerConfig</code> in <code class="path">zvision/tracker.py</code> is. A row in a lookup
+  table that used to read <code>tilt_range_deg | 270</code> is exactly the failure being warned
+  about &mdash; a manual figure outliving the measurement that refuted it. If you need a value, read
+  the dataclass.</p>
+</div>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Config</th><th>Value</th><th>Why</th></tr></thead>
+<tbody>
+<tr><th><code>pan_channel</code> / <code>pan_fine_channel</code></th><td class="num">1 / 2</td><td>16-bit pan</td></tr>
+<tr><th><code>tilt_channel</code> / <code>tilt_fine_channel</code></th><td class="num">3 / 4</td><td>16-bit tilt</td></tr>
+<tr><th><code>colour_channel</code></th><td class="num">5</td><td>Declared for <code>zdeck</code>; the tracker never writes it</td></tr>
+<tr><th><code>dimmer_channel</code></th><td class="num"><strong>8</strong></td><td><strong>Not 5</strong></td></tr>
+<tr><th><code>forbidden_channels</code></th><td class="num">10, 11</td><td>Auto programs; mode-select / motor reset</td></tr>
+<tr><th><code>pan_range_deg</code></th><td class="num">540</td><td>Measured</td></tr>
+<tr><th><code>tilt_range_deg</code></th><td class="num"><strong>180</strong></td><td><strong>Measured. Pinned by a test</strong></td></tr>
+<tr><th><code>pan_center_deg</code> / <code>pan_gain</code></th><td class="num">270 / 1.0</td><td>Mid-travel and unmirrored; <strong>nominal, needs on-vehicle calibration</strong></td></tr>
+<tr><th><code>tilt_far_deg</code> / <code>tilt_near_deg</code></th><td class="num">90 / 106.7</td><td>Rescaled for the 180&deg; range; <strong>uncalibrated placeholders</strong></td></tr>
+<tr><th><code>reach_half_deg</code></th><td class="num">90</td><td>Forward plus both sides; a contact going astern releases the latch</td></tr>
+<tr><th><code>pan_slew_dps</code> / <code>tilt_slew_dps</code></th><td class="num">120 / 90</td><td>Slew rate limits</td></tr>
+<tr><th><code>switch_margin</code></th><td class="num">0.15</td><td>Hysteresis, so the beam does not twitch between two similar contacts</td></tr>
+<tr><th><code>sound_gain</code> / <code>sound_silence</code> / <code>beat_dimmer</code></th><td class="num">4.0 / 0.03 / 255</td><td>The idle <code>$ZAUD</code> show</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note caveat">
+  <span class="label">Uncalibrated &mdash; must be set before enabling real DMX output</span>
+  <p><code>tilt_far_deg</code> and <code>tilt_near_deg</code> were rescaled 135/160 &rarr;
+  90/106.7 to preserve the physical aim across the span correction &mdash; but
+  <span class="val">90&deg;</span> is straight up on this fixture, which is not where a beam belongs
+  once it is on the vehicle. They are placeholders, not aims. <code>pan_center_deg</code>,
+  <code>pan_gain</code> and <code>reach_half_deg</code> also need the one-time vehicle calibration:
+  aim dead ahead, then at a known bearing.</p>
+</div>
+
+<p><strong>11-channel, not 9.</strong> 8-bit pan across 540&deg; is ~2.1&deg; per step, which is
+visibly steppy on a slow follow. The fine channels are the whole reason to use the longer
+personality. <code>NINE_CHANNEL_OVERRIDES</code> exists for a head stuck in the short mode and is
+reachable only through <code>--dmx-channels 9</code>; that accessor exists because the dict was once
+referenced by nothing at all and overrode the channel map <em>without</em> overriding
+<code>forbidden_channels</code>, leaving the motor reset (which shifts to ch9 in the short mode)
+completely unguarded.</p>
+
+<h2 id="bench">Operational lessons from the bench</h2>
+
+<div class="note bug">
+  <span class="label">The head ignores DMX until its motors have homed</span>
+  <p>This is the trap that cost the whole first hour. A fixture that has not completed its power-up
+  reset accepts DMX and does nothing with it &mdash; no movement, no lamp, no error, display sitting
+  normally at <code>A.001</code>. It is <strong>indistinguishable from a severed cable</strong>, and
+  it sent the investigation through olad, libftdi, USB enumeration and the XLR before the fixture
+  was ever suspected.</p>
+  <p><strong>Check the head performs its homing sweep at power-up.</strong> If it did not, force a
+  motor reset before concluding anything is broken in software &mdash; channel <strong>11</strong>
+  held 250&ndash;255 for 5&nbsp;s in the 11-channel mode the fixture now runs in. (It is ch9 only in
+  9-channel mode. Getting that wrong today writes 255 to ch9, which is the <em>slowest</em> pan/tilt
+  speed &mdash; it would make an unresponsive head look worse while appearing to be the fix.)</p>
+</div>
+
+<h3>Signal loss</h3>
+
+<p>As shipped, the <code>BLnd</code> menu item was set to <code>auto</code>. Stopping
+<code>olad</code> produced, in order: <code>rST</code> on the display, a motor reset, then the
+internal auto program &mdash; sweeping, cycling gobos and colours, at full brightness. On the playa
+a Jetson reboot, an <code>olad</code> crash or a knocked XLR would have turned the tracker light into
+an uncommanded disco while the driver's HUD still assumed it was pointing at people.</p>
+
+<p><strong><code>BLnd</code> is now set to <code>blac</code>.</strong> That beats any software
+keepalive, because it still works when the Jetson is the thing that died &mdash; precisely the case
+a keepalive cannot cover. <code>hold</code> was rejected too: <strong>the vehicle moves</strong>, so
+a held beam keeps a fixture-frame position while the car turns, rakes across whoever is there at
+full brightness, and reads as purposeful &mdash; which is worse than the disco.</p>
+
+<div class="note caveat">
+  <span class="label">Verified by camera &mdash; but not instant</span>
+  <p>The rig's own RGB camera watched the beam while <code>olad</code> was stopped:</p>
+  <pre><code>BEFORE cut : beam_px = 8378
+AFTER  cut : beam_px = [8347, 0, 0, 0, 0, 0, 0, 0, 0, 0]   (1.5 s per sample)</code></pre>
+  <p>Blackout confirmed &mdash; the head goes dark, returns home, and stays dark. <strong>But the
+  fixture holds its last commanded state for ~1.5&ndash;3&nbsp;s first.</strong> Still fully lit
+  1.5&nbsp;s after DMX stopped, dark by 3.0&nbsp;s. So a momentary dropout will not blink the light,
+  but blackout is <em>not immediate</em>: <code>blac</code> is not a substitute for the crash
+  fail-safe or for a hardware switch. Three mechanisms, three different failures, none of them
+  redundant.</p>
+</div>
+
+<p>Both <code>CHnd</code> (channel mode) and <code>BLnd</code> were power-cycled and re-derived by
+measurement rather than by reading the menu back; both persisted, and the blackout latency
+reproduced exactly. So this stays a <strong>pre-burn checklist item</strong> and not a design
+constraint &mdash; <code>zvision</code> does not need to detect the fixture's mode at startup. Still
+worth re-checking after any <em>factory reset</em>, which is a different operation from a power
+cut.</p>
+
+<h3>The decimal point is the signal indicator</h3>
+
+<p><code>A.001</code> with a <strong>flashing dot</strong> = valid DMX arriving. Steady dot = no
+signal. The cheapest possible &ldquo;is data reaching the fixture&rdquo; check, and it needs no
+tools.</p>
+
+<h3>Verified-good software chain</h3>
+
+<ul>
+<li>Dongle: FT232R, <code>0403:6001</code>, serial <code>BG03OCDS</code>, USB &rarr; 3-pin XLR.</li>
+<li>Plugin: FTDI USB DMX (<code>ftdidmx</code>), port patched to universe 0.</li>
+<li><code class="path">/dev/ttyUSB*</code> is <strong>absent by design</strong> &mdash; libftdi
+detaches <code>ftdi_sio</code> when olad claims the device. Its absence is health, not a fault.</li>
+<li><strong><code>olad</code> reads <code class="path">/etc/ola</code></strong> (from
+<code>/etc/init.d/olad</code>). <code class="path">/var/lib/ola/conf/</code> also contains
+<code>ola-*.conf</code> files and <strong>olad never reads them</strong> &mdash; the exact trap
+<code>dmx.py</code> warns about.</li>
+<li>Health check without a scope: the unnamed olad thread (the FTDI TX thread) burns ~2 jiffies per
+3&nbsp;s at 30&nbsp;Hz. Zero means it is not transmitting.</li>
+</ul>
+
+<h2 id="speed">Channel 9 speed direction &mdash; 0 is FAST</h2>
+
+<p>The manual never said. Timed with the rig's camera: a large tilt move, timing how long until the
+beam left frame.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th class="num">ch9</th><th>Time to complete the same move</th></tr></thead>
+<tbody>
+<tr><td class="num"><strong>0</strong></td><td class="num"><strong>0.36 s</strong></td></tr>
+<tr><td class="num">128</td><td class="num">0.42 s</td></tr>
+<tr><td class="num">255</td><td class="num">1.04 s</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Monotonic across three points with a <span class="val">2.9&times;</span> spread, so it is a real
+gradient, not noise. <strong>The shipped default already sends 0, so it is right.</strong> The
+consequence is for the opposite problem: ch9 is the knob for making the head <em>gentler</em>, never
+faster. If it ever lags a walking contact, look at <code>pan_slew_dps</code> /
+<code>tilt_slew_dps</code> in software.</p>
+
+<div class="note">
+  <span class="label">The failures are the instructive part</span>
+  <p>It took three attempts. (1) Timing how long the beam was <em>visible</em> &mdash; it never left
+  frame, so every reading equalled the observation window, identical to two decimal places at all
+  three speeds. A measurement that cannot come out differently is not a measurement, and it produced
+  a confident &ldquo;no effect&rdquo; verdict. (2) Tracking the beam centroid &mdash; but with the
+  beam near vertical, panning sweeps the spot in a tiny circle, 8&nbsp;px for 50&deg; of pan, so the
+  gate degenerated to noise and again reported no effect. (3) A large <em>tilt</em> move timed to
+  frame exit: tilt shifts the spot radially, so the motion is large and the stop condition
+  unambiguous.</p>
+  <p>Both failures returned <em>plausible</em> numbers and the same wrong conclusion. The tell each
+  time was in the diagnostics, not the verdict.</p>
+</div>
+
+<h2 id="colour">Colour wheel, measured with the rig's own camera</h2>
+
+<p>The head was pointed at the ceiling and the rig's RGB camera measured every slot. Method matters,
+because two things make a naive reading wrong: <strong>a clipped beam core reads white whatever
+colour is in it</strong> (every exposure from 5 to 320 gave <code>lit_max = 255</code>, so brightness
+was levelled per colour to land the core near 200), and <strong>the camera is not
+colorimetric</strong> (auto-exposure and auto-white-balance locked off &mdash; with auto-exposure on,
+the <em>lit</em> frame read darker than the dark frame &mdash; and every colour normalised against
+the open-white slot through the same optics, which divides out both the camera response and the
+LED's own spectrum).</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th class="num">ch5</th><th>Colour</th><th>Measured</th><th class="num">Hue</th><th class="num">Sat</th></tr></thead>
+<tbody>
+<tr><td class="num">0&ndash;8</td><td>Open white</td><td class="num">#FFFFFF</td><td class="num">&mdash;</td><td class="num">0.00</td></tr>
+<tr><td class="num">10&ndash;18</td><td>Red</td><td class="num">#FF442C</td><td class="num">6&deg;</td><td class="num">0.83</td></tr>
+<tr><td class="num">20&ndash;28</td><td><strong>Green</strong></td><td class="num">#00FF1F</td><td class="num">128&deg;</td><td class="num">1.00</td></tr>
+<tr><td class="num">30&ndash;38</td><td><strong>Blue / cyan</strong></td><td class="num">#00C9FF</td><td class="num">192&deg;</td><td class="num">1.00</td></tr>
+<tr><td class="num">40&ndash;48</td><td>Pale yellow</td><td class="num">#FFFCB4</td><td class="num">58&deg;</td><td class="num">0.29</td></tr>
+<tr><td class="num">50&ndash;58</td><td>Amber</td><td class="num">#FFCF37</td><td class="num">46&deg;</td><td class="num">0.79</td></tr>
+<tr><td class="num">60&ndash;68</td><td>Aqua / turquoise</td><td class="num">#1CFFE2</td><td class="num">172&deg;</td><td class="num">0.89</td></tr>
+<tr><td class="num">70&ndash;88</td><td><strong>Lavender / purple</strong></td><td class="num">#EAAEFF</td><td class="num">284&deg;</td><td class="num">0.31</td></tr>
+<tr><td class="num">90&ndash;98</td><td>Yellow</td><td class="num">#FFE854</td><td class="num">52&deg;</td><td class="num">0.70</td></tr>
+<tr><td class="num">100&ndash;118</td><td>Pale yellow / yellow-green band</td><td>mixed</td><td class="num">50&ndash;76&deg;</td><td class="num">0.26&ndash;0.42</td></tr>
+<tr><td class="num">120&ndash;139</td><td><strong>Green</strong> (second, wider slot)</td><td class="num">#00FF20</td><td class="num">128&deg;</td><td class="num">1.00</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><span class="val">140</span> and above is auto colour-spin &mdash; stay below it.</p>
+
+<h3>Against Zodiac's palette</h3>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Zodiac</th><th class="num">Target</th><th>Best slot</th><th>Measured</th><th>Off by</th></tr></thead>
+<tbody>
+<tr><th>Blue <code>#00BFFF</code></th><td class="num">195&deg;</td><td class="num"><strong>ch5=34</strong></td><td class="num">#00C9FF</td><td><strong>3&deg; &mdash; effectively exact</strong></td></tr>
+<tr><th>Red <code>#FF5555</code></th><td class="num">0&deg;</td><td class="num">ch5=14</td><td class="num">#FF442C</td><td>6&deg;, and <em>more</em> saturated than the UI red</td></tr>
+<tr><th>Green <code>#00FF66</code></th><td class="num">144&deg;</td><td class="num"><strong>ch5=128</strong></td><td class="num">#00FF20</td><td>16&deg; &mdash; wheel green is yellower than the UI mint</td></tr>
+<tr><th>Purple <code>#C77DFF</code></th><td class="num">274&deg;</td><td class="num"><strong>ch5=78</strong></td><td class="num">#EAAEFF</td><td>10&deg; hue, but sat 0.31 vs 0.51 &mdash; a pale lavender</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><strong>Use <code>ch5=128</code> for green, not 24.</strong> Both slots are the same filter, but
+the 120&ndash;139 slot is twice as wide, so an 8-bit DMX value plus wheel mechanical tolerance has
+far more margin before it lands on a boundary. A half-seated wheel washes the colour out &mdash;
+visible as saturation collapsing while hue still looks plausible, which is why the fine sweep reports
+saturation at all.</p>
+
+<p><strong>Roughly a third of the wheel (40&ndash;58, 90&ndash;118) is amber and yellow, which the
+palette bans.</strong> Worth knowing before anyone builds an idle colour chase: those slots are
+off-limits by the same rule that governs the screens.</p>
+
+<div class="note">
+  <span class="label">Colour costs a lot of light</span>
+  <p>Open white reached peak 236 at dimmer 86; the green slot needed dimmer 128 to reach only 154.
+  <strong>The tracker should stay on open white</strong> (<code>ch5=0</code>, which is
+  <code>TrackerConfig</code>'s behaviour today since it never writes ch5) &mdash; a spotlight
+  following a person at night wants every lumen. Colour belongs to the idle/show state, not to
+  tracking.</p>
+</div>
+
+<h2 id="gobo">Gobo wheel</h2>
+
+<p><code>ch6</code> 0&ndash;63 are the fixed patterns. <strong>Eight slots, exactly 8 DMX units
+each</strong>, so the safe values are the centres: 4, 12, 20, 28, 36, 44, 52, 60.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th class="num">ch6</th><th class="num">Centre</th><th>Shape</th></tr></thead>
+<tbody>
+<tr><td class="num">0&ndash;7</td><td class="num"><strong>4</strong></td><td>Open &mdash; plain round spot, no pattern</td></tr>
+<tr><td class="num">8&ndash;15</td><td class="num">12</td><td>Rose / layered concentric swirl</td></tr>
+<tr><td class="num">16&ndash;23</td><td class="num">20</td><td>Dot rosette &mdash; ring of ovals around an open centre</td></tr>
+<tr><td class="num">24&ndash;31</td><td class="num"><strong>28</strong></td><td><strong>Triangle outline</strong></td></tr>
+<tr><td class="num">32&ndash;39</td><td class="num"><strong>36</strong></td><td><strong>Six-pointed star</strong></td></tr>
+<tr><td class="num">40&ndash;47</td><td class="num">44</td><td>Sunburst &mdash; wavy rays around an open centre</td></tr>
+<tr><td class="num">48&ndash;55</td><td class="num">52</td><td>Pinwheel &mdash; curved blades</td></tr>
+<tr><td class="num">56&ndash;63</td><td class="num">60</td><td>Shattered fragments</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><strong>Only two read as vector geometry: the triangle (28) and the six-pointed star (36).</strong>
+Those sit with an 80s phosphor-vector aesthetic; the rose, rosette, sunburst, pinwheel and fragments
+are disco florals and will look like a hired dancefloor light, not like Zodiac.</p>
+
+<p><strong>The tracker must stay on the open slot.</strong> <code>TrackerConfig</code> never writes
+ch6, so it defaults to 0 &mdash; correct, and for the same reason as open white: a patterned beam
+thrown at a person is harder to see, not easier.</p>
+
+<h2 id="mount">Mounting</h2>
+
+<p>At <code>pan = 0</code> this fixture faces its LED-config-button side &mdash; the button side is
+one mechanical <em>end stop</em>, not the middle. <strong>Mount the head so the vehicle's forward
+direction sits near the middle of pan travel (~270).</strong> That leaves the full swing available
+either way before a stop, and keeps the pan-seam equivalence problem out of the picture
+entirely.</p>
+
+<div class="note bug">
+  <span class="label">A calibrated pan centre used to aim at an end stop (fixed)</span>
+  <p><code>update</code> clamped the pan target into <code>[0, pan_range]</code> <em>before</em>
+  asking for the mechanically-equivalent angle, and <code>nearest_equivalent_pan</code> seeded its
+  search with the raw target. Together: at a calibrated <code>pan_center_deg</code> of 60, a contact
+  at az &minus;80 computes to &minus;20, is clamped to <strong>0</strong>, and the head parks on its
+  end stop pointing at nothing &mdash; while the reachable equivalent <strong>340</strong> (the same
+  physical direction) was available the whole time. Invisible at the shipped centre of 270, it would
+  have first appeared during on-vehicle calibration and read as a bad mount. Both halves were needed;
+  reordering alone does not fix it.</p>
+</div>
+
+<h2 id="safety">Fail-safes, and the one that is missing</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Mechanism</th><th>Covers</th><th>State</th></tr></thead>
+<tbody>
+<tr><th><code>dmxpark</code> as <code>ExecStopPost</code></th><td><code>zvision</code> crashing or being killed &mdash; systemd runs it on crash and kill, not just a clean stop</td><td><span class="chip ok">Deployed and proven</span></td></tr>
+<tr><th><code>BLnd = blac</code> in the fixture</th><td>DMX stopping entirely (olad crash, Jetson reboot, knocked XLR)</td><td><span class="chip ok">Verified by camera</span></td></tr>
+<tr><th>Software operator kill</th><td><code>python3 -m zvision.dmxpark</code> from a shell</td><td><span class="chip ok">Built</span></td></tr>
+<tr><th><strong>Hardware kill switch</strong></th><td>A wedged Jetson still streaming a valid universe &mdash; which <em>neither</em> of the above covers</td><td><span class="chip none">Not fitted</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note bug">
+  <span class="label">Outstanding &mdash; a labelled inline switch within the driver's reach</span>
+  <p>The software kill and <code>BLnd=blac</code> cover <em>different</em> failures (zvision dead vs
+  DMX stopped). Neither covers a wedged Jetson still streaming a valid universe. Only a switch
+  does.</p>
+</div>
+
+<p>The crash path was proven end to end: a hot universe (3 slots, dimmer 255) &rarr;
+<code>systemctl kill -s SIGKILL zvision</code> &rarr; <strong>0 slots hot</strong>, beam out, service
+back up 2&nbsp;s later.</p>
+
+<h2 id="backlog">Behaviour backlog &mdash; how the light reads to people</h2>
+
+<p>Deliberately not built; these are behaviour changes, not a defect list. Each is verified against
+the code.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Item</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><th>Hysteresis is keyed on track id, and ids churn</th><td>With <code>MotionDetector</code> resetting tracks on a single-frame dropout, the held id vanishes routinely and the selector falls through to a stateless <code>max(size)</code> &mdash; so <code>switch_margin</code> never votes and the beam ping-pongs between two similar people. Fix without breaking the no-coasting rule: re-associate by <strong>bearing</strong> among contacts that exist this frame.</td></tr>
+<tr><th>Douse while slewing</th><td>The dimmer goes to 255 the same frame a target is picked, while the slew takes seconds &mdash; dragging open white across the crowd <em>and</em> across the driving axis. Hold dark above ~10&ndash;15&deg; of pan error, fade up on arrival.</td></tr>
+<tr><th>The idle sound show runs at the last tracked aim</th><td>So it beat-flashes full brightness at the person it was just tracking. Needs a dimmer grace period on target loss, then slew to park <em>before</em> pulsing.</td></tr>
+<tr><th>No dwell limit and no crowd gate</th><td>The selector will pin the nearest bystander indefinitely, and at every stop the car will be surrounded. Suggested: max dwell ~8&ndash;10&nbsp;s then suppress that <em>bearing sector</em>, and above ~5 reachable contacts stop singling anyone out.</td></tr>
+<tr><th>No reach-boundary hysteresis</th><td>Someone orbiting the vehicle at &plusmn;90&deg; gets dropped and re-acquired per frame. Acquire &le;85&deg;, release &ge;95&deg;.</td></tr>
+<tr><th>Rate limiting is not smoothing</th><td>12&deg;/frame at 10&nbsp;Hz passes bbox jitter straight through to a 3&nbsp;kg head. Alpha-beta on the selected contact's azimuth, reset on target switch.</td></tr>
+<tr><th>Tilt aims a size proxy at an unverified height</th><td>With <code>dimmer_track == dimmer_collision == 255</code>, i.e. brightest at closest range. Consider aiming at the <em>feet</em> and derating the dimmer as size &rarr; 1.</td></tr>
+<tr><th>Observability</th><td>Nothing distinguishes &ldquo;idle, correctly dark&rdquo; from &ldquo;olad dead&rdquo; from &ldquo;tracking someone behind the vehicle&rdquo;. The sink already counts sends and errors and nothing reads them.</td></tr>
+<tr><th>Calibration knobs have no flags</th><td>Only <code>--dmx-pan-center</code> and <code>--dmx-pan-gain</code> exist. <code>reach_half_deg</code>, <code>tilt_far/near</code>, park position, slew rates and <code>switch_margin</code> are all field numbers that currently require editing <code>tracker.py</code>.</td></tr>
+<tr><th><code>select_best</code> is dead code</th><td>No production caller; the shipped selector is a parallel reimplementation with extra rules. <strong>~12 tests certify a function the light never runs.</strong> Until it is deleted or delegated to, the two can silently diverge &mdash; the &ldquo;test agrees with the bug&rdquo; shape this project keeps getting bitten by.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="method">Method note</h2>
+
+<p>Observation lag over chat made single-frame tests ambiguous more than once &mdash; a report would
+arrive describing the <em>previous</em> frame. <strong>Alternating a channel on a fixed cycle and
+asking &ldquo;what repeats?&rdquo; is lag-proof</strong> where &ldquo;what do you see now?&rdquo; is
+not. The 9-channel finding was confirmed with a <em>mutation</em> test &mdash; change exactly one
+channel, predict the change, verify &mdash; rather than by accumulating agreeable evidence.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>jetson/MOVING-HEAD.md</code> &middot; <code>ARCHITECTURE.md &sect;6.4</code> &middot; <code>docs/DEVICES.md &sect;4</code> &middot; <code>tasks/open.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../jetson/detector.html"><span class="pager-dir">Previous</span><span class="pager-name">Detector &amp; training</span></a><a class="next" href="../jetson/zdeck.html"><span class="pager-dir">Next</span><span class="pager-name">zdeck: control surface</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

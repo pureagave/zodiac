@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zdeck — the physical control surface · Zodiac</title>
+<meta name="description" content="The six-key Stream Deck control surface, its design rules, and the unresolved DMX arbitration with the tracker.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> jetson/ — the edge box <span aria-hidden="true">/</span> <em>zdeck: control surface</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html" aria-current="page">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">jetson/ &#183; the edge box</p>
+<h1>zdeck &mdash; the physical control surface</h1>
+<p class="standfirst">Six physical keys in the cab driving the tracker light, so nobody is aiming a moving head by
+    typing DMX values over ssh, or by tapping a touchscreen while driving.</p>
+<div class="prose">
+
+
+<div class="kv">
+  <dt>Hardware</dt><dd>Elgato Stream Deck Mini, <code>0fd9:0063</code>, firmware 3.03.002, 6 keys in a 2&times;3 layout, 80&times;80 BMP key images</dd>
+  <dt>Verified</dt><dd>2026-08-09 on the vehicle's own unit &mdash; both directions, rendering and input</dd>
+  <dt>Found by</dt><dd>USB vendor:product id over HID, so it survives re-cabling</dd>
+  <dt>Access</dt><dd>A udev rule putting it in the <code>plugdev</code> group &mdash; a group, not <code>TAG+="uaccess"</code>, because the service is headless</dd>
+</div>
+
+<h2 id="layout">Layout</h2>
+
+<pre class="diagram"><code> BLACKOUT     LAMP        HOME
+ DIM -        DIM +       COLOUR</code></pre>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Key</th><th>Does</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><th>BLACKOUT</th><td>Dimmer &rarr; 0, <strong>and</strong> zeroes the whole universe via <code>dmxpark.park()</code></td><td><strong>Red</strong> when the head is lit, <strong>grey</strong> when already dark &mdash; a kill control that looks armed over a dark head is noise. Deliberately <strong>bypasses <code>OlaDmxSink</code></strong>, which swallows its own send failures by design: right for a tracker frame, wrong for a kill. <code>park()</code> retries and reports.</td></tr>
+<tr><th>LAMP</th><td>Toggle 0 &harr; full</td><td>Shows <code>ON</code> / <code>OFF</code></td></tr>
+<tr><th>HOME</th><td>Pan + tilt to mid-travel</td><td>Mid-pan is where the head should be mounted; mid-tilt is dead vertical</td></tr>
+<tr><th>DIM &minus; / DIM +</th><td>Step by <span class="val">32</span></td><td>Both keys show the live level in purple</td></tr>
+<tr><th>COLOUR</th><td>Cycle on-palette slots</td><td>white / blue 34 / green 128 / purple 78</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Colours follow <code>ui/concepts/ConceptTheme</code> exactly as the screens do: green for
+controls, purple for live values, red for faults and kill only. <strong>The amber bands of the
+colour wheel (ch5 40&ndash;58, 90&ndash;118) are rejected at config construction</strong>, not merely
+avoided by convention.</p>
+
+<h2 id="arbitration">Arbitration with the tracker is UNRESOLVED</h2>
+
+<div class="note bug">
+  <span class="label">Do not run both with real DMX output</span>
+  <p><strong>Today this works only because <code>zvision</code> runs <code>--dmx none</code></strong>,
+  so nothing else writes the universe and the deck owns it outright.</p>
+  <p>The moment the tracker is live at 8&nbsp;Hz it overwrites anything the deck writes within
+  <span class="val">~125&nbsp;ms</span>. BLACKOUT would <strong>flicker, not kill</strong> &mdash;
+  which is worse than not having the key at all, because the operator would believe the light was
+  off.</p>
+</div>
+
+<h3>The proposed mechanism, for when this is picked up</h3>
+
+<p>A mode latch at <code class="path">/run/zodiac/light-mode</code>, written atomically by
+<code>zdeck</code> only, read by <code>zvision</code> once per frame (a <code>stat()</code> on tmpfs
+&mdash; nanoseconds, no locks, cannot block, so the constraint that a control-surface fault must
+never stall the threat broadcaster still holds).</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Latch value</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><th><code>TRACK</code> / absent</th><td>Tracker owns the light</td></tr>
+<tr><th><code>MANUAL</code></th><td>Deck owns it</td></tr>
+<tr><th><code>KILL</code></th><td>Nobody lights anything</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>In <code>MANUAL</code> / <code>KILL</code> the tracker <strong>skips its send entirely</strong>
+rather than interleaving frames, so there is no flicker. <code>KILL</code> is belt-and-braces: the
+latch <em>and</em> a direct retrying <code>dmxpark</code> write.</p>
+
+<p>Staleness is deliberately <strong>asymmetric</strong>: a stale <code>MANUAL</code> reverts to
+<code>TRACK</code> (a dead deck must not freeze the beam), while a stale <code>KILL</code>
+<strong>stays killed</strong> (a kill must never un-kill itself because its author died).
+<code class="path">/run</code> clears on reboot, so cold start is <code>TRACK</code>.</p>
+
+<p>Two alternatives were rejected: <em>olad port merging</em> (HTP takes the maximum, so a kill of 0
+structurally cannot win) and <em>deck-sends-intents-to-zvision</em> (the kill would depend on the
+liveness of the process being overridden).</p>
+
+<h2 id="design">Design notes</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Decision</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><th>Separate process, deliberately</th><td>A wedged USB button hub must never be able to stall the threat broadcaster the driver's night HUD depends on. The unit is <code>After=olad</code> but explicitly <strong>not</strong> <code>After=zvision</code>: the operator's physical control should come up whether or not the vision box is healthy.</td></tr>
+<tr><th>A failed kill is visible</th><td>If the blackout send throws, key 0 re-renders as <strong><code>DMX FAIL</code></strong> in red and LAMP turns red too. <em>A calm grey panel over a live beam is the one lie that matters on this device</em>, so the panel says it does not know rather than saying &ldquo;dark&rdquo;.</td></tr>
+<tr><th>Never leaves the head hot</th><td>The runner parks on every exit path <em>and when the deck itself disappears</em> &mdash; the case most likely to happen on a vehicle. While the panel is gone the operator has no kill control, so the beam must not be left burning. The unit also carries the same <code>ExecStopPost</code> fail-safe, which systemd runs on crash and kill. Necessary because <code>olad</code> owns frame timing and retransmits the last universe forever, so a dead writer leaves a frozen beam &mdash; and the fixture's own <code>BLnd=blac</code> cannot help, since from its side the signal never stopped.</td></tr>
+<tr><th>A missing deck is normal, not an error</th><td>This rig loses USB devices over bumps. The runner waits and re-enumerates rather than exiting into a systemd restart loop. Only a specific <code>DeckNotPresent</code> is retried quietly, so a programming error cannot wear an unplugged cable's clothes forever.</td></tr>
+<tr><th>Brightness starts at 20/100</th><td>A Stream Deck at default brightness is a small floodlight in a dark cab, and it would undo the same night-vision work the OLED discipline and the <code>$ZENV</code> auto-dim exist for.</td></tr>
+<tr><th>Fixture wiring is borrowed, not restated</th><td>Channel numbers come from <code>zvision.tracker.TrackerConfig</code>, so the deck and the tracker cannot disagree about which channel is the dimmer &mdash; a disagreement that on this fixture puts brightness on the colour wheel and makes the head look dead.</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Structure mirrors <code>zvision</code>: a pure model (<code>model.py</code>), the surface behind a
+protocol with a fake (<code>surface.py</code>), and the vendor library isolated in one file
+(<code>hardware.py</code>) &mdash; so CI needs neither the library nor a deck. <code>DeckConfig</code>
+rejects amber colour slots and auto-spin wheel values <em>at construction</em>, and
+<code>DeckModel.channels()</code> refuses to emit a frame touching a forbidden channel. 42 tests,
+mutation-verified.</p>
+
+<h2 id="install">Install</h2>
+
+<pre><code># device access &mdash; group, not TAG+="uaccess": the service is headless
+sudo cp jetson/systemd/70-zodiac-streamdeck.rules /etc/udev/rules.d/
+sudo usermod -aG plugdev zodiac
+sudo udevadm control --reload-rules &amp;&amp; sudo udevadm trigger
+
+# isolated venv: StreamDeck and Pillow are NOT zvision dependencies
+sudo apt-get install -y python3-venv libhidapi-libusb0
+sudo mkdir -p /opt/zodiac-deck &amp;&amp; sudo chown zodiac:zodiac /opt/zodiac-deck
+python3 -m venv /opt/zodiac-deck/venv
+/opt/zodiac-deck/venv/bin/pip install streamdeck pillow
+
+# the zdeck package itself must be where the unit runs it from
+sudo mkdir -p /opt/zodiac/jetson
+sudo cp -r jetson/zdeck /opt/zodiac/jetson/
+
+sudo cp jetson/systemd/zodiac-deck.service /etc/systemd/system/
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now zodiac-deck</code></pre>
+
+<div class="note">
+  <span class="label">The <code>cp -r jetson/zdeck</code> step is not optional and nothing else does it</span>
+  <p><code>zodiac-deck.service</code> runs <code>-m zdeck</code> with
+  <code>WorkingDirectory=/opt/zodiac/jetson</code>, but <code>scripts/install.sh</code> copies only
+  the <code>zvision</code> package and <code>pyproject.toml</code> packages only <code>zvision</code>.
+  On a plain <code>git clone</code> to <code class="path">/opt/zodiac</code> it happens to work
+  because the checkout is already there; on an <code>install.sh</code>-from-elsewhere box it fails
+  with <code>ModuleNotFoundError: zdeck</code>. Re-copy after every update.</p>
+</div>
+
+<div class="note">
+  <span class="label"><code>zdeck</code>'s <code>--dmx</code> defaults to <code>ola</code></span>
+  <p>The opposite of <code>zvision</code>, whose DMX output defaults to <code>none</code>. That
+  asymmetry is deliberate &mdash; the deck exists to drive the light; the vision runner does not, yet
+  &mdash; and it is what the safety argument above rests on. Pass <code>--dmx fake</code> explicitly
+  for a dry run.</p>
+</div>
+
+<h2 id="backlog">Open items</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Item</th><th>Detail</th></tr></thead>
+<tbody>
+<tr><th>Install the service on the Jetson</th><td>Built but not enabled. See the arbitration blocker first.</td></tr>
+<tr><th>Strain relief on the USB connector</th><td>The runner re-enumerates, but a cable that unplugs itself in the dark is still a lost control surface.</td></tr>
+<tr><th>Heartbeat republish (~1&nbsp;Hz while owning the light)</th><td><code>publish()</code> is press-driven only, so anything that stomps the universe &mdash; notably a <code>systemctl restart zvision</code>, whose <code>ExecStopPost</code> parks universe 0 &mdash; kills the light while the panel still says LAMP ON, and it stays wrong until the next key press.</td></tr>
+<tr><th>Watchdog</th><td>No <code>WatchdogSec</code> / <code>sd_notify</code>. A loop wedged inside a blocking vendor USB call looks healthy to systemd forever. <code>Type=notify</code> + <code>WatchdogSec</code> has the nice property that a hang becomes a kill, which runs <code>ExecStopPost</code>, which parks &mdash; it fails <em>dark</em>.</td></tr>
+<tr><th>Startup slew</th><td><code>start()</code> publishes immediately with pan/tilt 128/128, so every service restart physically slews the head to centre unprompted. Harmless on a bench, rude on a vehicle, and it would stomp the tracker's aim once arbitration exists.</td></tr>
+<tr><th>BLACKOUT and LAMP-off are the same operation</th><td>So one of six keys is redundant. Suggestion: make BLACKOUT a <em>latched</em> KILL that holds against the tracker and needs a deliberate release &mdash; which is also what the arbitration latch wants.</td></tr>
+<tr><th><code>ExecStopPost</code> arg drift</th><td><code>ZDECK_ARGS</code> can set <code>--dmx-universe</code> / <code>--dmx-url</code> but <code>ExecStopPost</code> parks universe 0 at the default URL. Same latent mismatch in <code>zvision.service</code>. Harmless with one universe; note it in the env file.</td></tr>
+<tr><th>Night discipline</th><td>The keys are backlit LCDs. Brightness way down, dim icons, and ideally follow the same <code>$ZENV</code> lux auto-dim the tablets already use.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note absent">
+  <span class="label">Phase 2 needs a decision, not a keyboard</span>
+  <p>Fleet-wide actions from the deck (cycle nav target, screen blackout, mark-this-spot on the
+  breadcrumb, switch the driver's concept) all require an <strong>inbound command channel the
+  cockpit app does not have</strong> &mdash; it only ever listens. That lands next to nav / GPS /
+  messaging, so it is a separate call, not a natural extension.</p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>jetson/DECK.md</code> &middot; <code>ARCHITECTURE.md &sect;6.5</code> &middot; <code>docs/DEVICES.md &sect;4</code> &middot; <code>tasks/open.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../jetson/tracker-light.html"><span class="pager-dir">Previous</span><span class="pager-name">The DMX tracker light</span></a><a class="next" href="../jetson/hardware.html"><span class="pager-dir">Next</span><span class="pager-name">Hardware &amp; enclosure</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

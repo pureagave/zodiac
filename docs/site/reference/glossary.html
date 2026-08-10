@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glossary · Zodiac</title>
+<meta name="description" content="Black Rock City vocabulary, Zodiac project coinages, and the hardware and protocol terms used across the three codebases.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Reference <span aria-hidden="true">/</span> <em>Glossary</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html" aria-current="page">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">Reference</p>
+<h1>Glossary</h1>
+<p class="standfirst">Terms that appear across the three codebases and are not obvious from context. Physical
+    places, Burning Man vocabulary, and the project's own coinages.</p>
+<div class="prose">
+
+
+<h2 id="brc">Black Rock City</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Term</th><th>Means</th></tr></thead>
+<tbody>
+<tr><th>BRC</th><td>Black Rock City &mdash; the temporary city built for Burning Man, laid out as a partial annulus of clock-position radials and lettered ring roads.</td></tr>
+<tr><th>Golden Spike</th><td>The surveyed centre point of the city, where the Man stands. <code>GoldenSpike.ACTIVE</code> is the app's single source of truth for the active year; it is the origin of the map projection.</td></tr>
+<tr><th>Clock position</th><td>An address's angular coordinate, e.g. <code>2:15</code>. The 12:00 axis is <span class="val">45.0&deg;</span> true, and did not change when the 2026 city moved ~583&nbsp;m south-west.</td></tr>
+<tr><th>Ring / ring letter</th><td>The concentric streets, Esplanade then A through K. <code>StreetRingRadiiM</code> holds each one's <em>measured</em> mean centreline radius, from Esplanade <span class="val">761.5&nbsp;m</span> to K <span class="val">1753&nbsp;m</span>.</td></tr>
+<tr><th>Esplanade</th><td>The innermost ring road, facing the open playa.</td></tr>
+<tr><th>Playa</th><td>The open, unbuilt dry lakebed inside and around the city. Also the alkaline dust that gets into everything.</td></tr>
+<tr><th>CPN</th><td>Civic Plaza / Point of interest node in the Innovate GIS &mdash; the dataset layer the Temple's coordinate comes from.</td></tr>
+<tr><th>Trash fence</th><td>The pentagonal boundary of the event, and one of the rendered map layers.</td></tr>
+<tr><th>Innovate GIS</th><td>Burning Man's published geographic dataset (<code>burningmantech/innovate-GIS-data</code>) &mdash; streets, plazas, blocks, trash fence, toilets, CPNs. The base map is bundled from it.</td></tr>
+<tr><th>BM API</th><td><code>api.burningman.org</code> &mdash; art and camp records, fetched offline-first and cached. Placements are embargoed until roughly three weeks pre-event.</td></tr>
+<tr><th>Mutant vehicle / art car</th><td>A licensed, radically modified vehicle. Zodiac is one.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="project">Project terms</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Term</th><th>Means</th></tr></thead>
+<tbody>
+<tr><th>Concept</th><td>One of the three runtime-switchable cockpit UIs &mdash; RADAR, MAP or DRIVER. Switching is purely presentational; all three read the same state.</td></tr>
+<tr><th>Fleet bus</th><td>The two fixed multicast channels on the vehicle's own WiFi that all three parts agree on. <a href="../protocols/index.html">Detail</a>.</td></tr>
+<tr><th>Ego</th><td>The vehicle itself, as drawn on the map &mdash; the ego marker, the ego fix.</td></tr>
+<tr><th>Contact</th><td>One detected person on the ZTHREAT channel: a track id, a bearing, an apparent size, and a collision flag.</td></tr>
+<tr><th><code>relAzDeg</code></th><td>A contact's bearing relative to the vehicle's nose. Negative is left, positive is right, full circle <span class="val">&plusmn;180</span>.</td></tr>
+<tr><th><code>size</code></th><td>Apparent size, 0 (far) to 1 (near). <strong>A sensor prominence proxy, not a distance</strong> &mdash; which is why the HUD ring uses ordinal bands rather than a metric radius.</td></tr>
+<tr><th>Blip</th><td>One mark on the DRIVER surround ring. May represent a cluster of contacts sharing a band and within 15&deg;.</td></tr>
+<tr><th>Blind arc / covered arc</th><td>Bearings the camera rig does or does not watch. An uncovered sector must never render like a watched-and-clear one.</td></tr>
+<tr><th>Vision feed state</th><td><code>LIVE</code> / <code>DEMO</code> / <code>ABSENT</code>. The word <code>CLEAR</code> may only appear when <code>LIVE</code>.</td></tr>
+<tr><th>Drive-to</th><td>The active navigation target: HOME, MAN, TEMPLE, BATH or a typed address.</td></tr>
+<tr><th>Ops readout</th><td>The themed footer on RADAR and MAP &mdash; clock, sun, beacon health, drive-to guidance.</td></tr>
+<tr><th>Burn-in phase</th><td>ACTIVE / DIM / DEEP_IDLE / SLEEP. <a href="../app/burn-in.html">Detail</a>.</td></tr>
+<tr><th>Passenger role</th><td>A per-device flag that swaps the cockpit for the rider-facing card carousel. Hidden in both directions.</td></tr>
+<tr><th>Weak label</th><td>A motion-detector box recorded alongside a training frame. Not truth &mdash; its value is that correcting a box is far faster than drawing one.</td></tr>
+<tr><th>Golden corpus</th><td>The measured cross-language ZTHREAT test vectors that both suites read. <a href="../protocols/golden-corpus.html">Detail</a>.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="hardware">Hardware and protocol terms</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Term</th><th>Means</th></tr></thead>
+<tbody>
+<tr><th>NMEA 0183</th><td>The GPS sentence format the beacon speaks. <code>$</code> + body + <code>*</code> + two hex XOR checksum digits + CRLF.</td></tr>
+<tr><th>GGA / RMC / HDT</th><td>The three standard sentences the tablet consumes: position + fix quality, position + speed + course, and true heading.</td></tr>
+<tr><th>VTG / HDG / HDM</th><td>Sentences the tablet <strong>deliberately rejects</strong> &mdash; VTG is GPS course not compass heading; HDG/HDM are magnetic. <a href="../protocols/nmea.html#consumed">Why</a>.</td></tr>
+<tr><th>LWIR</th><td>Long-wave infrared &mdash; what a thermal camera sees. <strong>Glass blocks it entirely</strong>, which is why the pod needs a germanium window.</td></tr>
+<tr><th>FFC</th><td>Flat-field correction &mdash; the Lepton's internal shutter closing every few minutes. The frame goes uniform for an instant. Normal, not a fault, and guarded against by <code>ReBaselineGuard</code>.</td></tr>
+<tr><th>Radiometric</th><td>A thermal camera that reports absolute temperature. The Ultra Wide is <strong>non-radiometric</strong>, which is fine &mdash; detection is by contrast and motion.</td></tr>
+<tr><th>UVC</th><td>USB Video Class &mdash; a driverless camera standard. Both cameras enumerate as <code>/dev/videoN</code>.</td></tr>
+<tr><th>DMX512</th><td>The lighting control protocol. One universe is 512 channels; the moving head occupies 11 of them.</td></tr>
+<tr><th>olad</th><td>The Open Lighting Architecture daemon. <code>zvision</code> HTTP-POSTs a universe to it; it owns the FTDI dongle and the frame timing.</td></tr>
+<tr><th>Gobo</th><td>A patterned disc in the beam path of a moving head. The tracker deliberately stays on the <em>open</em> slot.</td></tr>
+<tr><th>Pan / tilt fine</th><td>The low byte of a 16-bit pan or tilt value. 8-bit pan across 540&deg; is ~2.1&deg; per step, visibly steppy on a slow follow &mdash; the fine channels are the whole reason to run 11-channel mode.</td></tr>
+<tr><th>JetPack / L4T</th><td>NVIDIA's Jetson OS distribution and its Linux-for-Tegra base. The box runs JetPack 7.2 / L4T 39.2.</td></tr>
+<tr><th>MAXN_SUPER</th><td>The Orin Nano Super's full power mode. Mode <strong>2</strong> on JetPack 7.2, not 0 &mdash; the board ships on 1.</td></tr>
+<tr><th>TensorRT engine</th><td>A compiled inference binary. <strong>Not portable</strong> across GPU architectures &mdash; export ONNX on the server, compile on the Orin.</td></tr>
+</tbody>
+</table>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md</code> &middot; <code>docs/PROTOCOLS.md</code> &middot; <code>jetson/HARDWARE.md</code> &middot; <code>jetson/MOVING-HEAD.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../reference/kiosk.html"><span class="pager-dir">Previous</span><span class="pager-name">Kiosk provisioning</span></a><a class="next" href="../reference/sources.html"><span class="pager-dir">Next</span><span class="pager-name">Source documents</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

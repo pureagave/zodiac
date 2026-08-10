@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>:beacon — the sensor hub · Zodiac</title>
+<meta name="description" content="The Zodiac Beacon: a headless Android phone that broadcasts GNSS, compass, IMU, mic level, lux, shock and battery to the whole tablet fleet.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :beacon — the sensor hub <span aria-hidden="true">/</span> <em>Overview</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html" aria-current="page">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:beacon &#183; the sensor hub</p>
+<h1>:beacon &mdash; the sensor hub</h1>
+<p class="standfirst">Package <code>org.pureagave.zodiac.beacon</code>. A headless foreground-service app that
+    turns a spare Android phone into the vehicle's shared sensor. minSdk 29, because the XCover Pro
+    it runs on is Android 10. One foreground service, one debug activity, no resources &mdash; the
+    UI is built in code.</p>
+<div class="prose">
+
+
+<h2 id="does">What it broadcasts</h2>
+
+<p>It forwards the phone's raw GNSS NMEA <strong>verbatim</strong> and adds seven synthesized
+sentence types.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Sentence</th><th>Carries</th><th>Rate</th></tr></thead>
+<tbody>
+<tr><th><code>$GPHDT</code></th><td>True compass heading (magnetometer, declination-corrected once a fix exists)</td><td class="num">~4 Hz</td></tr>
+<tr><th><code>$ZTLM</code></th><td>IMU pitch/roll + ground speed</td><td class="num">~4 Hz</td></tr>
+<tr><th><code>$ZAUD</code></th><td>Mic level &mdash; rms, peak, beat flag</td><td class="num">~15 Hz</td></tr>
+<tr><th><code>$ZENV</code></th><td>Ambient lux</td><td class="num">~0.5 Hz</td></tr>
+<tr><th><code>$ZSHK</code></th><td>Shock / impact peak g</td><td>On impact</td></tr>
+<tr><th><code>$ZBCN</code></th><td>Health &mdash; battery&nbsp;%, fix quality, satellites, uptime</td><td class="num">~0.2 Hz</td></tr>
+<tr><th><code>$ZODO</code></th><td>Trip + lifetime odometer (persisted)</td><td class="num">~0.5 Hz</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Every sentence goes to multicast group <code>239.7.7.10:10110</code> <em>and</em> a
+subnet-directed broadcast. <a href="../protocols/nmea.html">Field-by-field definitions &rarr;</a></p>
+
+<h2 id="rules">Design rules that matter operationally</h2>
+
+<div class="note">
+  <span class="label">Only a level number ever leaves the phone</span>
+  <p>No audio is recorded, buffered to disk, or transmitted &mdash; the PCM buffer is reduced to
+  three scalars in place and discarded. The microphone is optional at every layer, and a
+  boot-started service never requests it at all.</p>
+</div>
+
+<ul>
+<li><strong>Every sentence is sent twice</strong>, because some access points drop multicast. That
+is why the tablet de-duplicates byte-identical <code>$ZSHK</code> lines inside a
+<span class="val">200&nbsp;ms</span> window.</li>
+<li><strong>GPS failure is never fatal.</strong> If location permission is missing or wiring throws,
+every other channel keeps broadcasting and the notification says so.</li>
+<li><strong>A sensor the phone does not have emits nothing</strong> rather than a fabricated zero
+&mdash; for heading and lux. A fabricated <span class="val">0.0</span> lux would pin the whole fleet
+to 5&nbsp;% brightness in daylight. A genuine 0.0 lux or 0.0&deg; heading <em>is</em> still
+emitted.</li>
+<li><strong>The odometer refuses implausible steps</strong> &mdash; inaccurate
+(<span class="val">&gt; 20&nbsp;m</span>), below a <span class="val">5&nbsp;m</span> jitter floor,
+or implying more than <span class="val">160&nbsp;kph</span> &mdash; so GPS multipath cannot inflate
+the trip.</li>
+</ul>
+
+<h2 id="hardware">Where it runs</h2>
+
+<p>On the XCover Pro (<code>SM-G715U</code>) today, headless with the screen off, holding a partial
+wake lock. It has a debug activity showing the live status readout, but that is for bring-up
+only.</p>
+
+<p><strong>Planned replacement:</strong> a Raspberry Pi Zero 2 W with a u-blox USB GNSS receiver and
+a roof antenna. The travel router keeps the AP and DHCP role in both cases.
+<a href="../system/devices.html#xcover">Device notes &rarr;</a></p>
+
+<h2 id="status">Status</h2>
+
+<ul class="statboard">
+  <li><span class="statboard-name">GPS + compass end to end</span><span class="chip ok">Verified</span>
+    <span class="statboard-note">Proven against real tablets on the fleet bus.</span></li>
+  <li><span class="statboard-name">All seven sentence types</span><span class="chip ok">Under test</span>
+    <span class="statboard-note">77 unit tests; <code>Nmea.checksum</code> validated against published NMEA 0183 vectors after an <code>xor</code>&rarr;<code>or</code> mutation passed all 35 of the older tests.</span></li>
+  <li><span class="statboard-name">The five sensor channels in a moving vehicle</span><span class="chip unproven">Not yet exercised</span>
+    <span class="statboard-note">Beacon channels + auto-dim end to end on the tablets is an open item.</span></li>
+  <li><span class="statboard-name">Production Pi + u-blox hub</span><span class="chip none">Not built</span>
+    <span class="statboard-note">The XCover Pro is the current hub.</span></li>
+</ul>
+
+<div class="note caveat">
+  <span class="label">On-device verification still owed</span>
+  <p>None of these can be proven in CI &mdash; the phone is API 29 and Robolectric models the API
+  contract, not real OS scheduling.</p>
+  <ul>
+    <li><strong>Reboot test</strong> &mdash; start the beacon, <code>adb reboot</code>, confirm
+    <code>$ZBCN</code> reaches a tablet within ~90&nbsp;s with zero phone interaction.</li>
+    <li><strong>Sideloaded update</strong> &mdash; install a new signed APK over a running beacon and
+    confirm <code>MY_PACKAGE_REPLACED</code> restarts it.</li>
+    <li><strong>No lock-screen credential on the beacon phone.</strong>
+    <code>BOOT_COMPLETED</code> only fires after first unlock on file-based-encryption devices.</li>
+    <li><strong>Battery-optimization prompt</strong> appears once and never re-nags after a
+    decline.</li>
+    <li><strong>Doze / charger-loss soak</strong> &mdash; confirm the wake lock actually prevents the
+    tick-loop stall. Cannot be simulated.</li>
+    <li><strong>API 30+ two-step background-location grant.</strong> Untestable on API 29.</li>
+    <li><strong>API 34/35 typed <code>startForeground</code>.</strong> Argued from documentation,
+    not observed. <strong>The biggest untested-on-hardware risk in this module.</strong></li>
+  </ul>
+</div>
+
+<div class="note caveat">
+  <span class="label">Needs a decision &mdash; direct boot</span>
+  <p>On a file-based-encryption device with a secure lock screen the boot receiver never fires, so a
+  3am thermal reboot would leave the fleet blind until someone physically unlocks the phone. Either
+  confirm the beacon phone has no secure lock credential, or make the receiver and service
+  direct-boot-aware (which also moves the auto-start preference to device-protected storage).</p>
+</div>
+
+<div class="note caveat">
+  <span class="label">Outstanding &mdash; interface binding</span>
+  <p>Beacon network targets are computed once and the socket is never bound to the WiFi
+  <code>Network</code>, so traffic can leave the wrong interface silently.</p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md &sect;5</code> &middot; <code>tasks/open.md</code> &middot; <code>docs/AUDIT-2026-08-09.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/performance.html"><span class="pager-dir">Previous</span><span class="pager-name">Performance backlog</span></a><a class="next" href="../beacon/channels.html"><span class="pager-dir">Next</span><span class="pager-name">The seven channels</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>:app — the cockpit · Zodiac</title>
+<meta name="description" content="The Zodiac cockpit app: three concepts, a live playa map, real GPS sourcing, and a vehicle transport layer that is still entirely fake.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :app — the cockpit <span aria-hidden="true">/</span> <em>Overview</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html" aria-current="page">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:app &#183; the cockpit</p>
+<h1>:app &mdash; the cockpit</h1>
+<p class="standfirst">Package <code>org.pureagave.zodiac.control</code>. Kotlin + Jetpack Compose, minSdk 28,
+    targetSdk / compileSdk 35, <code>screenOrientation="fullUser"</code> so each concept reflows for
+    landscape or portrait. This is what the fleet of tablets runs.</p>
+<div class="prose">
+
+
+<h2 id="concepts">Three concepts, one state</h2>
+
+<p>Picked with the top-right pill, persisted across launches. Switching is purely presentational
+&mdash; all three read the same state.</p>
+
+<ul class="cards">
+  <li class="card">
+    <p class="card-eyebrow">MotionTrackerScreen</p>
+    <h3>RADAR</h3>
+    <p>The <em>Aliens</em> M41A motion tracker. A circular scope whose sweep arm (one revolution
+    every <span class="val">4&nbsp;s</span>) lights up the real BRC map as it passes, with art and
+    camp contacts pulsing behind it.</p>
+  </li>
+  <li class="card">
+    <p class="card-eyebrow">InstrumentBayScreen</p>
+    <h3>MAP</h3>
+    <p>The <em>Alien</em> Nostromo instrument bay. Bordered tiles: heading dial, speed gauge,
+    ground-track map, cell and throttle gauges.</p>
+  </li>
+  <li class="card">
+    <p class="card-eyebrow">DriverNightScreen</p>
+    <h3>DRIVER</h3>
+    <p>A mostly-black OLED night HUD for the driver's phone. Thermal contacts as hollow wireframe
+    figures in a forward perspective view, plus a nose-up surround ring carrying every contact all
+    the way around the vehicle, plus minimal nav.</p>
+  </li>
+</ul>
+
+<p><a href="concepts.html">The concepts in detail &rarr;</a></p>
+
+<h2 id="built">What is built</h2>
+
+<h3>Map and navigation</h3>
+<ul>
+<li>Black Rock City rendered from the bundled 2026 Innovate GIS &mdash; trash fence, streets,
+plazas, city blocks, toilets, CPNs. Active year is one source of truth
+(<code>GoldenSpike.ACTIVE = Y2026</code>).</li>
+<li>Two map modes: <code>TOP</code> (orthographic, ego centred) and <code>TILT</code> (pitched 3D
+over a retro perspective grid). Drag to pan, pinch to zoom, two-finger twist to rotate. Heading and
+speed come from the GPS fix, never from tapping the map.</li>
+<li><strong>Drive-to</strong>: HOME, MAN, TEMPLE, BATH (nearest toilet, re-resolved live), or ADDR
+&mdash; type any city address on a full-screen keypad.</li>
+<li><strong>Street-following routing</strong> with every corner snapped to a real vertex of the GIS
+street polylines, so the drawn route lies on the drawn streets instead of cutting through camps.</li>
+<li>Street-crossing popups and &ldquo;passing&rdquo; callouts for notable art within
+<span class="val">120&nbsp;m</span>.</li>
+</ul>
+<p><a href="map.html">Playa map and navigation &rarr;</a></p>
+
+<h3>Sensing</h3>
+<ul>
+<li>Five pluggable GPS sources behind one interface &mdash; <code>FAKE</code>, <code>SYSTEM</code>,
+<code>BLE</code>, <code>USB</code>, <code>NET</code>. <code>NET</code> is the shipped fleet path and
+is verified end to end against the real beacon.</li>
+<li>Automatic <code>NET &rarr; SYSTEM</code> failover on a device that has its own GNSS.</li>
+<li><code>NET</code> also parses the beacon's five proprietary sensor channels;
+<code>$ZENV</code> ambient lux drives automatic screen dimming.</li>
+<li>Threat contacts from the Jetson over <code>ZTHREAT</code>, with an explicit feed state &mdash;
+<code>LIVE</code> / <code>DEMO</code> / <code>ABSENT</code>.</li>
+</ul>
+<p><a href="gps.html">GPS sourcing &rarr;</a> &middot;
+<a href="vision.html">Threats and the DRIVER HUD &rarr;</a></p>
+
+<h3>Displays and operations</h3>
+<ul>
+<li><strong>Passenger display</strong>: a self-running card carousel for riders.</li>
+<li><strong>OLED burn-in mitigation</strong>: whole-UI pixel shift, brightness breathe and idle dim,
+and a four-phase idle escalation. <a href="burn-in.html">Detail &rarr;</a></li>
+<li><strong>Kiosk mode</strong>: device-owner lock task, lockscreen and automatic OS updates
+disabled. <a href="../reference/kiosk.html">Provisioning &rarr;</a></li>
+<li><strong>On-device postmortem logging</strong> that counts everything it discards.</li>
+<li><strong>Playa discovery</strong>: offline-first cache of the Burning Man API's art and camp
+records.</li>
+<li><strong>Pre-rendered art imagery</strong> baked into the APK in the cockpit's phosphor
+treatment.</li>
+</ul>
+<p><a href="operations.html">Displays and operations &rarr;</a></p>
+
+<h2 id="notbuilt">What is not built</h2>
+
+<div class="note absent">
+  <span class="label">Every vehicle transport is fake</span>
+  <p><code>FakeTransportAdapter</code> is the only implementation of <code>TransportAdapter</code>
+  in the repository, and <code>FakeTelemetryRepository</code> the only production
+  <code>TelemetryRepository</code>. The transport chips, CONNECT / DISCONNECT buttons,
+  <code>SetHeading</code> / <code>SetSpeed</code> commands and the thermal / mode / link readouts
+  they feed are scaffolding for a vehicle bus that does not exist yet. Real vehicle data reaches the
+  app <strong>only</strong> through <code>NetworkLocationSource</code> (NMEA) and
+  <code>NetworkThreatSource</code> (ZTHREAT).</p>
+</div>
+
+<div class="note absent">
+  <span class="label">Also not real</span>
+  <ul>
+    <li>Two MAP tiles render hard-coded literals: the cell gauges (<code>CELL A 70%</code>,
+    <code>CELL B 45%</code>) and the throttle trace. They are not wired to anything.</li>
+    <li><code>CockpitUiState.tiltDeg</code> is persisted and clamped but the renderer applies a
+    compile-time <span class="val">45&deg;</span> instead &mdash; a runtime <code>rotationX</code>
+    would not render in that <code>graphicsLayer</code> on the S9+.</li>
+    <li>No automated coverage of the map touch interaction (drag / pinch / twist).</li>
+  </ul>
+</div>
+
+<h2 id="palette">The colour system</h2>
+
+<p>A strict semantic palette, set 2026-07-04, shared by all three concepts
+(<code>ui/concepts/ConceptTheme</code>). This site's own chrome follows it.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Colour</th><th>Hex</th><th>Means</th></tr></thead>
+<tbody>
+<tr><th>Phosphor green</th><td class="num">#00FF66</td><td>All chrome &mdash; controls, borders, labels</td></tr>
+<tr><th>Status blue</th><td class="num">#00BFFF</td><td>Status only &mdash; link / GPS state, &ldquo;this is selected&rdquo;</td></tr>
+<tr><th>Data purple</th><td class="num">#C77DFF</td><td>Live data values &mdash; headings, speeds, clock, needles, ego marker</td></tr>
+<tr><th>Dim green</th><td class="num">#2C8A4A</td><td>De-emphasised secondary text</td></tr>
+<tr><th>Alert red</th><td class="num">#FF5555</td><td>Faults and extreme warnings <strong>only</strong></td></tr>
+</tbody>
+</table>
+</div>
+
+<p><strong>Amber is banned.</strong> The DRIVER concept overrides these with its own dimmer night
+set (<code>#009E4A</code> / <code>#00421E</code> / <code>#B874E0</code> / <code>#FF4848</code>) for
+dark adaptation. The ban reaches the hardware too: <code>zdeck</code> rejects the moving head's
+amber colour-wheel slots <em>at config construction</em>, not merely by convention.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md &sect;4</code> &middot; <code>docs/BUILD.md &sect;2</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../protocols/fov-discrepancy.html"><span class="pager-dir">Previous</span><span class="pager-name">Known discrepancy: FOV</span></a><a class="next" href="../app/concepts.html"><span class="pager-dir">Next</span><span class="pager-name">The three concepts</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

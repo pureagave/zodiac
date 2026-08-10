@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The detector, and the road to a model · Zodiac</title>
+<meta name="description" content="What the detector does today (background subtraction), why a trained model is needed, and the honest schedule answer.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> jetson/ — the edge box <span aria-hidden="true">/</span> <em>Detector &amp; training</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html" aria-current="page">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">jetson/ &#183; the edge box</p>
+<h1>The detector, and the road to a model</h1>
+<p class="standfirst">Today's detector is deliberately model-free so bring-up needs no ML stack. The key
+    architectural fact: <strong>the detector is the only piece that changes.</strong> Everything
+    downstream &mdash; geometry, collision, the broadcaster, the wire format, the HUD &mdash; is
+    fixed.</p>
+<div class="prose">
+
+
+<pre class="diagram"><code>frames &#9472;&#9472;&#9658; [ DETECTOR ] &#9472;&#9472;&#9658; boxes+classes &#9472;&#9472;&#9658; geometry &#9472;&#9472;&#9658; DriverThreat &#9472;&#9472;&#9658; bus &#9472;&#9472;&#9658; HUD
+            &#9650; this is the only thing that evolves</code></pre>
+
+<h2 id="today">What ships today</h2>
+
+<div class="note absent">
+  <span class="label">There is no trained model in this repository</span>
+  <p>No weights file, no inference runtime, no TensorRT / ONNX / YOLO / PyTorch anywhere in the
+  tree.</p>
+</div>
+
+<p><code>MotionDetector</code> is OpenCV MOG2 background subtraction: threshold, morphological open,
+external contours, area filter, centroid &rarr; bearing, bbox height &rarr; size, nearest-centroid
+track ids. Collision is a <strong>constant-bearing-while-growing</strong> rule &mdash; azimuth rate
+below a threshold while size is above a floor and increasing.</p>
+
+<p><code>--source thermal|rgb</code> runs it: plug in a UVC camera and moving bodies show up on the
+HUD immediately, with no trained model required. The trained detector drops in behind the same
+<code>detect()</code> signature later.</p>
+
+<h3>The re-baseline guard</h3>
+
+<p><code>normalize.ReBaselineGuard</code> drops the whole frame when a thermal flat-field correction
+makes the subtractor call everything foreground, and suppresses three frames after.
+<strong>Reporting nothing is the right failure; reporting a scene full of people is not.</strong> A
+model-based detector will have its own version of this problem after an FFC.</p>
+
+<h2 id="why">Why train at all &mdash; the honest reason</h2>
+
+<div class="note">
+  <span class="label">Not accuracy polish</span>
+  <p>Background subtraction <strong>assumes a stationary camera</strong>. Parked or crawling, it
+  works &mdash; which is most of an art car's life. <em>Driving</em>, the entire frame is
+  &ldquo;motion&rdquo; and the detector degrades badly: dust, shadows and the moving background all
+  read as contacts.</p>
+  <p>A learned detector does not care that the camera is moving, because it recognises
+  <em>people</em> rather than <em>change</em>.</p>
+</div>
+
+<h2 id="stages">Stages</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Stage</th><th>What</th><th>State</th></tr></thead>
+<tbody>
+<tr><th>0 &mdash; motion blobs</th><td>Background subtraction &rarr; contours. No model, no labels. Proves camera + geometry + bus + HUD the day it is plugged in. Weakness: reacts to <em>any</em> motion, no class, ids flicker.</td><td><span class="chip ok">Shipping</span></td></tr>
+<tr><th>1 &mdash; off-the-shelf RGB</th><td>Drop in a COCO-pretrained detector (YOLOv8/v11-nano or NanoDet), keep only <code>person</code> and <code>bicycle</code>, export to TensorRT for the Orin. True person/bike detection in daylight with <strong>zero training</strong>. Mostly integration, not research.</td><td><span class="chip none">Not started</span></td></tr>
+<tr><th>2 &mdash; thermal</th><td>The RGB model transfers poorly to 160&times;120 LWIR. Bootstrap from public thermal sets, and start collecting our own night clips.</td><td><span class="chip none">Not started</span></td></tr>
+<tr><th>3 &mdash; fine-tune</th><td>Self-collected thermal + RGB plus public thermal to fill gaps. Taxonomy <code>person</code>, <code>person_on_bike</code>, and a count bucket (<code>1</code> vs <code>2+</code>). Train, export ONNX &rarr; TensorRT.</td><td><span class="chip none">Not started</span></td></tr>
+<tr><th>4 &mdash; day/night fusion</th><td>Late fusion: RGB by day, thermal by night, merged by bearing before geometry. Auto-select on ambient light or time. Early pixel-level fusion is a later optimisation, not needed for v1.</td><td><span class="chip none">Not started</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="bottleneck">The bottleneck is footage, not compute</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>Training needed?</th><th>Effort</th></tr></thead>
+<tbody>
+<tr><th>RGB person detection</th><td><strong>No.</strong> COCO-pretrained models already detect <code>person</code></td><td>Hours &mdash; export + integrate</td></tr>
+<tr><th>Thermal person detection</th><td><strong>Yes</strong>, but bootstrap from public thermal data</td><td>Days&ndash;weeks, gated on <em>our</em> footage</td></tr>
+<tr><th>The big GPU</th><td>Barely relevant</td><td>Fine-tuning a nano model is &lt;1&nbsp;hr</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>An A100 or H100 fine-tunes a YOLO-nano on a few thousand images in well under an hour. What no
+amount of compute substitutes for is that <strong>nobody, anywhere, has recorded 160&times;120
+ultra-wide LWIR from a mutant vehicle on a playa at 2am.</strong> That footage can only be captured
+while the rig is bolted to the car. GPU time can be rented any evening.</p>
+
+<p><strong>So the schedule-critical task is recording, not training.</strong> That is why
+<code>--record</code> was built before any model work.
+<a href="zvision.html#record">How to use it &rarr;</a></p>
+
+<h2 id="where">Where each stage runs</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Stage</th><th>Machine</th><th>Artifact</th><th>Portable</th></tr></thead>
+<tbody>
+<tr><th>Collect</th><td>Jetson, on the vehicle</td><td>frames + <code>index.jsonl</code></td><td>Yes</td></tr>
+<tr><th>Label</th><td>Laptop (+ auto-label on a server)</td><td>YOLO <code>.txt</code></td><td>Yes</td></tr>
+<tr><th><strong>Train</strong></th><td>The H100 box</td><td><code>best.pt</code></td><td>Yes</td></tr>
+<tr><th>Export</th><td>Anywhere</td><td><code>model.onnx</code></td><td>Yes</td></tr>
+<tr><th><strong>Build engine</strong></th><td><strong>The Orin itself</strong></td><td><code>model.engine</code></td><td><strong>No</strong></td></tr>
+<tr><th>Infer</th><td>Orin</td><td>&mdash;</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+  <span class="label">TensorRT engines are not portable</span>
+  <p>They are built against a specific GPU architecture, TensorRT version and CUDA version. An
+  engine built on an H100 (Hopper, SM&nbsp;9.0) will not load on an Orin (Ampere, SM&nbsp;8.7).
+  Export <strong>ONNX</strong> on the server, convert to <code>.engine</code> on the target.</p>
+  <p>To be unambiguous, since this reads as scarier than it is: <strong>you never train on the
+  Jetson.</strong> Only the final <code>trtexec</code> compile runs there &mdash; a few minutes, one
+  command, once per model. ONNX is the source code; <code>.engine</code> is the compiled binary, and
+  only the binary has to match the target.</p>
+</div>
+
+<h2 id="data">Public data, and its domain gap</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Dataset</th><th>What it is</th><th>Licence</th></tr></thead>
+<tbody>
+<tr><th>Teledyne FLIR ADAS (v1/v2)</th><td>~10k+ annotated thermal frames, <code>person</code>/<code>bike</code>/<code>car</code></td><td>Free, registration</td></tr>
+<tr><th>KAIST Multispectral</th><td>Aligned thermal+RGB pedestrian pairs, day and night</td><td>Academic</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><strong>Mind the domain gap.</strong> FLIR ADAS is 640&times;512 Boson, forward-facing, mounted on
+a car at road height, with a normal lens. Ours is 160&times;120, ultra-wide <em>fisheye</em>, mounted
+on an art car, looking at people standing <em>around</em> the vehicle rather than ahead of it.
+Different resolution, distortion, viewpoint and range. Public data gets you to &ldquo;detects warm
+humans&rdquo;; our own data gets you to &ldquo;works on our rig&rdquo;.</p>
+
+<h2 id="labelling">Labelling is the real bottleneck &mdash; spend the GPU there</h2>
+
+<p>500&ndash;2,000 corrected frames is a realistic target for fine-tuning a pretrained model into a
+narrow domain. This is not a tens-of-thousands-of-images job &mdash; it is adapting a model, not
+training from scratch.</p>
+
+<p><strong>Auto-label first, then correct.</strong> For the actual training run a big GPU box is wild
+overkill &mdash; a nano fine-tune is one GPU for twenty minutes. Where it genuinely pays is running
+a large open-vocabulary detector (Grounding DINO, YOLO-World, SAM) across <em>every</em> recorded
+frame. Then a human reviews rather than draws &mdash; the difference between a weekend of labelling
+and an evening.</p>
+
+<p>Two things help on thermal specifically: the motion boxes already recorded give a seed layer, and
+if the spare RGB is <strong>co-mounted with the thermal in the forward pod</strong>, a COCO model's
+confident RGB detections can seed labels on the time-synced thermal frames. Same scene,
+near-identical viewpoint, so the easy modality generates labels for the hard one. That is a real
+argument for doing that co-mount rather than treating the spare RGB as merely a spare.</p>
+
+<h2 id="validate">Validate by range, not by mAP</h2>
+
+<p>A single mAP number hides the thing that matters. Measure precision and recall in range buckets
+(0&ndash;5&nbsp;m, 5&ndash;15&nbsp;m, 15&ndash;30&nbsp;m, 30&nbsp;m+). A useful warning at vehicle
+speed means reliable detection at <span class="val">&ge;30&nbsp;m</span>; a model that is brilliant
+at 3&nbsp;m and blind at 25&nbsp;m scores well and is useless.</p>
+
+<h2 id="constraints">Constraints on any replacement detector</h2>
+
+<ul>
+<li><strong><code>ReBaselineGuard</code></strong> behaviour must be preserved in some form.</li>
+<li><strong><code>TRACK_ID_LIMIT = 1000</code></strong>, coupled to <code>rig.ID_STRIDE</code>:
+global ids are <code>camera_index &times; 1000 + local_id</code>, so any new id scheme must stay
+inside <code>[1, 1000)</code> per camera, and <code>0</code> must keep meaning
+&ldquo;unidentified&rdquo; &mdash; it never latches the tracker light.</li>
+<li><strong><code>CollisionEstimator</code> stays.</strong> What it needs is <em>stable ids</em>
+&mdash; upgrade the nearest-centroid matcher to ByteTrack or SORT once a real detector feeds it, so
+the bearing-rate estimate is clean.</li>
+<li><strong>Latency target ~10&nbsp;Hz</strong> end to end. The bus and HUD are already comfortably
+faster; nano-class detectors on TensorRT clear 10&nbsp;Hz with headroom.</li>
+</ul>
+
+<h2 id="calendar">What to actually do, given the calendar</h2>
+
+<div class="note caveat">
+  <span class="label">The honest answer</span>
+  <ol>
+    <li><strong>Do not gate the event on a trained thermal model.</strong> Training on footage that
+    does not exist yet, alongside the mechanical build, is not a three-week task.</li>
+    <li><strong>Ship what works:</strong> motion detection (fine while parked and crawling, which is
+    most of an art car's life) plus Stage&nbsp;A RGB, which is integration work with no dataset
+    dependency and covers daylight properly.</li>
+    <li><strong>Record everything, from the first test drive onward.</strong> Every hour of footage
+    is an asset that cannot be back-filled after the event.</li>
+    <li><strong>Train after</strong>, with real data, for next year.</li>
+  </ol>
+  <p>The mistake to avoid is spending the remaining weeks on model work and arriving with an
+  untested rig. The mistake that costs the <em>most</em> is arriving, having a great week, and
+  coming home with no footage.</p>
+</div>
+
+<h2 id="wrong">Cost of being wrong</h2>
+
+<p>Both detectors are wrong sometimes, in opposite directions. A <strong>false positive</strong> puts
+a phantom contact on the HUD and swings the tracker light at nobody &mdash; annoying, and it erodes
+trust in the display. A <strong>false negative</strong> means a person near a moving vehicle is not
+shown. <strong>Tune toward false positives</strong>; that is what
+<code>--collision-min-size</code> and <code>--min-area</code> are for.</p>
+
+<div class="note caveat">
+  <span class="label">Blocked on hardware &mdash; highest-value remaining item</span>
+  <p><code>MotionDetector</code> resets a track on a single-frame dropout, which biases toward false
+  <strong>negatives</strong> while driving. Fixing it needs real bodies at real distances in front of
+  the real camera. <strong>Do not add tablet-side contact coasting until this is fixed</strong>
+  &mdash; coasting by id while the Jetson churns ids draws one person as two.</p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>jetson/DETECTOR.md</code> &middot; <code>jetson/TRAINING.md</code> &middot; <code>ARCHITECTURE.md &sect;6.3</code> &middot; <code>tasks/open.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../jetson/zvision.html"><span class="pager-dir">Previous</span><span class="pager-name">zvision: the camera rig</span></a><a class="next" href="../jetson/tracker-light.html"><span class="pager-dir">Next</span><span class="pager-name">The DMX tracker light</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

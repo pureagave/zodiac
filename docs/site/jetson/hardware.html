@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Edge-box hardware and enclosure · Zodiac</title>
+<meta name="description" content="Edge-box bill of materials, the germanium window problem, the pod design, cooling and vehicle power.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> jetson/ — the edge box <span aria-hidden="true">/</span> <em>Hardware &amp; enclosure</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html" aria-current="page">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">jetson/ &#183; the edge box</p>
+<h1>Edge-box hardware and enclosure</h1>
+<p class="standfirst">Everything the Jetson node needs to be a sealed, vehicle-powered, dual-camera threat sensor.
+    One constraint drives the whole enclosure design: <strong>the thermal camera cannot see through
+    glass.</strong></p>
+<div class="prose">
+
+
+<h2 id="status">Where the build stands</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Item</th><th>State</th></tr></thead>
+<tbody>
+<tr><th>Jetson Orin Nano Super Dev Kit + 19&nbsp;V PSU</th><td><span class="chip ok">In hand</span></td></tr>
+<tr><th>NVMe M.2 2280 SSD, 512&nbsp;GB</th><td><span class="chip ok">In hand</span> &mdash; 512 &gt; the 256 spec'd, more headroom for JetPack + models + recordings</td></tr>
+<tr><th>FLIR Lepton Ultra Wide + PureThermal Mini USB</th><td><span class="chip ok">Ordered</span> &mdash; one thermal camera: 1 board + 1 UW module</td></tr>
+<tr><th>RGB camera &mdash; Arducam day/night IMX462 USB</th><td><span class="chip ok">In hand</span></td></tr>
+<tr><th>Camera-head housing, Jetson enclosure (KKSB), DC-DC buck, router, DMX interface + cables + fixture</th><td><span class="chip ok">In hand</span></td></tr>
+<tr><th>Thermal window &mdash; germanium D20 &times; 1&nbsp;mm, 2-sided AR</th><td><span class="chip ok">Ordered</span></td></tr>
+<tr><th>Gore/ePTFE breather vent &times;2, vibration pads, short shielded USB cables, 120&nbsp;&Omega; XLR terminator</th><td><span class="chip none">Still needed</span> &mdash; cheap last-mile, no lead time</td></tr>
+<tr><th>IR illuminator</th><td><span class="chip none">Likely skip</span> &mdash; see below</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="thermal">The thermal camera</h2>
+
+<p>Switched from the Lepton 3.5 to the <strong>Ultra Wide</strong>: 160&deg; FOV (vs 57&deg;), and
+<strong>non-radiometric</strong>, which is fine because <code>zvision</code> detects warm blobs by
+contrast and motion, not absolute temperature. Wide surround coverage fits the &ldquo;people all
+around a slow art car&rdquo; mission.</p>
+
+<p>Measured on the real board 2026-08-07 &mdash; several of these contradict what the datasheets and
+earlier notes said:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>Measured</th></tr></thead>
+<tbody>
+<tr><th>Enumerates as</th><td><code>GroupGets PureThermal (fw:v1.3.0)</code> &rarr; <code>/dev/video0</code> + <code>/dev/video1</code>, <code>uvcvideo</code>, no drivers</td></tr>
+<tr><th>Resolution</th><td><strong>160&times;120 (4:3)</strong> &mdash; <em>not</em> 120&times;120 as first recorded</td></tr>
+<tr><th>Rate</th><td><span class="val">9&nbsp;fps</span> native. <code>--hz 10</code> asks for more than it makes.</td></tr>
+<tr><th>Formats</th><td>UYVY, <strong>Y16</strong>, GREY, RGBP, BGR3 &mdash; <strong>no MJPEG</strong></td></tr>
+<tr><th>Bandwidth</th><td>160&times;120&times;2&times;9 &asymp; <span class="val">2.8&nbsp;Mbps</span>. Irrelevant to the USB budget; the RGB ring is the contention.</td></tr>
+<tr><th>Connector</th><td>Small USB-B family, <strong>not</strong> USB-C &mdash; that is the PureThermal <em>3</em>. The board in hand took a mini-B; trust the board over the product page.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note bug">
+  <span class="label">The 8-bit output is unusable &mdash; and it looks exactly like an empty scene</span>
+  <p>A real indoor frame through the 8-bit path came back with a standard deviation of
+  <span class="val">0.12 counts</span> &mdash; flat. The Lepton's AGC is reachable only via vendor UVC
+  extension units; <code>v4l2-ctl --list-ctrls</code> shows a <em>read-only</em> brightness and
+  nothing else. Background subtraction on that detects nothing, forever, and looks exactly like
+  &ldquo;the camera works but there's nothing to see&rdquo;.</p>
+  <p>The same scene in <strong>Y16 raw</strong> has hundreds of counts of structure, and a hand reads
+  <span class="val">+100 to +360</span> above background. So <code>zvision</code> opens the thermal
+  through <code>capture.ThermalCamera</code>, which takes Y16 and does its own percentile stretch.</p>
+</div>
+
+<p>Two traps found doing that:</p>
+
+<ul>
+<li><strong>Force the V4L2 backend.</strong> OpenCV otherwise picks GStreamer, which silently ignores
+<code>CAP_PROP_CONVERT_RGB</code> and hands back an already-converted 8-bit frame &mdash; std ~86
+versus ~176 for true <code>uint16</code> raw.</li>
+<li><strong>Only crop telemetry rows when they exist.</strong> The Y16 <em>122-row</em> mode appends 2
+Lepton telemetry rows, which read as a permanent band of false motion along the bottom edge. But
+asking for 120 returns 120 &mdash; an unconditional crop ate two real image rows.</li>
+</ul>
+
+<p><strong>FFC is normal.</strong> Every few minutes the internal shutter closes and the whole frame
+goes uniform for an instant. Do not read it as a fault. It also means absolute counts drift, which is
+why the stretch is per-frame and only <em>relative</em> structure is trusted &mdash; and why
+<code>ReBaselineGuard</code> exists.</p>
+
+<h2 id="window">The thermal window</h2>
+
+<div class="note">
+  <span class="label">Glass, acrylic and polycarbonate block LWIR entirely</span>
+  <p>So a standard security dome or housing works for the RGB but <em>not</em> the thermal. The
+  thermal always needs its own port with an LWIR-transmissive window (germanium) or an open recess.
+  That single constraint drives the enclosure choice &mdash; you cannot drop both behind one glass
+  front.</p>
+  <p><strong>Build two separate windows side by side, one per camera &mdash; not a single split
+  pane.</strong> Germanium is <em>opaque to visible light</em>, so the RGB cannot share the germanium
+  port; glass blocks LWIR, so the thermal cannot share the glass. Neither material does both. (ZnSe
+  does, and is expensive and tinted &mdash; skip it.)</p>
+</div>
+
+<p>Ordered: <strong>germanium D20 &times; 1&nbsp;mm, 2-sided AR</strong>. Upsized from D15 for the
+Ultra Wide's field of view. The window is a <em>stop</em>, and a flat stop at standoff <code>s</code>
+only passes a half-angle <code>&theta;</code> if its radius <code>r &ge; s &middot; tan&nbsp;&theta;</code>.
+At an 80&deg; half-angle <code>tan&nbsp;&theta; = 5.67</code>, so a D20 window
+(<code>r = 10&nbsp;mm</code>) must sit within <span class="val">~1.7&ndash;2&nbsp;mm</span> of the
+lens front &mdash; and every ring in front of it (retainer lip, bezel, shroud edge) has to clear the
+same cone at <em>its</em> own standoff. This is the single tightest number in the pod.</p>
+
+<div class="note caveat">
+  <span class="label">Unreconciled</span>
+  <p>That sizing uses an 80&deg; half-angle, while the
+  <a href="../protocols/fov-discrepancy.html">FOV-reference decision</a> concludes the true
+  horizontal half-angle is 64&deg; (tan&nbsp;64&deg; &asymp; 2.05, which would allow
+  ~4.9&nbsp;mm of standoff for D20, not ~2&nbsp;mm). The optics number was not revised when the
+  bearing number was. The 2&nbsp;mm figure is the <em>conservative</em> one, so building to it is
+  safe &mdash; but do not quote the 5.7&times; rule elsewhere without deciding which half-angle
+  applies.</p>
+</div>
+
+<p>Do not go bigger: flat-window edge rays at ~80&deg; incidence fall outside the AR coating anyway.
+And do not cut germanium yourself &mdash; it is a brittle semiconductor, ground and polished by
+optics shops. Seat it on a compliant O-ring (never metal-on-metal), do not over-torque the retainer,
+and keep RTV off the clear aperture. <strong>Buy early:</strong> germanium supply is tight and pricey
+under export controls, and stock is not always replenished.</p>
+
+<h3>Field spare &mdash; shrink film</h3>
+
+<p>Community outdoor-Lepton testing found sandwich bag, cling wrap and polyolefin shrink film all
+quite transparent to LWIR. Every objection raised there was <em>temperature error from film
+reflections</em>, which does not apply here &mdash; the UW is non-radiometric and detection is by
+contrast and motion, not absolute &deg;C. A film window also has essentially <strong>zero
+standoff</strong>, so it sidesteps the vignetting constraint entirely.</p>
+
+<p>It is not the primary because LDPE softens well below what a dark pod reaches in playa sun, and it
+abrades and punctures. <strong>Cut a spare port ring sized for shrink film and pack it</strong>
+&mdash; germanium is brittle, replacement is far away, and a $1 film window keeps the thermal channel
+alive if it cracks on the drive out. (Also cut a scrap of HDPE for bench bring-up so a late shipment
+cannot block the Lepton.)</p>
+
+<h2 id="pod">The pod</h2>
+
+<p><strong>Recommended (revised 2026-08-07): a separate, tiny box for the thermal.</strong> The CCTV
+box is far bigger than the thermal camera needs &mdash; the PureThermal Mini board is
+<span class="val">19.5 &times; 15.32&nbsp;mm</span>, and the whole camera with the Lepton in its
+socket is roughly <span class="val">20 &times; 16 &times; 12&nbsp;mm</span> plus the connector
+overhang. Give it its own pod and leave the RGB in the small housing it already ships with.</p>
+
+<div class="note">
+  <span class="label">A thick-walled box is fine &mdash; nose the lens into the bore</span>
+  <p>A ~1.7&nbsp;mm window standoff reads like &ldquo;the front wall must be paper-thin&rdquo;. It
+  does not: bore the port to the window's own diameter, seat the window in a counterbore on the
+  <strong>outer</strong> face, and push the board forward on standoffs until the <strong>lens sits
+  inside that bore</strong>, ~1&ndash;1.5&nbsp;mm behind the window's rear face. The bore wall is
+  then <em>beside</em> the lens, not in front of it, so it never enters the cone and wall thickness
+  stops mattering.</p>
+</div>
+
+<div class="kv">
+  <dt>The box</dt><dd>Hammond <code>1550Z101</code> &mdash; 50 &times; 45 &times; 24&nbsp;mm, diecast aluminium, one-piece silicone gasket, IP66/67/68 + NEMA 4X, &minus;40&nbsp;&deg;C to +150&nbsp;&deg;C. The <strong>6&nbsp;mm lid</strong> is the part that matters: thick enough for a counterbored window seat with an O-ring groove, and the only face that needs machining.</dd>
+  <dt>Cable exit</dt><dd>Feed the mini-B end <strong>first, from outside in</strong>, through an M12/M16 gland &mdash; the mini-B plug is ~7.5 &times; 4.5&nbsp;mm and clears an 8&nbsp;mm bore, whereas the USB-A end (12 &times; 4.5&nbsp;mm) never will. Gland on a side wall, Gore vent on the back.</dd>
+  <dt>Cost of splitting</dt><dd>Two boxes means two independent mount angles. <code>rig.py</code> already carries a per-camera <code>mount_az</code>, so this is a calibration entry, not a code change &mdash; but bolt both pods to the <em>same</em> rigid bracket, or the cross-camera dedup has nothing stable to work against.</dd>
+</div>
+
+<div class="note">
+  <span class="label">Does anyone already sell a sealed Lepton housing? Surveyed 2026-08-07 &mdash; no</span>
+  <p>What exists splits cleanly in two: <em>indoor shells</em> (GroupGets' official case, the GG-24
+  breakout case, and a community 3D-printable enclosure built around the PureThermal Mini's exact
+  PCB &mdash; dimensionally ideal, but unsealed, with an LDPE grocery-bag film window); and
+  <em>sealed germanium housings</em> (moviTHERM IP67/IP69K, FLIR's own <code>T912366</code>) with
+  DLC/AR germanium already installed, but built for A-series / Boson bodies at several hundred to low
+  thousands. Nobody makes the intersection, which is why it gets built. <strong>Do not
+  re-survey.</strong></p>
+</div>
+
+<h2 id="rgb">RGB camera</h2>
+
+<p>Sony STARVIS <strong>IMX462</strong> (2&nbsp;MP, ~0.001&nbsp;lux, high near-IR sensitivity), USB
+UVC so it appears as <code>/dev/videoN</code> with no drivers. The <strong>day/night ICR</strong>
+variant is the recommended buy: a <em>mechanical</em> filter that is in by day (true colour) and out
+at night (max sensitivity), auto-switched.</p>
+
+<p>These ship with wide M12 lenses (~85&deg; H) and the lens is interchangeable. For the
+<strong>surround ring</strong> the cameras do not need to match anything &mdash; each is its own
+sensor covering its own arc. Pick lenses so the arcs overlap slightly and the ring closes, and
+declare each camera's real FOV, lens projection and mounting bearing in its <code>--camera</code>
+spec.</p>
+
+<div class="note caveat">
+  <span class="label">Open decision</span>
+  <p><strong>RGB count and lens FOV are still to be decided</strong>, and that choice is what decides
+  whether the ring closes. The UW thermal already covers the forward 160&deg;, so the RGB ring mainly
+  owns the sides and rear. <code>zvision -v</code> prints the resulting blind sectors.</p>
+</div>
+
+<p>If the forward RGB is co-mounted with the thermal, alignment is a one-time software job: mount
+both rigidly on one bracket, close together (small baseline), same look direction, then a fixed 2D
+scale/offset/rotation registers the frames. At 10&ndash;30&nbsp;m the parallax from a few-cm baseline
+is negligible, so no stereo rig is needed. (Note the older &ldquo;match the FOVs&rdquo; advice is
+obsolete &mdash; it was written for the 57&deg; Lepton 3.5.)</p>
+
+<h3>Headlights vs an IR illuminator</h3>
+
+<p>Halogen headlights emit strong near-IR (700&ndash;1100&nbsp;nm) that a no-IR-cut IMX462 sees well.
+<strong>LED headlights emit almost no IR</strong> (phosphor-white), so they help the RGB only with
+visible light. Either way it barely matters: at night the <strong>thermal is the primary detector and
+needs zero illumination</strong>, and the headlights light the scene for the RGB regardless. So the
+illuminator is genuinely optional &mdash; its only unique value (invisible 940&nbsp;nm
+&ldquo;stealth&rdquo; light) is moot on a headlight-on art car.</p>
+
+<h2 id="cooling">Cooling, venting and paint</h2>
+
+<div class="note">
+  <span class="label">Vent &mdash; yes, but a membrane, not a hole</span>
+  <p>A fully sealed box becomes a sun-baked pressure cooker and pumps moisture as it heats and cools;
+  an open vent lets playa dust straight in. A <strong>Gore/ePTFE breather vent</strong> equalises
+  pressure and lets humidity out while blocking water <em>and</em> dust. One per box.</p>
+</div>
+
+<ul>
+<li><strong>Camera pod</strong> &mdash; the cameras are low-power (~1&ndash;2&nbsp;W each); the heat
+is almost all <em>solar</em>. Light/reflective paint + the sun shroud + bolting the boards to the
+aluminium body + a Gore vent is enough. <strong>No fan needed.</strong> Keeping it cool also protects
+thermal image quality: the Lepton's sensor drifts when its body runs hot, not just at the survival
+limit.</li>
+<li><strong>Jetson box</strong> &mdash; this is the real heat (~25&nbsp;W) and must be actively
+managed. <strong>Shade it</strong> (the single biggest win; it does not need to be at the cameras,
+thanks to the USB tether), give it filtered airflow, and sanity-check with <code>tegrastats</code> in
+the sun &mdash; the SoC throttles around 85&ndash;90&nbsp;&deg;C.</li>
+<li><strong>Keep the Jetson in its OWN vented box</strong>, not the sealed camera pod.</li>
+</ul>
+
+<div class="note caveat">
+  <span class="label">Thermal reality check</span>
+  <p>The carrier board spec rates the dev kit at <span class="val">0&nbsp;&deg;C to
+  35&nbsp;&deg;C</span> ambient. Playa daytime runs <span class="val">38&ndash;40&nbsp;&deg;C</span>
+  &mdash; <em>above</em> the rated range. The shaded mount, the aluminium case and a vented (not
+  sealed) box are therefore load-bearing, not nice-to-have.</p>
+</div>
+
+<p><strong>Paint</strong> &mdash; fluorescent green is a good call, since a light colour reflects sun
+and so helps cooling. But <strong>mask BOTH windows first</strong>: paint is 100&nbsp;% opaque to
+LWIR, so even a thin coat kills the thermal, and it obviously blocks the RGB. Do not paint over the
+Gore vent or a fan intake. Fluorescent pigments fade under playa UV &mdash; cosmetic only.</p>
+
+<h2 id="power">Power and wiring</h2>
+
+<pre class="diagram"><code> 12V vehicle &#9472;&#9472;&#9658; DC-DC 12&#8594;19V &#9472;&#9472;&#9658; Jetson barrel
+                                    &#9474;
+   Lepton/PureThermal &#9472;&#9472;USB&#9472;&#9472;&#9658;  Jetson  &#9472;&#9472;Ethernet&#9472;&#9472;&#9658; travel router &#9472;&#9472;&#9658; tablets
+   USB webcam &#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;USB&#9472;&#9472;&#9658;      &#9474; (or M.2 AX210 WiFi)
+                                    &#9492;&#9472; NVMe SSD (boot)</code></pre>
+
+<div class="note bug">
+  <span class="label">Never wire raw 12&nbsp;V to the barrel</span>
+  <p>The carrier accepts 9&ndash;20&nbsp;V but wants <strong>19&nbsp;V</strong> for full MAXN, and
+  vehicle 12&nbsp;V dips below 9&nbsp;V on cranking and spikes on load-dump. Use a rugged DC-DC to a
+  clean, stable <strong>19&nbsp;V, &ge;4&nbsp;A</strong> on a <strong>fused</strong> feed. A sealed
+  boost needs <strong>a fuse (~10&nbsp;A) plus an automotive load-dump TVS</strong> on its input
+  &mdash; a boost passes a 40&nbsp;V spike straight through; the TVS clamps it. A true buck-boost is
+  the alternative.</p>
+</div>
+
+<p><strong>Draw:</strong> Orin Nano Super in MAXN is up to ~25&nbsp;W; add ~2&ndash;5&nbsp;W for two
+USB cameras. Budget ~40&nbsp;W continuous (&asymp;2&nbsp;A @ 19&nbsp;V).</p>
+
+<h2 id="assembly">Assembly order</h2>
+
+<p>Each step is verifiable before the next. The assembly diagram is
+<code class="path">jetson/sensor-pod-assembly.svg</code> in the repository.</p>
+
+<ol>
+<li><strong>Bench-flash the Jetson</strong> &mdash; JetPack, MAXN-Super power mode; confirm
+<code>zvision --source fake</code> lights a tablet's DRIVER HUD. That proves compute + bus + HUD
+before any optics are involved.</li>
+<li><strong>Mount both cameras</strong> rigidly on the front plate, small baseline, each aligned to
+its own port.</li>
+<li><strong>Seat and edge-seal the windows</strong> &mdash; germanium close to the Lepton lens, RGB
+glass in its port, on O-rings or high-temp RTV; keep sealant off the clear apertures.</li>
+<li><strong>Fit a Gore vent</strong> to each box.</li>
+<li><strong>Mask BOTH windows</strong>, paint the pod, cure, unmask.</li>
+<li><strong>Mount</strong> &mdash; pod top-centre facing travel on the vibration-isolated bracket;
+Jetson box shaded and vented; USB-tether the cameras.</li>
+<li><strong>Wire</strong> &mdash; power 12&nbsp;V &rarr; DC-DC &rarr; 19&nbsp;V; network Ethernet or
+AX210.</li>
+<li><strong>Heat check</strong> &mdash; <code>tegrastats</code> in the sun; confirm every camera
+enumerates with <code>v4l2-ctl --list-devices</code>; give each one a <code>--camera</code> spec with
+its <em>measured</em> mounting bearing, FOV and lens model, and check the verbose banner reports the
+blind sectors you expect.</li>
+<li><strong>Verify end to end</strong> &mdash; <code>--source thermal</code> (+ rgb), walk in front,
+confirm contacts on the DRIVER HUD.</li>
+</ol>
+
+<h2 id="checklist">Environmental checklist</h2>
+
+<ul>
+<li>Enclosure sealed against dust (gaskets + cable glands)</li>
+<li>Cooling path that does not ingest raw dust</li>
+<li>SSD boot (not SD) + a spare &mdash; SD cards die from vehicle vibration and playa heat</li>
+<li>Every connector strain-relieved and taped</li>
+<li>Power converter fused on the 12&nbsp;V side</li>
+<li>Cameras behind a cleanable window if enclosed; the thermal needs an IR-transmissive window
+(germanium / HDPE), <strong>not glass</strong></li>
+<li>RGB + thermal co-mounted rigidly on one bracket (small baseline)</li>
+<li>Cameras at top-centre facing the direction of travel</li>
+</ul>
+
+<div class="note">
+  <span class="label">GPS is not on this box</span>
+  <p>GPS and telemetry are the <a href="../beacon/index.html">sensor hub</a> node (the XCover phone
+  now, a Pi later), <em>not</em> the Jetson &mdash; the roof GPS antenna belongs to that box. The
+  Jetson is vision-only. Both broadcast on the same fleet bus.</p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>jetson/HARDWARE.md</code> &middot; <code>jetson/DEPLOY.md &sect;7b</code> &middot; <code>docs/DEVICES.md &sect;4</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../jetson/zdeck.html"><span class="pager-dir">Previous</span><span class="pager-name">zdeck: control surface</span></a><a class="next" href="../jetson/deploy.html"><span class="pager-dir">Next</span><span class="pager-name">Bring-up runbook</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

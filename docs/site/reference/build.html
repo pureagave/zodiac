@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build, test and CI · Zodiac</title>
+<meta name="description" content="Toolchain, modules, test counts, lint gates, CI workflows and tablet deployment for all three parts of Zodiac.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Reference <span aria-hidden="true">/</span> <em>Build, test, CI</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html" aria-current="page">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">Reference</p>
+<h1>Build, test and CI</h1>
+<p class="standfirst">Covers all three parts. Run the Android line before <strong>every</strong> commit &mdash;
+    those are the CI gates plus Android Lint, and the project's rule is that <code>main</code> stays
+    green.</p>
+<div class="prose">
+
+
+<pre><code>./gradlew ktlintCheck detekt lintDebug testDebugUnitTest assembleDebug   # Android, both modules
+cd jetson &amp;&amp; python3 -m unittest discover -s tests -t .                  # edge box</code></pre>
+
+<h2 id="toolchain">Toolchain</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>Version</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><th>Kotlin</th><td class="num">2.0.21</td><td>With the Compose compiler plugin</td></tr>
+<tr><th>JDK</th><td class="num">17</td><td>Source, target and <code>jvmTarget</code></td></tr>
+<tr><th>Android Gradle Plugin</th><td class="num">8.7.3</td><td></td></tr>
+<tr><th>Gradle</th><td class="num">8.10.2</td><td>Pinned by the wrapper &mdash; always use <code>./gradlew</code></td></tr>
+<tr><th>Compose BOM</th><td class="num">2024.11.00</td><td></td></tr>
+<tr><th>detekt</th><td class="num">1.23.7</td><td>Config at <code class="path">config/detekt/detekt.yml</code></td></tr>
+<tr><th>ktlint plugin</th><td class="num">12.1.2</td><td>Android mode, <code>ignoreFailures = false</code></td></tr>
+<tr><th>Python</th><td class="num">&ge; 3.8</td><td><code>zvision</code> core is standard-library only</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+  <span class="label">Java and the Android SDK are frequently not on PATH</span>
+  <p>If <code>./gradlew</code> cannot find them, set them inline per command:</p>
+  <pre><code>JAVA_HOME=/path/to/jdk-17 ANDROID_HOME=/path/to/android-sdk ./gradlew ...</code></pre>
+  <p><code>adb</code> lives at <code class="path">$ANDROID_HOME/platform-tools/adb</code>.</p>
+</div>
+
+<h3><code>local.properties</code></h3>
+
+<p>Gitignored, and optional. <code>app/build.gradle.kts</code> reads one key from it:</p>
+
+<pre><code>BM_API_KEY=&lt;burning man api key&gt;</code></pre>
+
+<p>Absent &mdash; as on CI &mdash; the key compiles to <code>""</code> and the Burning Man discovery
+fetch fails its HTTP call. That is not fatal: <code>DiscoveryRepository</code> keeps serving whatever
+is in its on-disk cache and logs the failure. Art and camp markers simply never appear.</p>
+
+<h2 id="modules">Modules</h2>
+
+<p><code>settings.gradle.kts</code> includes two Android modules; <code class="path">jetson/</code> is
+not a Gradle project.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Module</th><th>Package</th><th class="num">minSdk</th><th class="num">target / compile</th><th>Version</th></tr></thead>
+<tbody>
+<tr><th><code>:app</code></th><td><code>org.pureagave.zodiac.control</code></td><td class="num"><strong>28</strong> (Android 9 / Fire OS 7)</td><td class="num">35</td><td class="num">1 / 0.1.0</td></tr>
+<tr><th><code>:beacon</code></th><td><code>org.pureagave.zodiac.beacon</code></td><td class="num"><strong>29</strong> (the XCover Pro is Android 10)</td><td class="num">35</td><td class="num">1 / 0.1.0</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><code>:app</code> is <code>screenOrientation="fullUser"</code> &mdash; each concept reflows for
+landscape or portrait, so it runs on a portrait-mounted small tablet too.</p>
+
+<p>minSdk 28 exists so the Fire HD 10 9th gen and Fire HD 8 10th gen can serve as passenger displays.
+Nothing in the app needs 30; every API gate in the code is &ge;&nbsp;31. Older 8&Prime; Fires are
+Fire OS 6/5 (API 25/22) and would need a further drop &mdash; check any candidate with
+<code>adb shell getprop ro.build.version.sdk</code>.</p>
+
+<h2 id="commands">Android commands</h2>
+
+<pre><code>./gradlew assembleDebug              # build both debug APKs
+./gradlew testDebugUnitTest          # unit tests, both modules
+./gradlew detekt                     # static analysis
+./gradlew ktlintCheck                # style check
+./gradlew ktlintFormat               # auto-fix style
+./gradlew lintDebug                  # Android Lint (manifest / permission / API)
+./gradlew assembleRelease            # R8 minify + resource shrink</code></pre>
+
+<p>Prefix a task with a module to scope it: <code>./gradlew :beacon:testDebugUnitTest</code>.</p>
+
+<h2 id="tests">Test counts</h2>
+
+<p>Measured 2026-08-10, all green.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Suite</th><th class="num">Classes</th><th class="num">Tests</th></tr></thead>
+<tbody>
+<tr><th><code>:app</code></th><td class="num">76</td><td class="num">817</td></tr>
+<tr><th><code>:beacon</code></th><td class="num">13</td><td class="num">77</td></tr>
+<tr><th><code>jetson</code></th><td class="num">19 files</td><td class="num">429</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Android tests are JUnit 4 with <code>kotlinx-coroutines-test</code> (<code>runTest</code>,
+<code>advanceUntilIdle</code>) and a <code>MainDispatcherRule</code> <code>TestWatcher</code> for
+dispatcher setup. Four <code>:beacon</code> suites use Robolectric; because
+<code>TelemetryBroadcaster</code> is a process singleton they all stop it and clear the injected GPS
+handle in <code>@After</code>.</p>
+
+<div class="note">
+  <span class="label">The suites are not self-contained &mdash; they need the repository root</span>
+  <p>Both <code>ThreatProtocolGoldenTest</code> (Kotlin) and
+  <code>test_threat_protocol_golden.py</code> (Python) resolve
+  <code class="path">protocol/threat-protocol-golden.json</code> at the repository root and
+  <strong>fail loudly</strong> if it is missing &mdash; with the paths they tried, rather than a bare
+  <code>FileNotFoundException</code>. Run from a full checkout, not a copy of
+  <code class="path">jetson/</code> alone.</p>
+</div>
+
+<p><code>tests/test_service_config.py</code> parses the actual shipped
+<code>systemd/zvision.service</code> and <code>scripts/install.sh</code> and pins their contents
+&mdash; the <code>EnvironmentFile</code> not being <code>-</code>-prefixed,
+<code>StartLimitIntervalSec=0</code> living in <code>[Unit]</code>, <code>Restart=always</code>, the
+working directory, and that <code>install.sh</code> writes its config before restarting the
+service.</p>
+
+<h2 id="lint">Lint and static analysis</h2>
+
+<ul>
+<li><strong>ktlint</strong> &mdash; Android mode, strict. Fails the build on any violation.</li>
+<li><strong>detekt</strong> &mdash; built on the default config. <code>MagicNumber</code>,
+<code>MaxLineLength</code> and <code>LongMethod</code> are off; <code>ReturnCount</code> is relaxed to
+3 for guard-clause validation; <code>LongParameterList</code> and <code>TooManyFunctions</code> are
+raised with a written rationale for each. Broad <code>catch (Exception)</code> at hardware and IO
+boundaries is <code>@Suppress</code>ed locally with a reason rather than disabled as a rule.</li>
+<li><strong>Android Lint</strong> &mdash; <code>abortOnError = true</code> in <strong>both</strong>
+modules. Warnings still only report; only errors abort.</li>
+</ul>
+
+<div class="note">
+  <span class="label">Split the file, don't bump the number</span>
+  <p>A standing rule. <code>TooManyFunctions</code> had been bumped 24&nbsp;&rarr;&nbsp;25 for one
+  method; it was reverted to <span class="val">22</span> and the ViewModel split into three delegates
+  instead. That instinct has caught real organisation problems four times.</p>
+</div>
+
+<h2 id="release">Release builds</h2>
+
+<p><code>:app</code> release runs R8 shrink plus resource shrinking
+(<span class="val">~36&nbsp;MB &rarr; ~2.4&nbsp;MB</span>). <code>proguard-rules.pro</code> keeps the
+<code>usb-serial-for-android</code> driver classes that the prober resolves reflectively at
+runtime.</p>
+
+<p>Signing is opt-in: set <code>ZODIAC_KEYSTORE_FILE</code>, <code>ZODIAC_KEYSTORE_PASSWORD</code>,
+<code>ZODIAC_KEY_ALIAS</code> and <code>ZODIAC_KEY_PASSWORD</code> (environment variables, or the
+matching <code>zodiac.*</code> Gradle properties). Without them the release builds
+<strong>unsigned</strong> &mdash; R8 still runs, so CI and local builds can verify shrinking with no
+keystore.</p>
+
+<div class="note caveat">
+  <span class="label">Unverified</span>
+  <p><strong>Validate the R8-shrunk APK on a real tablet before fleet distribution. This has not been
+  done.</strong></p>
+</div>
+
+<p><code>:beacon</code> release does <strong>not</strong> minify and has no ProGuard rules.</p>
+
+<h2 id="jetson">jetson &mdash; zvision and zdeck</h2>
+
+<pre><code>cd jetson
+python3 -m unittest discover -s tests -t .</code></pre>
+
+<p>Pure <code>unittest</code>, no pytest. The suite runs with <strong>no</strong> <code>numpy</code>,
+<code>opencv</code>, <code>StreamDeck</code> or <code>PIL</code> installed &mdash;
+<code>zvision/normalize.py</code> exists precisely so the array-free arithmetic is testable without
+them.</p>
+
+<h3>Running without hardware</h3>
+
+<pre><code>python3 -m zvision --source fake -v      # synthetic contacts on the real bus
+python3 -m zvision --check --camera thermal:/dev/video0:az=0:fov=160</code></pre>
+
+<p><code>--source fake</code> needs nothing installed and is how the bus and the DRIVER HUD are
+proved before any camera exists. <code>--check</code> validates the whole configuration, prints the
+resolved rig and its blind arcs, and exits <strong>without</strong> opening a camera or touching the
+network &mdash; run it before writing anything into <code class="path">/etc/default/zvision</code>,
+because the service is <code>Restart=always</code> and an unvalidated typo is a crash loop.</p>
+
+<h3>Dependencies</h3>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Component</th><th>Needs</th></tr></thead>
+<tbody>
+<tr><th><code>zvision</code> core</th><td><strong>None.</strong> Standard library only</td></tr>
+<tr><th>Optional <code>camera</code> extra</th><td><code>numpy&ge;1.24</code>, <code>opencv-python&ge;4.8</code>, imported lazily</td></tr>
+<tr><th><code>zdeck</code></th><td><code>streamdeck</code> + <code>pillow</code>, in a separate venv on the box</td></tr>
+<tr><th>DMX output</th><td>The apt package <code>ola</code> (<code>olad</code>); no Python OLA binding is used</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+  <span class="label">On the Jetson, do not <code>pip install opencv-python</code></span>
+  <p>If a CUDA-enabled build is already present, pip shadows it.
+  <a href="../jetson/deploy.html">The deploy runbook</a> records the measured state of a fresh
+  JetPack image and what actually needs installing &mdash; follow that over the comment in
+  <code>requirements.txt</code>.</p>
+</div>
+
+<h2 id="ci">CI</h2>
+
+<p>Two GitHub Actions workflows, both on push and pull request to <code>main</code>.</p>
+
+<h3><code>android-ci.yml</code></h3>
+
+<p>Ubuntu, JDK 17 (Temurin), Android SDK, the project's Gradle wrapper. Five steps, in order, and
+<strong>unscoped</strong> so both modules are covered:</p>
+
+<ol>
+<li><code>./gradlew ktlintCheck</code></li>
+<li><code>./gradlew detekt</code></li>
+<li><code>./gradlew lintDebug</code></li>
+<li><code>./gradlew testDebugUnitTest</code></li>
+<li><code>./gradlew assembleDebug</code></li>
+</ol>
+
+<div class="note bug">
+  <span class="label">These were <code>:app:</code>-scoped until 2026-08-10</span>
+  <p>Which meant <code>:beacon</code> was built and tested by nobody but the author &mdash; on the one
+  module that must survive a reboot unattended for a week. <strong>Run them unscoped locally
+  too</strong>: an <code>:app:</code>-prefixed task silently skips the beacon, which is exactly how
+  the gap survived.</p>
+</div>
+
+<h3><code>jetson-ci.yml</code></h3>
+
+<p>Path-filtered to <code class="path">jetson/**</code>, <code class="path">protocol/**</code> and the
+workflow file itself. Python 3.11, no install step:</p>
+
+<ol>
+<li><code>python -m unittest discover -s tests -t . -v</code></li>
+<li><code>python -m zvision --once -v</code> &mdash; a byte-check that the runner emits a frame</li>
+</ol>
+
+<p>The <code class="path">protocol/**</code> filter is deliberate: a change to the ZTHREAT golden
+corpus must re-run the Python half of the contract, not just the Kotlin half.
+<a href="../protocols/golden-corpus.html">Why &rarr;</a></p>
+
+<h2 id="deploy">Deploying to a tablet</h2>
+
+<pre><code>adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -W -n org.pureagave.zodiac.control/.MainActivity</code></pre>
+
+<p>Or <code>./gradlew installDebug</code>. Grant runtime permissions up front to skip the
+first-launch dialogs:</p>
+
+<pre><code>adb shell pm grant org.pureagave.zodiac.control android.permission.ACCESS_FINE_LOCATION
+adb shell pm grant org.pureagave.zodiac.control android.permission.ACCESS_COARSE_LOCATION
+adb shell pm grant org.pureagave.zodiac.control android.permission.BLUETOOTH_CONNECT
+adb shell pm grant org.pureagave.zodiac.control android.permission.BLUETOOTH_SCAN</code></pre>
+
+<p>Screenshot the app framebuffer with <code>adb exec-out screencap -p &gt; out.png</code>. After
+<code>am start</code> the first capture can race the launch transition and catch the home screen
+&mdash; confirm focus with <code>adb shell dumpsys window | grep mCurrentFocus</code>, then
+re-capture.</p>
+
+<p>Per-device quirks &mdash; DeX windowing on the S9+, wireless-debugging-only pairing on the A54,
+OLED brightness discipline during testing &mdash; are in
+<a href="../system/devices.html">Devices and roles</a>.</p>
+
+<h2 id="conventions">Repository conventions</h2>
+
+<ul>
+<li><strong><code>SYNC.md</code> is append-only.</strong> Anything significant that is decided,
+learned or built gets a dated entry, newest on top. Never rewrite a past entry &mdash; supersede it
+with a new one.</li>
+<li><strong><code>README.md</code> is the current-state snapshot</strong>, not a changelog. Update it
+when a major feature ships or the architecture changes.</li>
+<li><strong>Commit in small runnable increments</strong> and keep <code>main</code> green. Phased
+features get phased commits &mdash; data, then render, then integrate &mdash; each leaving the app
+runnable.</li>
+<li><strong>Push after each phase commit.</strong> CI runs the same gates upstream, so anything green
+locally should stay green.</li>
+<li>Pause and confirm before any destructive remote operation (force-push, branch delete, history
+rewrite).</li>
+<li>Where a doc and the code disagree, <strong>the code wins</strong> &mdash; fix the doc and say so
+in <code>SYNC.md</code>.</li>
+</ul>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>docs/BUILD.md</code> &middot; <code>CLAUDE.md</code> &middot; <code>docs/README.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../jetson/deploy.html"><span class="pager-dir">Previous</span><span class="pager-name">Bring-up runbook</span></a><a class="next" href="../reference/kiosk.html"><span class="pager-dir">Next</span><span class="pager-name">Kiosk provisioning</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

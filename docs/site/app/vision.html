@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threats and the DRIVER HUD · Zodiac</title>
+<meta name="description" content="How the tablet consumes ZTHREAT frames and turns them into the driver&#x27;s night HUD, including the coverage-arc honesty rule.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :app — the cockpit <span aria-hidden="true">/</span> <em>Threats &amp; the DRIVER HUD</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html" aria-current="page">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:app &#183; the cockpit</p>
+<h1>Threats and the DRIVER HUD</h1>
+<p class="standfirst">The tablet consumes <code>ZTHREAT</code> frames from the Jetson and turns them into the one
+    display in this system with a safety job. Every decision behind that display lives in
+    <code>core/vision/SurroundRing</code>, with tests &mdash; not in the draw code.</p>
+<div class="prose">
+
+
+<h2 id="sources">Threat sources</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Type</th><th>Role</th></tr></thead>
+<tbody>
+<tr><th><code>ThreatSource</code></th><td><code>threats: StateFlow&lt;List&lt;DriverThreat&gt;&gt;</code> + <code>feedAlive: StateFlow&lt;Boolean&gt;</code></td></tr>
+<tr><th><code>NetworkThreatSource</code></th><td>Listens on <code>239.7.7.20:10120</code>, <span class="val">1.5&nbsp;s</span> staleness watchdog</td></tr>
+<tr><th><code>FakeThreatSource</code></th><td>Three synthetic contacts including a recurring collision</td></tr>
+<tr><th><code>RoutedThreatSource</code></th><td>Picks live or demo, derives <code>VisionFeed</code> = <code>LIVE</code> / <code>DEMO</code> / <code>ABSENT</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note bug">
+  <span class="label">Why demoEnabled has no default value</span>
+  <p>It once defaulted to <code>true</code> and production never overrode it, which put three
+  fabricated contacts &mdash; one flagged as a collision course &mdash; on the driver's night HUD
+  whenever the Jetson died. The default was <strong>removed</strong> so no call site can forget to
+  decide; <code>ZodiacApplication</code> passes <code>false</code>, and the compiler enforces it.
+  An empty-but-live feed is a real all-clear and must never trigger the demo fallback.</p>
+</div>
+
+<p><code>VisionFeed</code> is surfaced, not hidden: the HUD status line reads <code>DEMO</code>
+explicitly, the surround ring's rim goes dotted, and the passenger &ldquo;souls detected&rdquo; card
+is dropped entirely unless the feed is <code>LIVE</code>. <strong>The word <code>CLEAR</code> may
+only appear when the feed is <code>LIVE</code>.</strong></p>
+
+<h2 id="ring">SurroundRing &mdash; all the decisions, none of the pixels</h2>
+
+<p><code>core/vision/SurroundRing</code> holds bearing wrap, sector and band classification, angular
+clustering with hysteresis, the brake and check-rear rules, and the five-state status precedence.
+<code>ui/concepts/SurroundRingCanvas</code> draws it and nothing else.</p>
+
+<h3>Bands, not a radius</h3>
+
+<p><code>radiusFraction = 1 - size</code> was rejected as misleading. Radius on a plan view is read
+<strong>metrically</strong>, and apparent thermal size cannot support that: a child at 5&nbsp;m and
+an adult at 12&nbsp;m have the same apparent size, someone prone or on a bike does not scale the
+same way, and apparent size goes as ~1/r so a linear mapping distorts closure rate into apparent
+acceleration.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Band</th><th class="num">size</th><th class="num">radiusFraction</th></tr></thead>
+<tbody>
+<tr><th><code>FAR</code></th><td class="num">&lt; 0.33</td><td class="num">1.00</td></tr>
+<tr><th><code>MID</code></th><td class="num">&lt; 0.66</td><td class="num">0.66</td></tr>
+<tr><th><code>NEAR</code></th><td class="num">else</td><td class="num">0.34</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Ordinal reads as &ldquo;nearer than that one, roughly&rdquo; and stops the metric reading cold.
+The <span class="val">0.34</span> floor also clears the reticle arms (~0.15&nbsp;R), which the old
+<span class="val">0.18</span> floor did not. <strong>Radius is sensor prominence, not
+distance</strong>, and the KDoc says so.</p>
+
+<h3>Clustering</h3>
+
+<p>Thirty dots tell a driver nothing. Contacts sharing a <code>Band</code> within
+<code>CLUSTER_DEG = 15f</code> merge into one mark, so &ldquo;crowd on the port bow&rdquo; renders as
+one legible thing. <code>MAX_BLIPS = 12</code> remains as a backstop.</p>
+
+<ul>
+<li><strong>Collision contacts are never merged</strong> &mdash; each stays individually drawn.</li>
+<li>Mean bearing is computed <strong>circularly</strong> (mean of unit vectors), or a group
+straddling &plusmn;180 would average to dead ahead. That is a real case: a crowd behind the
+vehicle.</li>
+<li><code>memberCount &gt; 1</code> renders heavier, never as a printed number &mdash; text is
+head-down reading.</li>
+</ul>
+
+<h3>Hysteresis</h3>
+
+<p><code>blips()</code> re-sorts every frame, so with noisy <code>size</code> estimates the cap
+boundary would flicker and marks would pop in and out &mdash; more attention-grabbing than any real
+signal. An incumbent must fall below a challenger by <code>SWITCH_MARGIN = 0.08f</code> before being
+displaced. Ad-hoc <code>id = 0</code> contacts never latch: they have no stable identity. This
+mirrors <code>tracker.py</code>'s <code>switch_margin</code>, which solves the same problem for the
+DMX head.</p>
+
+<h3 id="brake">Speed-gated braking</h3>
+
+<div class="note">
+  <span class="label">People deliberately walk up to art cars</span>
+  <p>That is what art cars are for. Every one of them is a constant-bearing, looming track, so
+  <code>brakeAdvised</code> would latch continuously while parked or boarding, and the driver would
+  have fully tuned it out by the time it mattered at 8&nbsp;km/h on open playa.</p>
+  <p><code>BRAKE_MIN_KPH = 5f</code>. Below that the imperative goes quiet &mdash; <strong>contacts
+  still draw, and collision blips still render red.</strong> Only the instruction is suppressed,
+  because below a walking pace the driver can stop trivially.</p>
+</div>
+
+<p><code>brakeAdvised</code> reads <code>effectiveSpeedKph</code>
+(<code>gpsSpeedKph ?: speedKph</code>). That is load-bearing: the gate previously read only the
+debug chips' speed, whose sole writer is the control-strip SPD chip, so on a real drive it was
+<span class="val">0</span> forever and neither <code>! BRAKE !</code> nor the
+<code>! COLLISION COURSE !</code> banner could ever fire. The rear alert has no speed gate, which is
+exactly why the bench verification passed.</p>
+
+<p><code>DriverAlerts</code> latches both alerts through <code>AlarmLatch</code> (instant attack,
+<span class="val">1.5&nbsp;s</span> release) so a one-frame contact cannot produce a one-frame
+warning.</p>
+
+<h2 id="coverage">Coverage arcs &mdash; the ring must not lie</h2>
+
+<p>The rig is one forward ultra-wide thermal, not a closed ring. <code>zvision</code> already
+computes blind sectors and <code>ThreatProtocol</code> puts <strong>none of it on the wire</strong>.
+A complete rim with an empty rear quadrant would read &ldquo;nothing behind you&rdquo; when the
+truth is &ldquo;nothing <em>watching</em> behind you&rdquo;.</p>
+
+<pre><code>// Bearings the sensor rig actually watches, as (from, to) inclusive in &plusmn;180.
+// MUST be kept in step with the Jetson's --camera rig spec; there is no wire
+// field for this yet, so this constant is the only thing keeping the ring honest.
+val COVERED_ARCS: List&lt;ClosedFloatingPointRange&lt;Float&gt;&gt; = listOf(-64f..64f)</code></pre>
+
+<p>An uncovered sector must <strong>never</strong> render identically to a watched-and-clear one.
+Uncovered arcs draw as a <em>dotted</em> rim rather than a solid one.</p>
+
+<div class="note bug">
+  <span class="label">Open bug &mdash; this constant and the Jetson disagree</span>
+  <p>The tablet carries <span class="val">&plusmn;64&deg;</span>. <code>zvision</code>'s
+  <code>--fov-ref</code> defaults to <code>h</code> and every documented example rig omits
+  <code>fovref=d</code>, so the Python side computes bearings as if the camera covered
+  <span class="val">&plusmn;80&deg;</span> &mdash; <strong>up to 16&deg; of disagreement at the
+  frame edge.</strong> <a href="../protocols/fov-discrepancy.html">Full detail &rarr;</a></p>
+</div>
+
+<h2 id="status">Status line and banner</h2>
+
+<p>Evaluated over <strong>all</strong> threats, not the forward-filtered list.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Condition</th><th>Text</th><th>Colour</th></tr></thead>
+<tbody>
+<tr><td><code>visionFeed == ABSENT</code></td><td><code>NO VISION</code></td><td><code>NightRed</code></td></tr>
+<tr><td><code>brakeAdvised(all, speedKph)</code></td><td><code>! BRAKE !&nbsp;&nbsp;&nbsp;n CONTACTS</code></td><td><code>NightRed</code></td></tr>
+<tr><td><code>rearAlert(all)</code></td><td><code>! CHECK REAR !&nbsp;&nbsp;&nbsp;n CONTACTS</code></td><td><code>NightRed</code></td></tr>
+<tr><td><code>visionFeed == DEMO</code></td><td><code>n CONTACTS&nbsp;&nbsp;&nbsp;DEMO</code></td><td><code>NightGreen</code></td></tr>
+<tr><td>else</td><td><code>n CONTACTS&nbsp;&nbsp;&nbsp;CLEAR</code></td><td><code>NightGreen</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<ul>
+<li>The count must never disappear during an alert &mdash; losing it at the busiest moment is
+backwards, and it is what keeps clustering honest.</li>
+<li><code>! CHECK REAR !</code>, not <code>! REAR !</code>: an imperative matching
+<code>! BRAKE !</code>. A bare noun reads as a fragment at 3am.</li>
+<li>A simultaneous forward + rear collision shows <code>! BRAKE !</code> &mdash; braking is the more
+urgent instruction.</li>
+<li>The centre banner is the <strong>primary</strong> alert channel because it is big and
+preattentive; the bottom-left status line is secondary. A rear collision gets the status line and
+<strong>no</strong> centre banner &mdash; a centre-screen flash for something astern is exactly the
+mistrust-training problem.</li>
+</ul>
+
+<h2 id="zorder">Z-order</h2>
+
+<p>Rear blips land near the bottom of the ring, which is exactly where near forward figures' feet
+are drawn. Resolved by paint order, not by moving things:</p>
+
+<ol>
+<li>Perspective grid</li>
+<li>Ring furniture (rim, ticks, coverage, wedge, hull)</li>
+<li>Non-collision blips</li>
+<li>Wireframe figures</li>
+<li><strong>Collision blips</strong> &mdash; the only thing allowed to punch through a figure</li>
+<li>Reticle, text</li>
+</ol>
+
+<p>A figure occluding its own blip is correct: the figure <em>is</em> the detail view for that
+contact. A collision mark is never occluded.</p>
+
+<h2 id="night">Night discipline</h2>
+
+<ul>
+<li>Static furniture is <code>NightGrid</code> (<code>#00421E</code>) <strong>only</strong> &mdash;
+never <code>NightGreen</code>.</li>
+<li>No fills except the hull outline and collision blip interiors.</li>
+<li>Nothing in white, yellow or amber. Palette stays green / red / purple.</li>
+<li>The ring must barely raise the steady-state lit area; blips carry the signal.</li>
+<li>Collision blips get a radial spoke drawn <em>outward</em>, so a closing contact is findable by
+<strong>shape</strong>, not only by colour &mdash; red-on-black at low brightness is not a reliable
+sole channel.</li>
+<li>The ring is <strong>always on</strong>. An alarm-only ring is a ring the driver has never
+learned to read, and the ring's steady presence is the only place sensor health can live. Solid =
+watching, dotted = blind or demo. An empty healthy ring <em>is</em> information.</li>
+<li>The ring sits inside <code>burnInScaffold</code> and inherits pixel-shift; it adds no
+independent animation.</li>
+</ul>
+
+<h2 id="known">Known limitations, documented rather than fixed</h2>
+
+<div class="note caveat">
+  <span class="label">By decision</span>
+  <ul>
+    <li><strong>Reversing.</strong> Art cars back up. In reverse the entire brake / rear logic
+    inverts and there is no gear signal. Stated in the <code>SurroundRing</code> KDoc so it becomes
+    a spotter-procedure item rather than a surprise.</li>
+    <li><strong>Contact coasting.</strong> Thermal tracks drop out on occlusion. A person who
+    vanishes at 3&nbsp;m vanishes from the ring instantly rather than fading. <em>Do not add
+    tablet-side coasting until the Jetson's track-id churn is fixed</em> &mdash; coasting by id
+    while the producer churns ids draws one person as two.</li>
+    <li><strong>The two views disagree about &ldquo;how far left&rdquo;.</strong> A forward contact's
+    ring angle is its true bearing, but its figure x uses the 28&deg; perspective magnification, so
+    at az 20&deg; the figure sits at 79&nbsp;% screen width while the blip is 20&deg; off vertical.
+    Fixing that needs the perspective mapping redone; an ad-hoc fix is explicitly warned against.</li>
+    <li><strong>A person walking parallel to the car at matched speed abeam</strong> is a textbook
+    constant-bearing track and will flag. That belongs Jetson-side.</li>
+  </ul>
+</div>
+
+<div class="note caveat">
+  <span class="label">Outstanding &mdash; the acceptance gate</span>
+  <p>All phases of the surround HUD have landed and been verified against real bus traffic. But
+  <strong>nobody has confirmed a <code>#00421E</code> rim and small hollow blips are legible at
+  night brightness, through dust, by someone actually driving.</strong> One evening on-device at
+  real brightness is the acceptance test. Until then this feature is built but
+  <em>not accepted</em>.</p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>design/surround-driver-hud.md</code> &middot; <code>ARCHITECTURE.md &sect;4.7</code> &middot; <code>docs/AUDIT-2026-08-09.md A1, A2</code> &middot; <code>tasks/open.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/map.html"><span class="pager-dir">Previous</span><span class="pager-name">Playa map &amp; navigation</span></a><a class="next" href="../app/burn-in.html"><span class="pager-dir">Next</span><span class="pager-name">OLED burn-in</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

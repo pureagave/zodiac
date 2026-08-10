@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZTHREAT — zvision to tablets · Zodiac</title>
+<meta name="description" content="The ZTHREAT wire format: frame layout, limits, the pinned numeric grammar, and what the consumer does with a frame.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Protocols — the seams <span aria-hidden="true">/</span> <em>ZTHREAT frames</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html" aria-current="page">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">Protocols &#183; the seams</p>
+<h1>ZTHREAT &mdash; zvision to tablets</h1>
+<p class="standfirst">One UDP datagram is exactly one frame of contacts. This is not NMEA: no leading
+    <code>$</code>, no checksum, and a numeric grammar pinned explicitly on both sides &mdash;
+    because a wire format must not inherit its host language's parser.</p>
+<div class="prose">
+
+
+<h2 id="frame">Frame format</h2>
+
+<pre><code>ZTHREAT;&lt;id&gt;:&lt;relAzDeg&gt;:&lt;size&gt;:&lt;collision&gt;;&lt;id&gt;:&lt;relAzDeg&gt;:&lt;size&gt;:&lt;collision&gt;;...</code></pre>
+
+<p>A bare <code>ZTHREAT</code> with no contacts is an explicit <strong>all-clear</strong>, and is
+what the runner emits on shutdown.</p>
+
+<pre><code>ZTHREAT;1:-12.0:0.300:0;2:4.5:0.900:1</code></pre>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><th><code>id</code></th><td>integer</td><td>Track id. <code>0</code> is the &ldquo;unidentified&rdquo; id and never latches the tracker light. Ids are namespaced per camera as <code>camera_index &times; 1000 + local_id</code>.</td></tr>
+<tr><th><code>relAzDeg</code></th><td>fixed-point, 1 decimal</td><td>Bearing relative to the vehicle's nose. <strong>Negative = left, positive = right. Full circle: <span class="val">&plusmn;180</span>.</strong></td></tr>
+<tr><th><code>size</code></th><td>fixed-point, 3 decimals</td><td>Apparent size, <span class="val">0</span> = far &rarr; <span class="val">1</span> = near. A <em>sensor prominence</em> proxy for range, <strong>not</strong> a distance.</td></tr>
+<tr><th><code>collision</code></th><td><code>0</code> or <code>1</code></td><td>Constant-bearing-while-growing collision flag</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>There is no leading <code>$</code> and no checksum &mdash; UDP already carries a checksum, and
+the frame is validated structurally.</p>
+
+<h2 id="limits">Limits</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Constant</th><th class="num">Value</th></tr></thead>
+<tbody>
+<tr><th>Header</th><td class="num">ZTHREAT</td></tr>
+<tr><th>Frame separator</th><td class="num">;</td></tr>
+<tr><th>Field separator</th><td class="num">:</td></tr>
+<tr><th>Fields per contact</th><td class="num">4</td></tr>
+<tr><th>Max absolute azimuth</th><td class="num">180.0</td></tr>
+<tr><th>Max contacts per frame</th><td class="num">32</td></tr>
+<tr><th>Azimuth decimals</th><td class="num">1</td></tr>
+<tr><th>Size decimals</th><td class="num">3</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The 32-contact cap keeps a frame inside one MTU &mdash; a fragmented multicast datagram over
+lossy WiFi essentially never arrives. When a frame would exceed the cap the producer sorts by
+<strong>collision first, then size descending</strong> and truncates, so the contacts that survive
+are the ones that matter.</p>
+
+<p>Bearings past <span class="val">&plusmn;180</span> are garbage rather than rear contacts, and are
+dropped. <code>size</code> is clamped into 0&ndash;1 by the consumer. A malformed
+<code>collision</code> flag never costs the driver a contact &mdash; the body is still drawn, just
+not in collision red; anything that is not exactly <code>"1"</code> is false.</p>
+
+<h2 id="grammar">The numeric grammar is pinned, deliberately</h2>
+
+<pre><code>id      -?[0-9]{1,9}
+number  -?[0-9]{1,9}(\.[0-9]{1,6})?</code></pre>
+
+<p>Both sides check these patterns explicitly rather than delegating to <code>toFloatOrNull</code> /
+<code>float()</code>. <strong>A wire format must not inherit its host language's parser
+quirks.</strong> <code>[0-9]</code> rather than <code>\d</code>, because Python's <code>\d</code>
+also matches Unicode digits and Java's does not.</p>
+
+<p>Framing whitespace is spelled out as exactly <code>" \t\n\r\v\f"</code> on both sides,
+because Kotlin's <code>trim()</code> and Python's <code>strip()</code> disagree about which Unicode
+code points count, and a wire contract cannot depend on that.</p>
+
+<p>Nine integer digits keeps an id inside Int32 and keeps every value far below 32-bit float range,
+so no parsed number can be NaN or infinite.</p>
+
+<h2 id="producer">Producer rules</h2>
+
+<ul>
+<li>Contacts with a non-finite azimuth or size are dropped <strong>at the producer</strong>. A NaN
+would serialise as the literal <code>nan</code>, which both parsers reject anyway &mdash; but a
+producer must keep its own frames well-formed rather than leaning on the consumer's guard being
+there.</li>
+<li>Fixed-point formatting rounds <strong>half-to-even</strong> on both sides. The Kotlin side uses
+<code>BigDecimal</code>, which is locale-independent by construction &mdash;
+<code>String.format</code> would follow the device locale and emit <code>0,300</code>.</li>
+<li>The Kotlin side restores the sign of <code>-0.0</code> from the raw float bits, because
+<code>BigDecimal</code> has no negative zero and would spell it <code>0.0</code> &mdash; and a
+contact a hair to the left of the nose is exactly where that shows up.</li>
+</ul>
+
+<h2 id="consumer">What the consumer does with a frame</h2>
+
+<p><code>NetworkThreatSource</code> publishes the parsed contacts and marks the feed alive. A
+<span class="val">1.5&nbsp;s</span> silence watchdog clears both. <code>RoutedThreatSource</code>
+derives an explicit feed state:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>State</th><th>Meaning</th><th>Shown as</th></tr></thead>
+<tbody>
+<tr><th><code>LIVE</code></th><td>Frames arriving</td><td><code>n CONTACTS&nbsp;&nbsp;&nbsp;CLEAR</code> (or an alert), solid ring rim</td></tr>
+<tr><th><code>DEMO</code></th><td>No frames, synthetic source enabled</td><td><code>n CONTACTS&nbsp;&nbsp;&nbsp;DEMO</code>, dotted grey rim</td></tr>
+<tr><th><code>ABSENT</code></th><td>No frames, no synthetic source</td><td><code>NO VISION</code>, dotted red rim</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+  <span class="label">An empty-but-live frame is a real all-clear</span>
+  <p>It must never trigger the demo fallback. On a deployed vehicle the demo source is disabled, so
+  a dead feed reads <code>ABSENT</code> rather than inventing pedestrians. <em>The word
+  <code>CLEAR</code> may only appear when the feed is <code>LIVE</code>.</em></p>
+</div>
+
+<h2 id="contract">Two hand-written implementations, neither authoritative</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>File</th><th>Role</th></tr></thead>
+<tbody>
+<tr><th>Producer</th><td><code class="path">jetson/zvision/threat_protocol.py</code></td><td><code>format_frame</code> runs on the vehicle</td></tr>
+<tr><th>Consumer</th><td><code class="path">app/&hellip;/core/vision/ThreatProtocol.kt</code></td><td><code>parse</code> runs on the vehicle</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Each also carries the <em>other</em> direction (<code>parse_frame</code> / <code>format</code>)
+purely as a mirror. <strong>Nothing on the vehicle exercises those halves</strong> &mdash; which is
+exactly why they drifted for months without anyone noticing. A cross-language contract rots in
+whichever direction nobody executes.</p>
+
+<p>The shared truth is a measured corpus that both test suites read.
+<a href="golden-corpus.html">The golden corpus &rarr;</a></p>
+
+<h2 id="fov">The bearings themselves are not fully trusted</h2>
+
+<div class="note bug">
+  <span class="label">Open bug</span>
+  <p>Bearings on this channel are computed by <code>zvision</code>'s <code>pixel_to_bearing</code>,
+  which is fed by a <code>--fov-ref</code> flag that defaults to horizontal. The tablet assumes the
+  forward thermal camera covers <span class="val">&plusmn;64&deg;</span>; the Python side currently
+  computes as if it covered <span class="val">&plusmn;80&deg;</span>.
+  <strong>Edge bearings on this wire disagree by up to 16&deg; between the two sides of the
+  vehicle.</strong> <a href="fov-discrepancy.html">Read the full argument &rarr;</a></p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>docs/PROTOCOLS.md &sect;3</code> &middot; <code>protocol/README.md</code> &middot; <code>jetson/DEPLOY.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../protocols/nmea.html"><span class="pager-dir">Previous</span><span class="pager-name">NMEA telemetry</span></a><a class="next" href="../protocols/golden-corpus.html"><span class="pager-dir">Next</span><span class="pager-name">The golden corpus</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

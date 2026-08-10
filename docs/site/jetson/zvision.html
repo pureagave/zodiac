@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zvision — the camera rig · Zodiac</title>
+<meta name="description" content="zvision&#x27;s modules, pipeline, camera declaration, cross-camera fusion, lens models and on-playa tuning knobs.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> jetson/ — the edge box <span aria-hidden="true">/</span> <em>zvision: the camera rig</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html" aria-current="page">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">jetson/ &#183; the edge box</p>
+<h1>zvision &mdash; the camera rig</h1>
+<p class="standfirst">A ring of cameras becomes one full-circle contact list. There is no camera config file:
+    cameras are declared entirely on the command line, because their mounting bearings are a field
+    calibration, not a code constant.</p>
+<div class="prose">
+
+
+<h2 id="modules">Modules</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Module</th><th>Role</th></tr></thead>
+<tbody>
+<tr><th><code>app.py</code></th><td>CLI runner; the broadcast + tracker loop</td></tr>
+<tr><th><code>rig.py</code></th><td>Camera mounts, <code>--camera</code> spec parsing, full-circle merge and overlap dedup, coverage-gap reporting</td></tr>
+<tr><th><code>capture.py</code></th><td><code>UvcCamera</code> and <code>ThermalCamera</code> (cv2)</td></tr>
+<tr><th><code>detector.py</code></th><td><code>Detector</code> protocol, <code>FakeDetector</code>, <code>MotionDetector</code></td></tr>
+<tr><th><code>geometry.py</code></th><td>Pixel &rarr; bearing through a lens model, bbox &rarr; size, constant-bearing collision rule</td></tr>
+<tr><th><code>normalize.py</code></th><td>The array-free arithmetic &mdash; contrast stretch window, track-id assignment, re-baseline guard. Exists so the suite runs without numpy</td></tr>
+<tr><th><code>threat.py</code> / <code>threat_protocol.py</code></th><td>The <code>DriverThreat</code> record and the ZTHREAT wire format</td></tr>
+<tr><th><code>broadcaster.py</code></th><td>UDP sender &mdash; multicast <strong>and</strong> subnet broadcast</td></tr>
+<tr><th><code>fleet_bus.py</code></th><td>Group / port constants, mirrored from Kotlin</td></tr>
+<tr><th><code>tracker.py</code></th><td>DMX target selection, pan/tilt mapping, slew, idle sound show</td></tr>
+<tr><th><code>dmx.py</code></th><td>DMX transport &mdash; <code>FakeDmxSink</code> and <code>OlaDmxSink</code></td></tr>
+<tr><th><code>dmxpark.py</code></th><td>Standalone universe-zeroing fail-safe, with its own entry point</td></tr>
+<tr><th><code>audio_bus.py</code></th><td><code>$ZAUD</code> listener for the idle sound-reactive show</td></tr>
+<tr><th><code>recorder.py</code></th><td>Frame + weak-label dump for model training</td></tr>
+<tr><th><code>tracklog.py</code></th><td>NMEA breadcrumb CSV recorder, own service</td></tr>
+<tr><th><code>trackserve.py</code></th><td>Read-only HTTP server for those CSVs</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="pipeline">The pipeline</h2>
+
+<pre class="diagram"><code>_mounts_from_args &#9472;&#9658; build_rig &#9472;&#9658; MultiDetector
+                                      &#9474;  per camera: detect() &#8594; to_global()
+                                      &#9660;
+                                 merge_contacts   (cross-camera overlap dedup)
+                                      &#9474;
+                   &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+                   &#9660;                                     &#9660;
+            format_frame &#9472;&#9658; ThreatBroadcaster      Tracker.update &#9472;&#9658; DmxSink
+            (ZTHREAT, 10 Hz default)               (pan/tilt/dimmer)</code></pre>
+
+<h2 id="declare">Declaring cameras</h2>
+
+<pre><code>python3 -m zvision -v \
+  --camera thermal:/dev/video0:az=0:fov=160:lens=fisheye:name=thermal \
+  --camera rgb:/dev/video2:az=120:fov=90:lens=pinhole:name=stbd-aft \
+  --camera rgb:/dev/video4:az=-120:fov=90:lens=pinhole:name=port-aft</code></pre>
+
+<p><code>az</code> is the camera's bearing off the nose (+right), so <code>az=180</code> faces
+astern. On the box these live in <code>ZVISION_ARGS</code> in
+<code class="path">/etc/default/zvision</code>.</p>
+
+<p>Verbose start-up prints each camera's covered arc <strong>and the blind sectors</strong>:</p>
+
+<pre class="diagram"><code>     thermal: thermal /dev/video0 az=+0&deg; fov=160&deg;h equidistant -&gt; covers -80&deg;..+80&deg;
+    stbd-aft: rgb /dev/video2 az=+120&deg; fov=90&deg;h rectilinear -&gt; covers +75&deg;..+165&deg;
+    port-aft: rgb /dev/video4 az=-120&deg; fov=90&deg;h rectilinear -&gt; covers -165&deg;..-75&deg;
+  blind: +166&deg;..+195&deg;</code></pre>
+
+<div class="note bug">
+  <span class="label">Note the <code>fov=160&deg;h</code> in that first line</span>
+  <p><code>--fov-ref</code> defaults to horizontal, so a camera declared <code>fov=160</code> is
+  treated as covering <span class="val">&plusmn;80&deg;</span>. The hardware analysis concludes the
+  Lepton Ultra Wide's quoted 160&deg; is the <strong>diagonal</strong>
+  (<span class="val">&plusmn;64&deg;</span> horizontal), and the tablet already assumes
+  &plusmn;64&deg;. Until the Python default or the examples change, add <code>fovref=d</code> to the
+  thermal camera's spec if you want the two sides of the vehicle to agree.
+  <a href="../protocols/fov-discrepancy.html">Full detail &rarr;</a></p>
+</div>
+
+<div class="note absent">
+  <span class="label">As shipped, zero real cameras</span>
+  <p><code>install.sh</code> writes <code>ZVISION_ARGS=--source fake --hz 10</code>. The service
+  deliberately fails to start if that file is missing, rather than broadcasting synthetic contacts
+  unattended.</p>
+</div>
+
+<h2 id="fusion">Fusion</h2>
+
+<p><code>to_global</code> rotates each camera's local bearing by its mount azimuth and namespaces
+track ids as <code>camera_index &times; 1000 + local_id</code> (id <span class="val">0</span> never
+latches the tracker light).</p>
+
+<p><code>merge_contacts</code> ranks by <strong>collision, then size</strong> and drops any contact
+within the dedup angle (<code>--merge-deg</code>, default <span class="val">8&deg;</span>) of an
+already-kept contact <strong>from a different camera</strong> &mdash; never within one camera, which
+would erase two people standing together.</p>
+
+<h2 id="lenses">Lens models</h2>
+
+<p>These matter because bearings drive both the HUD <em>and</em> where a real spotlight points.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Model</th><th>Projection</th><th>Use for</th></tr></thead>
+<tbody>
+<tr><th><code>rectilinear</code></th><td>r = tan&nbsp;&theta;</td><td>An ordinary lens, e.g. the RGB modules (<code>pinhole</code> in a spec)</td></tr>
+<tr><th><code>equidistant</code></th><td>r = &theta;</td><td>A fisheye &mdash; the default for the Lepton Ultra Wide (<code>fisheye</code> in a spec)</td></tr>
+<tr><th><code>equisolid</code></th><td>&mdash;</td><td>Other fisheye designs</td></tr>
+<tr><th><code>linear</code></th><td>&mdash;</td><td>Legacy</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="tuning">Field tuning</h2>
+
+<p>The detection numbers cannot be got right on a bench &mdash; they depend on how high the camera
+ends up mounted, how far away people actually walk, and how much contrast a body has against hot
+ground at 2am. So they are all reachable from the command line: a flag sets a rig-wide default, and
+the matching <code>--camera</code> spec key overrides one camera.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Flag</th><th>Spec key</th><th>What it does</th><th>Reach for it when</th></tr></thead>
+<tbody>
+<tr><th><code>--min-area</code></th><td><code>minarea</code></td><td>Min blob area, fraction of frame</td><td>Dust / shimmer / shade-cloth make phantom contacts (raise) &middot; people missed at range (lower)</td></tr>
+<tr><th><code>--match-dist</code></th><td><code>match</code></td><td>Track association distance</td><td>Ids churn as people walk (raise) &middot; two passers swap ids (lower)</td></tr>
+<tr><th><code>--far-h</code> / <code>--near-h</code></th><td><code>farh</code> / <code>nearh</code></td><td>bbox height &rarr; the 0..1 range proxy</td><td><strong>Expect to change these first</strong> &mdash; pure guesswork until real bodies stand at real distances</td></tr>
+<tr><th><code>--collision-az-rate</code></th><td><code>azrate</code></td><td>deg/s still counted as constant bearing</td><td><code>! BRAKE !</code> too twitchy (lower) &middot; missing real intercepts (raise)</td></tr>
+<tr><th><code>--collision-min-size</code></th><td><code>minsize</code></td><td>How near before collision can trip</td><td>Alarms firing on distant contacts (raise)</td></tr>
+<tr><th><code>--merge-deg</code></th><td>&mdash;</td><td>Cross-camera duplicate collapse</td><td>One person shows twice in an overlap (raise) &middot; two close people merge (lower)</td></tr>
+<tr><th>&mdash;</th><td><code>az</code></td><td>That camera's mount bearing</td><td><strong>Measure against the vehicle nose</strong> &mdash; an error here rotates that camera's whole contact set and swings the tracker light onto the wrong person</td></tr>
+<tr><th><code>--fov-ref</code></th><td><code>fovref</code></td><td>Is the quoted FOV width or diagonal</td><td>Edge bearings consistently off</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="check">--check before you commit a config</h2>
+
+<pre><code>python3 -m zvision --check --min-area 0.008 \
+  --camera thermal:/dev/video0:az=0:fov=160:lens=fisheye:name=thermal</code></pre>
+
+<p>Validates the whole configuration, prints the resolved rig and its blind arcs, and exits
+<strong>without</strong> opening a camera or touching the network.</p>
+
+<div class="note">
+  <span class="label">Always <code>--check</code> before writing <code class="path">/etc/default/zvision</code></span>
+  <p>The unit is <code>Restart=always</code>, so an unvalidated typo becomes a crash loop &mdash;
+  miserable to unpick from a laptop in the dust.</p>
+</div>
+
+<h2 id="record">Recording training data</h2>
+
+<pre><code>python3 -m zvision --record /data/drive-01 --record-hz 1 \
+  --camera thermal:/dev/video0:az=0:fov=160:fovref=d:lens=fisheye:name=thermal</code></pre>
+
+<p>Writes frames per camera plus an <code>index.jsonl</code> carrying the <strong>pixel boxes</strong>
+the motion detector found &mdash; weak labels, so an annotator corrects rather than draws.</p>
+
+<ul>
+<li><strong>1&nbsp;Hz default</strong> &mdash; consecutive 10&nbsp;Hz frames are near-duplicates that
+waste disk and annotator attention.</li>
+<li>Small frames go to lossless <strong>PNG</strong> and large ones to JPEG. The split is by
+<strong>pixel count</strong>, not by camera kind, so the 160&times;120 thermal lands on PNG. (The
+threshold was originally 128&times;128, chosen for a sensor believed to be 120&times;120, which
+silently JPEG'd the thermal &mdash; and JPEG artefacts on a low-contrast 160&times;120 frame destroy
+real signal.)</li>
+<li><strong>20&nbsp;GB cap</strong> by default, shared across all cameras, so a long night cannot
+fill the boot disk.</li>
+<li>Failures are reported once and never interrupt detection.</li>
+</ul>
+
+<p>Footage can only be captured while the rig is on the vehicle; GPU time can be rented any evening
+&mdash; which is why the recorder exists before any model work.
+<a href="detector.html">The training plan &rarr;</a></p>
+
+<h2 id="usb">USB device identity</h2>
+
+<p>Today every camera is pinned <strong>by port</strong>
+(<code class="path">/dev/v4l/by-path/&hellip;usb-0:2.3:1.0&hellip;</code>). Measured 2026-08-09, what
+identity is actually available:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Device</th><th>Serial</th><th>Addressable by identity?</th></tr></thead>
+<tbody>
+<tr><th>PureThermal</th><td><code>000b0026-5103-3133-3332-3733&hellip;</code></td><td><strong>Yes</strong> &mdash; a real per-unit UID</td></tr>
+<tr><th>FTDI / DMX</th><td><code>BG03OCDS</code></td><td><strong>Yes</strong>, and already is &mdash; olad patches it as <code>13-BG03OCDS-O-1</code>, so the dongle survives a re-plug into any port</td></tr>
+<tr><th>Arducam RGB</th><td><code>SN0001</code></td><td><strong>No</strong> &mdash; a firmware constant, identical on every unit of this model</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note">
+  <span class="label">What port-pinning actually buys</span>
+  <p>The <code>az=</code> binding. A camera spec ties a device to a <em>bearing on the vehicle</em>,
+  and the port is what makes that true. If identical cameras can move ports, a camera's entire
+  contact set silently rotates onto the wrong bearing &mdash; wrong threat bearings on the driver's
+  HUD, tracker light on the wrong person &mdash; and it fails <strong>silently</strong>: everything
+  opens, frames flow, nothing errors. For the ring, the port is not a limitation to route around; it
+  is the only identity the hardware offers.</p>
+</div>
+
+<p>Open follow-ups: move thermal and DMX to <code>by-id</code> (free robustness, no downside); name
+the ports via udev (<code class="path">/dev/zodiac-cam-front</code> etc.) so a mis-plug shows up as a
+<em>missing</em> device rather than a working camera pointing the wrong way; add a startup identity
+check that asserts every spec resolves to a distinct device. And label the cables &mdash; the
+realistic failure is someone unplugging everything to fix something else. No code replaces that.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>jetson/README.md</code> &middot; <code>ARCHITECTURE.md &sect;6.1, &sect;6.2</code> &middot; <code>jetson/DEPLOY.md &sect;5, &sect;8</code> &middot; <code>jetson/TRAINING.md &sect;B2</code> &middot; <code>tasks/open.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../jetson/index.html"><span class="pager-dir">Previous</span><span class="pager-name">Overview</span></a><a class="next" href="../jetson/detector.html"><span class="pager-dir">Next</span><span class="pager-name">Detector &amp; training</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

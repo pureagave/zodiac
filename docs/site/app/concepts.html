@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The three concepts · Zodiac</title>
+<meta name="description" content="RADAR, MAP and DRIVER: three runtime-switchable cockpit concepts over one shared state.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :app — the cockpit <span aria-hidden="true">/</span> <em>The three concepts</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html" aria-current="page">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:app &#183; the cockpit</p>
+<h1>The three concepts</h1>
+<p class="standfirst"><code>CockpitScreen</code> dispatches on the active <code>CockpitConcept</code>. The active
+    concept is picked via a top-right pill and persisted across launches; switching is purely
+    presentational, because all three read the same <code>StateFlow&lt;CockpitUiState&gt;</code>.</p>
+<div class="prose">
+
+
+<h2 id="radar">RADAR &mdash; the M41A sweep scope</h2>
+
+<p><code>ui/concepts/MotionTrackerScreen</code>. The <em>Aliens</em> M41A motion tracker: a circular
+scope whose sweep arm makes one revolution every <span class="val">4&nbsp;s</span> and lights up the
+real Black Rock City map as it passes, with art and camp contacts pulsing behind it.</p>
+
+<p>RADAR draws the map <strong>twice a frame</strong> &mdash; a dim base plus a lit re-blit clipped
+to the rotating sweep wedge &mdash; which is why the cached projected-map path exists at all, and
+why RADAR is the worst case for
+<a href="performance.html">performance on the Fire HD 10</a>.</p>
+
+<h2 id="map">MAP &mdash; the Nostromo instrument bay</h2>
+
+<p><code>ui/concepts/InstrumentBayScreen</code>. The <em>Alien</em> Nostromo gauge wall: bordered
+tiles carrying a heading dial, a speed gauge, a ground-track map, and cell and throttle gauges.</p>
+
+<div class="note absent">
+  <span class="label">Two tiles are literals</span>
+  <p>The cell gauges (<code>CELL A 70%</code>, <code>CELL B 45%</code>) and the throttle trace are
+  hard-coded in the composable. They are not wired to anything, because the vehicle bus that would
+  feed them does not exist.</p>
+</div>
+
+<h2 id="shared">What RADAR and MAP share</h2>
+
+<p>Both render the control strip (<code>ConceptControls</code>) and the operational readout
+(<code>ui/ops/opsReadout</code>) as a first-class themed footer, each in its own palette. The footer
+carries:</p>
+
+<ul>
+<li>BRC clock and sunrise / sunset</li>
+<li><strong>Drive-to guidance</strong> &mdash; bearing, distance, and a heading-relative arrow to
+the active <code>core/ops/NavTarget</code></li>
+<li>A prominent full-width <code>DRIVE TO</code> bar (<code>ui/ops/driveToBar</code>) above the
+footer</li>
+<li>Beacon health, flagged red at battery <span class="val">&le;&nbsp;20&nbsp;%</span> or
+<code>fixQuality &le; 0</code> or <code>satellites &lt; 5</code></li>
+</ul>
+
+<p><strong>Centre-viewport touch drives the map, not the vehicle.</strong> Drag to pan, pinch to
+zoom, two-finger twist to rotate (<code>ui/playamap/MapTouchInput</code>). Heading and speed are set
+programmatically or by the GPS fix, never by tapping the viewport. An earlier X&rarr;heading /
+Y&rarr;speed mapping was replaced by the map interaction.</p>
+
+<h2 id="driver">DRIVER &mdash; the OLED night HUD</h2>
+
+<p><code>ui/concepts/DriverNightScreen</code>. A mostly-black Star-Wars-vector display for the
+driver's phone. It is the one concept with a real safety job, and it is designed around a specific
+person:</p>
+
+<div class="note">
+  <span class="label">Who this is for</span>
+  <p>A person driving a large, slow, loud art car through a crowd of pedestrians in the dark. Many
+  are dressed dark, some are intoxicated, and the vehicle is loud enough that they may not hear it.
+  <strong>The windscreen is the primary instrument.</strong> This display has exactly two jobs: the
+  aft and blind arcs the driver's eyes cannot cover, and the machine-computed collision flag.</p>
+  <p>Every element must be absorbable in a <strong>sub-second glance or in peripheral
+  vision</strong>. Anything that rewards sustained head-down study is a defect, not a feature.</p>
+</div>
+
+<p>The layout is a deliberate hybrid of two views:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>View</th><th>Shows</th><th>Job</th></tr></thead>
+<tbody>
+<tr><th>Perspective</th><td>Vanishing-point grid, hollow wireframe figures on the ground plane, size = proximity. <strong>Forward arc only</strong> (<code>PERSPECTIVE_ARC_DEG = 30f</code>).</td><td>The detail view &mdash; where a driver judges one specific person.</td></tr>
+<tr><th>Surround ring</th><td>Plan view, <strong>nose-up</strong>, ego at centre, carries <strong>every</strong> contact including astern.</td><td>The awareness view &mdash; &ldquo;something is there&rdquo;, not &ldquo;here is what it looks like&rdquo;.</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Forward contacts appear twice, as a figure and as a blip. That redundancy is the price of keeping
+the figure work, and it is only legible because the ring marks which arc is duplicated below.
+<a href="vision.html">The full HUD design &rarr;</a></p>
+
+<h2 id="gestures">Hidden gestures</h2>
+
+<p>Four corner long-presses, none discoverable by design.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Corner</th><th>Action</th><th>Defined in</th></tr></thead>
+<tbody>
+<tr><th>Top-left</th><td>Park &mdash; jump straight to STANDBY</td><td><code>BurnInScaffold</code></td></tr>
+<tr><th>Bottom-left</th><td>Burn-in tuning panel</td><td><code>BurnInScaffold</code></td></tr>
+<tr><th>Bottom-right</th><td>On-device log viewer</td><td><code>CockpitScreen</code></td></tr>
+<tr><th>Top-right</th><td>Toggle this device's passenger role</td><td><code>CockpitScreen</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The passenger toggle is hidden in <strong>both</strong> directions: a rider must not be able to
+leave passenger mode, and a driver's tablet must not fall into it.</p>
+
+<h2 id="history">Design history</h2>
+
+<p>The original pre-build concept exploration (Tactical Grid / CRT Vector / Dropship Console,
+written 2026-04) is kept in <code class="path">design/UI_CONCEPTS_ZODIAC.md</code> but is
+<strong>superseded</strong> &mdash; none of the three was built as specified, and its palette
+(which included amber) is obsolete. Two later concepts, <code>A CRT VECTOR</code> and
+<code>B PERSPECTIVE</code>, were dropped on 2026-07-04 and the survivors lost their letter tags;
+DRIVER was added afterwards. It is kept because the mood boards and the reference-capture plan are
+still the source of the aesthetic.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md &sect;4.2, &sect;4.11</code> &middot; <code>design/surround-driver-hud.md</code> &middot; <code>design/UI_CONCEPTS_ZODIAC.md</code> &middot; <code>CLAUDE.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/index.html"><span class="pager-dir">Previous</span><span class="pager-name">Overview</span></a><a class="next" href="../app/architecture.html"><span class="pager-dir">Next</span><span class="pager-name">Layers &amp; state</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

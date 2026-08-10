@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devices and roles · Zodiac</title>
+<meta name="description" content="The Zodiac fleet by role: which device runs what, why, and the per-device gotchas.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> The vehicle <span aria-hidden="true">/</span> <em>Devices &amp; roles</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html" aria-current="page">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">The vehicle</p>
+<h1>Devices and roles</h1>
+<p class="standfirst">The fleet, by role, and why each role is on the hardware it is on. Software facts here are
+    verified against the code; hardware model numbers, OS versions and on-device behaviour are
+    <strong>operator-recorded</strong> &mdash; they cannot be checked from the repository.</p>
+<div class="prose">
+
+
+<div class="note caveat">
+  <span class="label">Operator-recorded</span>
+  <p>Model numbers, OS versions and observed on-device behaviour on this page come from the
+  owner's own notes, not from anything the repository can verify. They are marked in place where
+  it matters.</p>
+</div>
+
+<h2 id="map">Role map</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Role</th><th>Device</th><th>Runs</th><th>Display</th><th>Status</th></tr></thead>
+<tbody>
+<tr><th>Hero dashboard</th><td>Galaxy Tab S9+ (<code>SM-X810</code>)</td><td><code>:app</code>, RADAR or MAP</td><td>12.4&Prime; OLED</td><td><span class="chip ok">In use</span></td></tr>
+<tr><th>Driver night display</th><td>Galaxy A54 (<code>SM-A546V</code>)</td><td><code>:app</code>, DRIVER concept</td><td>6.4&Prime; OLED</td><td><span class="chip unproven">Night legibility unverified</span></td></tr>
+<tr><th>Passenger / crew displays</th><td>Fire HD 10 (<code>KFTUWI</code>), Fire HD 8, spare tablets</td><td><code>:app</code>, passenger carousel or RADAR/MAP</td><td>LCD</td><td><span class="chip ok">In use</span></td></tr>
+<tr><th>Sensor hub</th><td>XCover Pro (<code>SM-G715U</code>)</td><td><code>:beacon</code>, headless</td><td>screen off</td><td><span class="chip ok">GPS + compass verified</span></td></tr>
+<tr><th>Vision edge box</th><td>Jetson Orin Nano Super</td><td><code>zvision</code></td><td>&mdash;</td><td><span class="chip unproven">No camera attached</span></td></tr>
+<tr><th>Light control surface</th><td>Elgato Stream Deck Mini (<code>0fd9:0063</code>)</td><td><code>zdeck</code></td><td>6 keys</td><td><span class="chip ok">Driven on real hardware</span></td></tr>
+<tr><th>Tracker light</th><td>DMX moving head + FTDI USB-DMX</td><td><code>zvision</code> / <code>zdeck</code> via <code>olad</code></td><td>&mdash;</td><td><span class="chip unproven">Characterised; aim uncalibrated</span></td></tr>
+<tr><th>Network</th><td>Travel router (AP + DHCP)</td><td>&mdash;</td><td>&mdash;</td><td><span class="chip ok">In use</span></td></tr>
+<tr><th>Proximity alarm</th><td>ESP32 + 24&nbsp;GHz radar or LiDAR</td><td>&mdash;</td><td>red beacon</td><td><span class="chip none">Not built</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="why">Why the roles split this way</h2>
+
+<p><strong>The driver display is OLED, and that is not a preference.</strong> A mostly-black UI at
+low brightness preserves scotopic (rod) vision. An LCD backlight floods light through pixels that
+are nominally black and wrecks the driver's dark adaptation. Low luminance matters more than colour
+choice here.</p>
+
+<p><strong>The sensor hub is a rugged phone with an irrelevant screen</strong>, because it is
+headless &mdash; it runs a foreground service with the display off. Ruggedness and battery matter;
+the panel does not.</p>
+
+<p><strong>The camera lives on a dedicated box at the front of the vehicle.</strong> Not on the GPS
+phone &mdash; wrong physical location, and that phone is already busy. Not on the driver's tablet
+&mdash; that couples the sensor's life to one display, and a mid-range phone doing capture,
+detection, rendering and re-broadcast at once is stretched. The edge box broadcasts
+<em>detections</em>, so every screen is a first-class subscriber and the payload stays tiny.</p>
+
+<p><strong>The Fire HD 10 is the performance floor, but not the visual reference.</strong> It has
+the weakest GPU in the fleet and is GC-sensitive, so it is the right device to profile against. It
+is <em>not</em> sufficient to certify visual parity: it takes a different graphics precision path
+than the Samsungs, which shows up in the CRT halo rendering. Check the look on a Samsung too.</p>
+
+<h2 id="s9">Galaxy Tab S9+ &mdash; hero dashboard</h2>
+
+<p><code>SM-X810</code>, 12.4&Prime; OLED. Operator-recorded: One UI 8 / Android 16 (API 36),
+2800&times;1752 at 340&nbsp;dpi. This is the device the burn-in mitigation exists for, and all four
+burn-in phases have been verified on it.</p>
+
+<p><strong>Desktop / DeX windowing gotcha.</strong> In desktop mode apps open as freeform windows
+with a caption bar and a persistent taskbar overlaying the bottom edge, which reads as the UI being
+cut off. A reinstall reverts a maximised app back to windowed, the taskbar cannot be toggled off
+over adb, and &ldquo;Pin this app&rdquo; is hidden while desktop mode is active. For a clean
+fullscreen dashboard, either screen-pin the app (kiosk) or exit desktop mode. Note that
+<code>adb exec-out screencap</code> captures the app framebuffer <em>without</em> the taskbar
+overlay, so a screenshot shows true app rendering even when the screen does not.</p>
+
+<p>The app forces edge-to-edge plus immersive mode (status and navigation bars hidden), which is
+required because targetSdk&nbsp;35 enforces edge-to-edge on Android&nbsp;15+.</p>
+
+<p><strong>Wireless adb.</strong> Classic <code>adb tcpip 5555</code> does not survive a USB unplug
+or reboot &mdash; the tablet reverts to USB-only. <code>adb connect</code> answering
+<em>&ldquo;Connection refused&rdquo;</em> (a TCP reset, not a timeout) means the tablet is up and on
+the network but <code>adbd</code> is not listening; waking the screen does nothing. Re-arm by
+plugging in USB once and re-running <code>adb tcpip 5555</code>, or use Android's native Wireless
+debugging pair-with-code flow, which is stickier.</p>
+
+<div class="note">
+  <span class="label">Testing discipline</span>
+  <p>Keep brightness manual and low, and sleep the display after every screenshot. It is an OLED
+  panel and this project's whole burn-in effort is about not cooking it.</p>
+</div>
+
+<h2 id="a54">Galaxy A54 &mdash; driver night display</h2>
+
+<p><code>SM-A546V</code>, OLED. Operator-recorded: Android 16. Runs the DRIVER concept &mdash; the
+mostly-black vector HUD. Same OLED brightness discipline as the S9+.</p>
+
+<p><strong>Wireless debugging only</strong> in practice, because a charge-only USB-C cable
+enumerates nothing at all on the host (no Samsung device appears in the USB bus listing) &mdash; do
+not chase adb when that is the situation. Pairing that works: Developer options &rarr; tap the
+<em>Wireless debugging row itself</em>, not the toggle &rarr; Pair device with pairing code &rarr;
+<code>adb pair &lt;ip&gt;:&lt;port&gt; &lt;code&gt;</code> with the code as a command-line argument
+(piping it to stdin fails with a protocol fault). The pair port and the connect port are different,
+and the pairing code is single-use. After pairing, discover the endpoint with
+<code>adb mdns services</code> and <code>adb connect</code>. A stale unauthorised transport often
+lingers alongside the good one, so always target <code>-s &lt;ip:port&gt;</code>.</p>
+
+<div class="note caveat">
+  <span class="label">Outstanding</span>
+  <p>Nobody has verified that the HUD's dim rim colour and small hollow blips are legible at night
+  brightness, through dust, by someone actually driving. One evening on-device at real brightness is
+  the acceptance test. Until that happens the surround HUD is <em>built but not accepted</em>.</p>
+</div>
+
+<h2 id="fire">Fire HD 10 &mdash; passenger display and performance floor</h2>
+
+<p><code>KFTUWI</code> (codename &ldquo;tungsten&rdquo;). Operator-recorded: Android 11 / Fire OS 8,
+API 30, arm64-v8a, 1920&times;1200 in landscape.</p>
+
+<p>Also a passenger-display target alongside the Fire HD 8 10th gen, which is why <code>:app</code>
+targets minSdk&nbsp;28 rather than 30. Older 8&Prime; Fires are Fire OS 6/5 (API 25/22) and are
+<strong>not</strong> supported &mdash; check any candidate with
+<code>adb shell getprop ro.build.version.sdk</code>.</p>
+
+<p>Two Fire-specific behaviours are baked into the code:</p>
+
+<ul>
+<li><strong>Burn-in visual modulation is gated off.</strong> <code>BurnInDeviceProfile</code> skips
+the brightness breathe and dim layer when <code>Build.MANUFACTURER</code> is <code>Amazon</code>
+&mdash; an LCD cannot burn in, and it is the slowest GPU in the fleet. Pixel-shift and backlight
+stepping still apply everywhere, the latter for power.</li>
+<li><strong><code>adb pull</code> of the app log does not work.</strong> Fire OS denies shell access
+to <code class="path">/sdcard/Android/data</code>, so the rolling log cannot be retrieved that way.
+The hidden bottom-right long-press log viewer exists specifically for this device.</li>
+</ul>
+
+<p>The Fire lockscreen is an advertisement, which is why
+<a href="../reference/kiosk.html">kiosk provisioning</a> disables the keyguard.</p>
+
+<h2 id="xcover">XCover Pro &mdash; sensor hub</h2>
+
+<p><code>SM-G715U</code>. Operator-recorded: Android 10, which is why <code>:beacon</code> is
+minSdk&nbsp;29. Runs <code>:beacon</code> headless as a foreground service holding a partial wake
+lock, with the screen off. It has a debug activity that shows the live status readout, but that is
+for bring-up only.</p>
+
+<p>Roles it fills: GNSS, magnetometer, IMU, microphone level, ambient light, shock, and its own
+battery / health telemetry.</p>
+
+<p><strong>Planned replacement:</strong> a Raspberry Pi Zero 2 W with a u-blox USB GNSS receiver and
+a roof antenna. The travel router keeps the AP and DHCP role in both cases.</p>
+
+<p><strong>Earlier bring-up</strong> used a spare iPhone running GPS2IP, which validated
+<code>NetworkLocationSource</code> end to end before any custom app existed.</p>
+
+<h2 id="jetson">Jetson Orin Nano Super &mdash; edge box</h2>
+
+<p>Roof-mounted. Runs <code>zvision</code>, <code>zdeck</code>, the breadcrumb tracklog service and
+its read-only HTTP server. Its four USB-A connectors are a single onboard 4-port hub.</p>
+
+<div class="note">
+  <span class="label">Do not re-cable the cameras to free a port</span>
+  <p>Adding a hub upstream changes every <code>by-path</code> device path in
+  <code>ZVISION_ARGS</code> and the cameras stop resolving. The Stream Deck is HID and is found by
+  vendor:product id, so it is immune to that trap &mdash; which is why it took the fourth port.</p>
+</div>
+
+<p>Compute is not the bottleneck for this workload; thermal resolution and available training data
+are. <a href="../jetson/hardware.html">Hardware and enclosure detail &rarr;</a></p>
+
+<h3>Cameras</h3>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th></th><th>Part</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><th>Thermal</th><td>FLIR Lepton Ultra Wide on a PureThermal Mini USB board</td><td><span class="val">160&times;120</span>, <span class="val">9&nbsp;fps</span> native, <code>Y16</code> raw. The quoted 160&deg; FOV is argued to be the <em>diagonal</em>.</td></tr>
+<tr><th>RGB</th><td>Arducam day/night IMX462 USB, ~85&deg; horizontal M12 lens</td><td>Count and final lens FOV still to be decided.</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="note absent">
+  <span class="label">No camera has been connected to the box yet</span>
+  <p>Everything downstream is proved with <code>--source fake</code>.</p>
+</div>
+
+<p>Thermal optics need an <strong>IR-transmissive window</strong> &mdash; germanium or similar.
+Glass blocks LWIR entirely. Playa dust also fouls the optic, so this is a cleaning item as well as a
+materials one.</p>
+
+<h2 id="net">Network</h2>
+
+<p>A travel router provides the AP and DHCP on a single /24. Starlink is aboard as WAN but is
+treated as non-critical &mdash; nothing realtime depends on it.</p>
+
+<p>There are <strong>no hardcoded IPs anywhere</strong>. Both realtime streams ride fixed multicast
+groups compiled into every part, with a subnet-directed broadcast copy for access points that drop
+multicast. <a href="../protocols/index.html">The fleet bus &rarr;</a></p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>docs/DEVICES.md</code> &middot; <code>ARCHITECTURE.md &sect;2</code> &middot; <code>README.md</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../system/principles.html"><span class="pager-dir">Previous</span><span class="pager-name">Design commitments</span></a><a class="next" href="../system/status.html"><span class="pager-dir">Next</span><span class="pager-name">What is and isn&#x27;t built</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

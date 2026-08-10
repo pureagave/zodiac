@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The golden corpus · Zodiac</title>
+<meta name="description" content="The measured cross-language corpus that keeps the two ZTHREAT implementations honest, and the ten drifts that made it necessary.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Protocols — the seams <span aria-hidden="true">/</span> <em>The golden corpus</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html" aria-current="page">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">Protocols &#183; the seams</p>
+<h1>The golden corpus</h1>
+<p class="standfirst"><code>ThreatProtocol.kt</code> and <code>threat_protocol.py</code> are two hand-written
+    implementations of the same grammar, and neither is authoritative. The shared truth is a
+    measured corpus at <code class="path">protocol/threat-protocol-golden.json</code>, read by both
+    test suites.</p>
+<div class="prose">
+
+
+<h2 id="what">What it contains</h2>
+
+<div class="kv">
+  <dt>Parse vectors</dt><dd><span class="val">111</span></dd>
+  <dt>Format vectors</dt><dd><span class="val">27</span></dd>
+  <dt>Also</dt><dd>The shared constants, and a <code>known_precision_limits</code> section</dd>
+  <dt>Read by</dt><dd><code class="path">jetson/tests/test_threat_protocol_golden.py</code><br><code class="path">app/src/test/java/&hellip;/core/vision/ThreatProtocolGoldenTest.kt</code></dd>
+</div>
+
+<p>Both suites <strong>fail loudly if the corpus is missing or truncated</strong>, rather than
+skipping &mdash; a corpus that failed to load would make every assertion vacuously true, which is a
+failure mode this project has been bitten by before. Both suites also assert a minimum vector
+count. Verified by hiding the file and watching both go red.</p>
+
+<p>Both CI workflows are triggered by changes under <code class="path">protocol/**</code>. That
+filter is deliberate: <code>jetson-ci.yml</code> was previously path-filtered to
+<code class="path">jetson/**</code> alone, so a corpus-only change would have skipped the Python
+half entirely &mdash; the shared artifact would have been enforced on one side.</p>
+
+<h2 id="why">Why it exists</h2>
+
+<p>Before the corpus, the two implementations had silently drifted in <strong>ten measured
+ways</strong> out of 90 differentially-fuzzed frames. None was visible by reading either file; both
+were correct on their own terms. The cause in every case was the same: a wire format had inherited
+its host language's numeric parser. Three of the ten:</p>
+
+<div class="note bug">
+  <span class="label">What drift looked like in production terms</span>
+  <ul>
+    <li>Kotlin's float parser accepts Java <em>source</em> syntax, including hex floats &mdash; so
+    <code>0x1p3</code> in an azimuth field became <strong>a live contact bearing 8&deg; on the
+    driver's HUD</strong>, while the Python side rejected the same frame. That is the one that
+    mattered: the Kotlin comment directly above it calls this &ldquo;the untrusted network
+    boundary&rdquo;.</li>
+    <li>Python's <code>int()</code> accepts underscores, surrounding whitespace and unbounded
+    magnitudes &mdash; a <strong>4000-digit track id</strong> parsed fine there and was dropped on
+    the tablet.</li>
+    <li>A <code>size</code> of <code>3.5e38</code> is finite in 64-bit and infinite in 32-bit, so
+    one side kept the contact and the other discarded it.</li>
+  </ul>
+</div>
+
+<p>Both sides now check explicit numeric grammars, and the Python side rounds parsed values through
+32-bit float so both agree on the range and clamp boundaries. Result:
+<strong>0 divergences over 111 cases, compared at exact equality.</strong></p>
+
+<h2 id="precision">known_precision_limits is not a to-do list</h2>
+
+<p>The producer holds 64-bit floats and the tablet 32-bit, so a handful of values whose two
+roundings straddle a decimal boundary are spelled differently by each side
+(<code>1.45</code> &rarr; <code>1.4</code> vs <code>1.5</code>). Both parsers accept either
+spelling, and the difference is far below one wire digit &mdash; far below anything the HUD can
+draw.</p>
+
+<p>They are recorded so nobody &ldquo;fixes&rdquo; them, are kept out of
+<code>format_vectors</code>, are <strong>not asserted as agreement</strong>, and are covered by a
+test proving both spellings still parse to the same contact. This is inherent to a 64-bit producer
+and a 32-bit consumer, not a defect.</p>
+
+<h2 id="regen">Regenerating</h2>
+
+<div class="note">
+  <span class="label">The corpus was measured, not authored</span>
+  <p>Identical inputs were run through both implementations and only agreed-upon results were
+  written &mdash; enforced by an assert in the generator. <strong>If you change the format, re-run
+  that differential comparison rather than hand-editing the JSON.</strong> Hand-editing lets you
+  write down what you believe instead of what the code does, which is the exact failure this file
+  exists to prevent.</p>
+  <p>Changing the format means changing three things: the Python side, the Kotlin side, and the
+  corpus.</p>
+</div>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>protocol/README.md</code> &middot; <code>docs/PROTOCOLS.md &sect;3.5</code> &middot; <code>SYNC.md 2026-08-10</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../protocols/zthreat.html"><span class="pager-dir">Previous</span><span class="pager-name">ZTHREAT frames</span></a><a class="next" href="../protocols/fov-discrepancy.html"><span class="pager-dir">Next</span><span class="pager-name">Known discrepancy: FOV</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>

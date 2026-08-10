@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OLED burn-in mitigation · Zodiac</title>
+<meta name="description" content="The four-phase OLED burn-in mitigation, its single-writer brightness rule, and the Float clock bug that froze it on day three.">
+<link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+
+<header class="topbar">
+  <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> :app — the cockpit <span aria-hidden="true">/</span> <em>OLED burn-in</em></p>
+  <button class="btn" type="button" data-theme-toggle>Light</button>
+</header>
+
+<aside class="rail" id="rail">
+  <div class="rail-head">
+    <a class="rail-mark" href="../index.html"><b>ZODIAC</b> <span>docs</span></a>
+    <p class="rail-sub">Judge-Dredd-themed mutant vehicle · Galactic Relay · Black Rock City</p>
+  </div>
+  <nav aria-label="Documentation sections">
+<div class="rail-group">
+<ol>
+<li><a href="../index.html">The system</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">The vehicle</span>
+<ol>
+<li><a href="../system/principles.html">Design commitments</a></li>
+<li><a href="../system/devices.html">Devices &amp; roles</a></li>
+<li><a href="../system/status.html">What is and isn&#x27;t built</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Protocols — the seams</span>
+<ol>
+<li><a href="../protocols/index.html">The fleet bus</a></li>
+<li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
+<li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
+<li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+</ol></div>
+<div class="rail-group is-here">
+<span class="rail-group-title">:app — the cockpit</span>
+<ol>
+<li><a href="../app/index.html">Overview</a></li>
+<li><a href="../app/concepts.html">The three concepts</a></li>
+<li><a href="../app/architecture.html">Layers &amp; state</a></li>
+<li><a href="../app/gps.html">GPS sourcing</a></li>
+<li><a href="../app/map.html">Playa map &amp; navigation</a></li>
+<li><a href="../app/vision.html">Threats &amp; the DRIVER HUD</a></li>
+<li><a href="../app/burn-in.html" aria-current="page">OLED burn-in</a></li>
+<li><a href="../app/operations.html">Displays &amp; operations</a></li>
+<li><a href="../app/performance.html">Performance backlog</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">:beacon — the sensor hub</span>
+<ol>
+<li><a href="../beacon/index.html">Overview</a></li>
+<li><a href="../beacon/channels.html">The seven channels</a></li>
+<li><a href="../beacon/service.html">Service &amp; sensors</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">jetson/ — the edge box</span>
+<ol>
+<li><a href="../jetson/index.html">Overview</a></li>
+<li><a href="../jetson/zvision.html">zvision: the camera rig</a></li>
+<li><a href="../jetson/detector.html">Detector &amp; training</a></li>
+<li><a href="../jetson/tracker-light.html">The DMX tracker light</a></li>
+<li><a href="../jetson/zdeck.html">zdeck: control surface</a></li>
+<li><a href="../jetson/hardware.html">Hardware &amp; enclosure</a></li>
+<li><a href="../jetson/deploy.html">Bring-up runbook</a></li>
+</ol></div>
+<div class="rail-group">
+<span class="rail-group-title">Reference</span>
+<ol>
+<li><a href="../reference/build.html">Build, test, CI</a></li>
+<li><a href="../reference/kiosk.html">Kiosk provisioning</a></li>
+<li><a href="../reference/glossary.html">Glossary</a></li>
+<li><a href="../reference/sources.html">Source documents</a></li>
+</ol></div>
+</nav>
+  <div class="rail-foot">
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Offline by design — no network requests.</p>
+  </div>
+</aside>
+
+<main class="main" id="main">
+  <article class="page">
+<p class="kicker">:app &#183; the cockpit</p>
+<h1>OLED burn-in mitigation</h1>
+<p class="standfirst"><code>burnin/</code> protects the OLED dashboard over multi-day deployments where the cockpit
+    runs for days with mostly static chrome &mdash; rails, gauge frames, the scanline overlay, the
+    tracker outline, labels.</p>
+<div class="prose">
+
+
+<h2 id="why">Why OLED-specific</h2>
+
+<p>Burn-in is an OLED phenomenon and the fleet is mixed: the <strong>Fire HD 10 is LCD</strong> (no
+burn-in, and the slowest GPU), the <strong>S9+ is OLED</strong> (the dashboard, and a fast
+Snapdragon 8 Gen 2). So the <em>visual</em> mitigation that costs GPU is gated to OLED; the cheap
+parts run everywhere.</p>
+
+<p><code>BurnInDeviceProfile</code> is the gate, and a case-insensitive
+<code>Build.MANUFACTURER != "Amazon"</code> check is the <strong>entire</strong> detection. There is
+no panel-type query available.</p>
+
+<h2 id="phases">The phase machine</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Phase</th><th>Enters at</th><th class="num">Backlight</th><th>Drawn</th></tr></thead>
+<tbody>
+<tr><th><code>ACTIVE</code></th><td>Any activity</td><td class="num">system</td><td>Dashboard, pixel-shift + brightness breathe</td></tr>
+<tr><th><code>DIM</code></th><td><span class="val">5 min</span> idle</td><td class="num">0.40</td><td>Dashboard at content alpha <span class="val">0.30</span>, breathing frozen</td></tr>
+<tr><th><code>DEEP_IDLE</code></th><td><span class="val">30 min</span> idle</td><td class="num">0.15</td><td><code>standbyScreen</code> &mdash; phosphor STANDBY + drifting scan line</td></tr>
+<tr><th><code>SLEEP</code></th><td><span class="val">60 min</span> idle</td><td class="num">0.01</td><td>App-drawn pure black, Activity still foreground</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><code>BurnInMitigationManager</code> is a pure phase machine on an injectable clock
+(<code>SystemClock.elapsedRealtime</code> &mdash; excludes deep-sleep drift and never jumps with the
+wall clock), depending only on the location and connection flows plus a narrow
+<code>BurnInConfigStore</code> persistence port. <strong>The cockpit ViewModel is untouched.</strong></p>
+
+<h2 id="wake">What counts as activity</h2>
+
+<ul>
+<li>Touch</li>
+<li><strong>Real</strong> GPS movement &mdash; ground speed <span class="val">&ge; 1&nbsp;kph</span>
+<em>or</em> cumulative displacement <span class="val">&gt; 3&nbsp;m</span> from the reference fix
+(which catches slow drift below the speed threshold)</li>
+<li>A vehicle-link phase change</li>
+</ul>
+
+<p>A parked car re-emitting identical fixes does not count, or the dashboard would never idle. The
+synthetic <code>FakeLocationSource</code> is stationary when parked, so it idles correctly.</p>
+
+<p><code>FLAG_KEEP_SCREEN_ON</code> is held in every phase (no <code>WAKE_LOCK</code>); &ldquo;sleep&rdquo;
+is app-drawn black rather than a real display-off, so wake-on-touch is instant and there is no
+lockscreen to fight &mdash; the correct model for a mounted dashboard.</p>
+
+<h2 id="techniques">Mitigation techniques</h2>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Technique</th><th>How</th><th>Where it runs</th></tr></thead>
+<tbody>
+<tr><th>Pixel-shift</th><td>Whole-UI <code>offset{}</code> tracing a slow Lissajous path (default <span class="val">&plusmn;2&nbsp;px / 45&nbsp;s</span>), placement phase only, no recomposition</td><td><strong>Universal</strong> &mdash; it is cheap</td></tr>
+<tr><th>Brightness breathe / dim</th><td>One global <code>graphicsLayer</code> alpha with <code>CompositingStrategy.ModulateAlpha</code> &mdash; cheap, no offscreen composite, blend-preserving</td><td><strong>OLED only</strong></td></tr>
+<tr><th>Idle escalation</th><td>DIM &rarr; STANDBY &rarr; black, plus backlight stepping</td><td>Every device, including the Fire, the latter for power</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Global breathing was chosen over per-element alpha threading (~40 static call sites across the
+concepts) for the same wear-distribution benefit with far less surface area.</p>
+
+<h2 id="brightness">One writer for screen brightness</h2>
+
+<div class="note">
+  <span class="label">The single-arbiter rule</span>
+  <p><code>burnInScaffold</code> wraps the entire cockpit from one node and is the <strong>single
+  writer</strong> of <code>window.attributes.screenBrightness</code>. Ambient-light auto-dim
+  (<code>ScreenBrightness.luxToBrightness</code>, a log-10 interpolation between
+  <span class="val">5&nbsp;lux</span> and <span class="val">2000&nbsp;lux</span>, floor
+  <span class="val">0.05</span>) is folded in there as a <em>ceiling that can only reduce</em>: a
+  dark room's floor still beats DIM's larger backlight, and SLEEP's <span class="val">0.01</span>
+  can never be raised by a lux tick.</p>
+  <p><code>MainActivity</code> used to also apply auto-dim and the two writers fought &mdash; burn-in
+  mitigation was defeated whenever the beacon was live. <code>MainActivity.autoDim</code> was
+  deleted; <code>effectiveBacklight</code> is now the single arbiter and the single write site.</p>
+</div>
+
+<h2 id="clock">The animation clock is a Long, not a Float</h2>
+
+<div class="note bug">
+  <span class="label">A bug that only appears on day three</span>
+  <p>The burn-in animation clock was an accumulating <code>Float</code>. A Float's ULP exceeds a
+  frame delta at about <span class="val">6.1 days</span> of uptime, so pixel shift silently
+  <strong>froze partway through a 14-day burn</strong>. Widening to <code>Double</code> would
+  <em>not</em> have fixed it &mdash; the problem is the magnitude of the value, not the increment.
+  It is now derived from a <strong>Long nanosecond baseline</strong> with each consumer taking its
+  own modulo (<code>phaseFraction</code>), so precision no longer depends on uptime at all.</p>
+</div>
+
+<p>The animation frame ticker is read only inside the <code>offset</code> /
+<code>graphicsLayer</code> lambdas (layout and draw phase), never the composable body &mdash;
+matching the RADAR recomposition-storm avoidance.</p>
+
+<h2 id="ledger">The stress ledger, deliberately coarse</h2>
+
+<p><code>BurnInLedger</code> accumulates on-time per <strong>zone</strong>, where a zone is
+<code>&lt;concept&gt;/&lt;phase&gt;</code> (e.g. <code>RADAR/ACTIVE</code>, <code>MAP/DIM</code>),
+and reports into the rolling file log, which already survives reboots &mdash; so it needs no
+persistence of its own. A backwards clock is guarded (elapsed is floored at zero) so it cannot
+credit negative time.</p>
+
+<div class="note">
+  <span class="label">Why not per-region</span>
+  <p>The originally-planned per-screen-region accounting was <strong>not</strong> built. The app
+  does not measure which pixels are lit, so a per-region risk figure would be invented data
+  &mdash; and an invented burn-risk number is worse than none.</p>
+</div>
+
+<h2 id="config">Configuration</h2>
+
+<p><code>BurnInConfig</code> carries every tunable (shift amplitude and period, breathe amplitude and
+period, the three timeouts, dim and backlight levels, movement thresholds) and <strong>coerces
+itself</strong> on both read and write: timeouts forced strictly increasing, amplitudes and alphas
+clamped. Persisted as individual DataStore keys, and adjustable live on the playa from the hidden
+bottom-left tuning panel without a rebuild.</p>
+
+<p>The coercion had a real edge-case bug: <code>coerceIn(MAX+1, MAX)</code> is an empty range and
+threw at the ceiling. Fixed by reserving headroom (<code>MAX_DIM = MAX-2</code>,
+<code>MAX_DEEP = MAX-1</code>) so the invariant
+<code>1 &le; dim &lt; deep &lt; sleep &le; 86&thinsp;400</code> holds across all of
+<code>Long</code>, pinned by a 1000-case edge grid.</p>
+
+<h2 id="verify">Verifying on device</h2>
+
+<p>Burn-in itself is not observable in a session. To exercise the state machine, temporarily shrink
+the timeouts in <code>BurnInConfig</code> defaults (e.g. <span class="val">2 / 4 / 12&nbsp;s</span>)
+and <code>DEFAULT_TICK_MILLIS</code> to <span class="val">1000</span>, deploy, and screencap at
+intervals &mdash; then revert before committing.</p>
+
+<p>Reliable long-press over adb needs a <em>continuous</em>
+<code>input swipe x y x+2 y+2 900</code> (one stream, tiny move within slop); separate
+<code>motionevent</code> calls or a zero-distance swipe register as a tap.</p>
+
+</div>
+<p class="srcnote"><b>Converted from</b><br><code>design/BURN_IN.md</code> &middot; <code>ARCHITECTURE.md &sect;4.10</code> &middot; <code>docs/AUDIT-2026-08-09.md C2, C3</code></p>
+
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/vision.html"><span class="pager-dir">Previous</span><span class="pager-name">Threats &amp; the DRIVER HUD</span></a><a class="next" href="../app/operations.html"><span class="pager-dir">Next</span><span class="pager-name">Displays &amp; operations</span></a></nav>
+  </article>
+  <aside class="toc" id="toc" aria-label="On this page"></aside>
+</main>
+
+</div>
+<script src="../assets/site.js"></script>
+</body>
+</html>
