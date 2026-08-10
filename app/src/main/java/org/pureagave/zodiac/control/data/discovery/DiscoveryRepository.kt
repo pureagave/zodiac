@@ -13,7 +13,9 @@ import org.json.JSONObject
 import org.pureagave.zodiac.control.core.geo.PlayaPoint
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.ops.PoiKind
+import timber.log.Timber
 import java.io.File
+import java.io.IOException
 
 /**
  * Offline-first playa-discovery store. On start it serves any disk cache
@@ -21,24 +23,37 @@ import java.io.File
  * if the fetch fails (no Starlink / API down) the cache stands. Exposes a single
  * [pois] `StateFlow` for the cockpit to render as RADAR contacts / MAP markers /
  * drive-to targets.
+ *
+ * [storageDir] must be non-purgeable storage (`filesDir`, not `cacheDir`): this
+ * cache is the *only* offline copy of art/camp data for up to 14 unattended days,
+ * and there is no bundled fallback the way the base playa map has one.
  */
 class DiscoveryRepository(
     private val source: DiscoverySource,
     private val scope: CoroutineScope,
-    cacheDir: File,
+    storageDir: File,
     private val year: Int,
+    // Test seam for the atomic-write path: lets a test inject a write that dies
+    // partway through (simulating a power cut mid-write) without needing to race
+    // a real thread. Default is the real "write the tmp file" step.
+    private val cacheWriter: CacheWriter = CacheWriter { target, text -> target.writeText(text) },
 ) {
     private val _pois = MutableStateFlow<List<PlayaPoi>>(emptyList())
     val pois: StateFlow<List<PlayaPoi>> = _pois.asStateFlow()
 
-    private val cacheFile = File(cacheDir, "discovery_$year.json")
+    private val cacheFile = File(storageDir, "discovery_$year.json")
 
     init {
         scope.launch {
             // Serve cache instantly, then refresh on launch and roughly nightly
             // while the process lives. A failed refresh (offline) is a no-op, so
             // the last good full dataset keeps serving through connectivity gaps.
-            loadCache()?.let { if (it.isNotEmpty()) _pois.value = it }
+            loadCache()?.let {
+                if (it.isNotEmpty()) {
+                    _pois.value = it
+                    Timber.i("discovery: %d served %d record(s) from disk cache", year, it.size)
+                }
+            }
             while (isActive) {
                 refresh()
                 delay(REFRESH_INTERVAL_MS)
@@ -49,20 +64,52 @@ class DiscoveryRepository(
     /**
      * Fetch + re-cache. Swallows network/IO/parse failures so the cached list is
      * preserved; coroutine cancellation is re-thrown so the scope can unwind.
+     *
+     * A fetch is merged into the current set **by kind**: a kind absent from the
+     * fresh result (e.g. every camp record failed to parse this round while art
+     * came through fine) keeps its previously-cached records rather than being
+     * wiped. Only a kind that actually came back non-empty replaces its old data.
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException", "RethrowCaughtException")
     suspend fun refresh() {
         try {
             val fresh = source.fetch(year)
-            if (fresh.isNotEmpty()) {
-                _pois.value = fresh
-                saveCache(fresh)
+            if (fresh.isEmpty()) {
+                Timber.i("discovery: %d fetch returned 0 records; keeping cached %d", year, _pois.value.size)
+                return
             }
+            val merged = mergeByKind(_pois.value, fresh)
+            _pois.value = merged
+            saveCache(merged)
+            Timber.i(
+                "discovery: %d refreshed — fetched %d art / %d camp, now serving %d art / %d camp",
+                year,
+                fresh.count { it.kind == PoiKind.ART },
+                fresh.count { it.kind == PoiKind.CAMP },
+                merged.count { it.kind == PoiKind.ART },
+                merged.count { it.kind == PoiKind.CAMP },
+            )
         } catch (e: CancellationException) {
             throw e // never swallow coroutine cancellation — let the scope unwind
         } catch (e: Exception) {
             // Offline or API error: keep whatever we already have.
+            Timber.w(e, "discovery: %d refresh failed (%s); keeping cached %d", year, e.javaClass.simpleName, _pois.value.size)
         }
+    }
+
+    /**
+     * For each [PoiKind] present (non-empty) in [fresh], fresh's records replace
+     * current's. A kind fresh didn't return anything for keeps current's records
+     * for that kind untouched — a partial-degraded fetch can't clobber a good
+     * cache for the kind that failed.
+     */
+    private fun mergeByKind(
+        current: List<PlayaPoi>,
+        fresh: List<PlayaPoi>,
+    ): List<PlayaPoi> {
+        val freshKinds = fresh.map { it.kind }.toSet()
+        val keptFromCurrent = current.filter { it.kind !in freshKinds }
+        return keptFromCurrent + fresh
     }
 
     private fun saveCache(pois: List<PlayaPoi>) {
@@ -87,7 +134,28 @@ class DiscoveryRepository(
             }
             arr.put(o)
         }
-        runCatching { cacheFile.writeText(arr.toString()) }
+        writeAtomically(arr.toString())
+    }
+
+    /**
+     * Write-to-temp-then-rename, mirroring [org.pureagave.zodiac.control.data.playa.PlayaMapBinaryCache.write].
+     * A crash (power cut) during [cacheWriter] leaves only a half-written `.tmp`
+     * file; [cacheFile] — the one [loadCache] reads — is untouched until the
+     * rename, which is atomic on the same filesystem. Failure at any step is
+     * best-effort: the cache is allowed to stay stale, never to go missing or
+     * corrupt.
+     */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    private fun writeAtomically(text: String) {
+        val tmp = File(cacheFile.parentFile, "${cacheFile.name}.tmp")
+        try {
+            cacheFile.parentFile?.mkdirs()
+            cacheWriter.write(tmp, text)
+            if (!tmp.renameTo(cacheFile)) throw IOException("rename failed: $tmp -> $cacheFile")
+        } catch (e: Exception) {
+            Timber.w(e, "discovery: %d cache write failed; previous on-disk cache (if any) is untouched", year)
+            tmp.delete()
+        }
     }
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException") // corrupt/absent cache just yields null → refetch
@@ -115,6 +183,7 @@ class DiscoveryRepository(
                 )
             }
         } catch (e: Exception) {
+            Timber.w(e, "discovery: %d cache file is corrupt; treating as a miss", year)
             null
         }
     }
@@ -122,6 +191,14 @@ class DiscoveryRepository(
     private companion object {
         const val REFRESH_INTERVAL_MS = 24L * 60 * 60 * 1000 // ~daily
     }
+}
+
+/** Test seam for [DiscoveryRepository]'s atomic cache write — see [DiscoveryRepository.writeAtomically]. */
+fun interface CacheWriter {
+    fun write(
+        target: File,
+        text: String,
+    )
 }
 
 private fun JSONObject.optStringOrNull(key: String): String? =

@@ -275,7 +275,12 @@ class ZodiacApplication : Application() {
         DiscoveryRepository(
             source = BmApiClient(),
             scope = applicationScope,
-            cacheDir = cacheDir,
+            // filesDir, not cacheDir: this is the only offline copy of art/camp
+            // data for up to 14 unattended days, and Android is free to purge
+            // cacheDir under storage pressure. Unlike PlayaMapBinaryCache (which
+            // legitimately uses cacheDir because bundled JSON assets back it),
+            // discovery has no fallback if this evaporates.
+            storageDir = filesDir,
             // Active year. 2026 art/camp locations are embargoed until ~3 weeks
             // pre-event, so this returns nothing until BM releases them — no markers
             // now, auto-populating (correctly placed) on release. Matches the 2026
