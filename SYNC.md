@@ -6,6 +6,118 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-11 — The fleet all runs the same code, and the beacon became an appliance
+
+Six devices, six different builds, none of it visible without a USB cable. All
+current now — the first time that has ever been true. App **819** tests, beacon
+**82**, jetson **432**. Green, pushed.
+
+### The Lepton's 160° is the diagonal — measured, not argued
+
+`HARDWARE.md` had settled this on physics and the tablet implemented it, but
+`zvision`'s `--fov-ref` still defaulted to `h`, so any camera spec omitting
+`fovref=d` computed ±80°. **The deployed rig always passed `fovref=d` explicitly,
+so the vehicle never carried the error** — the exposure was latent, for the next
+camera added without the flag. Default is now `d`.
+
+Rob settled it with a cold bottle and a tape measure. At 85 cm off centre at
+1.0 m — a true **40.4°** — the running rig reported **42.5°**, implying a ~61°
+horizontal half-FOV against the 64° assumed. The horizontal reading predicts
+**32.3°**. ±80° is ruled out by observation.
+
+**The first protocol was wrong and that is the lesson.** "Slide it until it
+disappears" measures the *detector*, not the lens: a fisheye squeezes and dims an
+object toward the edge until it drops under the minimum-area threshold, so it
+vanished at ~44° against a 64° frame edge. Comparing *reported vs true* angle at
+**any** known position calibrates the whole scale and never needs the edge at
+all. One position was enough.
+
+DOC-5 fell out of this and turned out to be a **category error, not arithmetic**:
+a circular window is clipped by the *corner* rays, so it is governed by the 80°
+diagonal while bearings are governed by the 64° horizontal. Both numbers were
+always right, for different jobs. `radius ≥ standoff × tan(80°)` stands.
+**80° for anything circular in the optical path, 64° for anything about bearing.**
+
+### The beacon is a power-on appliance
+
+Once mounted, nobody can reach that phone, so having power must be enough. Three
+things stood in the way and all three were real:
+
+1. **The installed build was 9 days old and had no `BootReceiver` at all** — the
+   feature we were trying to test did not exist on the device. Every "the flag
+   was never written" observation was explained by that one fact.
+2. **`PREF_AUTO_START` defaulted to false.** Now true. The STOP button is still a
+   real stop and still survives a reboot, because `onToggle` writes the flag on
+   both branches; only the never-configured state changed.
+3. **Broadcast targets were resolved once**, from the DHCP lease. On the vehicle
+   the phone boots faster than the router, so there is often no lease and the
+   fallback silently became the limited `255.255.255.255` — which consumer APs do
+   not reliably deliver, which is the entire reason the subnet fallback exists.
+   Re-resolved every 5 s now. **The first resolution is deliberately not gated by
+   that interval**: `elapsedRealtime()` counts from boot, so a service starting
+   seconds after boot would have failed the interval test against a zero baseline
+   and come up with no targets at all.
+
+Then a fourth, found by cold-booting the real phone: **a wake lock acquired before
+`start()` makes a failed start look perfectly healthy** — service alive,
+notification showing, nothing on the wire, no log. Socket creation moved into the
+retry loop and `start()` is wrapped and logged at ERROR.
+
+**And the reason all of that was so hard: the beacon had two `Log.` calls in the
+entire module** — on the one component that must run unattended for a week with
+nobody able to reach it. It now says what it is doing, which is what let us
+settle the last test in a single reboot instead of five.
+
+### Three false conclusions, all from deaf instruments
+
+Worth recording together, because the shape repeats:
+
+1. **The macOS Application Firewall silently drops inbound UDP to python.** The
+   Mac reported "no traffic seen" on a busy bus — multicast, subnet broadcast
+   *and* unicast aimed straight at it. Listeners must run on the Jetson.
+2. **Samsung delivers `BOOT_COMPLETED` about two minutes after
+   `sys.boot_completed=1`.** Three separate "the beacon failed to auto-start"
+   conclusions were just polling windows that ended before Android got round to
+   telling the app. Allow ≥3 minutes.
+3. **`/etc/default/zvision` is not shell-sourceable** (systemd `KEY=value with
+   spaces`). Sourcing it yielded an empty `$ZVISION_ARGS` and ran the *fake*
+   camera while printing a confident `±80°` that I nearly reported as the
+   deployed config.
+
+The rule that covers all three: **before trusting a negative result, send the
+instrument a control packet and prove it can hear.** That is what finally
+separated "the beacon is dead" from "my listener is deaf".
+
+### Fleet brought current
+
+S9+ **40** commits behind (with A2's fabricated contacts live on the hero
+display), A54 **38**, Fire 11th-gen **32**, Fire 9th-gen **25**, beacon **9 days**,
+Jetson **63**. All updated and verified; Jetson services restarted and re-checked
+(123 threat frames in 8 s, all parsed by the new codec) with `--dmx none`
+untouched, so the head was never energised. `zodiac-deck` left **inactive** on
+purpose — `zdeck` now exists on the box, but deck-vs-tracker arbitration is
+unresolved and that is Rob's call.
+
+**Nothing on a device can say what build it runs.** `versionCode`/`versionName`
+are pinned, so install *time* is the only signal — and it is worthless on a
+device whose clock is wrong, which the beacon's was by ten hours. Stamping the
+git short hash into `versionName` is the prerequisite for the fleet version
+monitor Rob asked for.
+
+### Log lines carry their UTC offset
+
+Rob noticed the logs had no timezone. The KDoc showed it was deliberate — local
+time so there is no conversion to get wrong at 3am — and that reasoning is sound
+right up until a device is wrong about its own zone. The beacon came back from a
+flat battery set to `Asia/Dubai` and wrote ten hours of plausible timestamps that
+correlated with nothing. Lines are now `13:14:06.123-06:00`: still readable next
+to a laptop clock, but comparable across the fleet, and a misconfigured device
+announces itself. The offset is glued to the time with **no space**, because
+`logLineSeverity()` splits on spaces and reads field 2 — the mutation that adds
+the space turns 9 tests red.
+
+---
+
 ## 2026-08-10 — Documentation audited against the code; three dangerous errors found
 
 Full rewrite of `README.md` and `ARCHITECTURE.md` as a genuine three-part system

@@ -224,6 +224,26 @@ API contract, not real OS scheduling.
       `retryMapLoad` + the `playaMapRepository` collector are the one cohesive
       group still in `CockpitViewModel` after the 2026-08-10 split.
 
+- [ ] **FLEET-1 (P1) — a fleet version monitor on the S9+ hero display.** Rob asked
+      for this 2026-08-11: something that tracks whether every device is running
+      the latest code, shown in one of the spare cards. On that day six devices
+      were 40 / 38 / 32 / 25 commits and 9 days behind, and every one needed a USB
+      cable to discover. **Blocked on FLEET-2.** Design: each node announces
+      `(node, role, version, sha, build epoch)` on the existing fleet bus; "latest"
+      = the newest build seen among peers, so it works offline with no server; the
+      S9+ collects and flags anything older. Include the Jetson and the beacon, not
+      just tablets. Silence must read as *unknown*, never as healthy. If it becomes
+      a cross-language wire format, give it a golden corpus like ZTHREAT.
+- [ ] **FLEET-2 (P1, do first) — stamp the git short hash into `versionName`.**
+      `versionCode=1` / `versionName=0.1.0` are pinned and identical on every
+      build, so a device physically cannot report what code it runs; install *time*
+      is the only signal and it is worthless on a device with a wrong clock. A
+      Gradle change for debug builds. Everything in FLEET-1 depends on it.
+- [ ] **The beacon still has almost no logging outside the paths touched
+      2026-08-11.** It had two `Log.` calls in the whole module. Consider whether
+      it needs the app's `RollingFileLog` treatment — it is the component that must
+      survive a week unattended, and logcat does not persist across a reboot.
+
 ### Surfaced by the 2026-08-10 documentation audit
 - [ ] **Wire the beacon phone to permanent vehicle power** — it is the fleet's
       only GNSS, so its charge state is a single point of failure for every
