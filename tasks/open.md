@@ -234,11 +234,26 @@ API contract, not real OS scheduling.
       S9+ collects and flags anything older. Include the Jetson and the beacon, not
       just tablets. Silence must read as *unknown*, never as healthy. If it becomes
       a cross-language wire format, give it a golden corpus like ZTHREAT.
-- [ ] **FLEET-2 (P1, do first) — stamp the git short hash into `versionName`.**
-      `versionCode=1` / `versionName=0.1.0` are pinned and identical on every
-      build, so a device physically cannot report what code it runs; install *time*
-      is the only signal and it is worthless on a device with a wrong clock. A
-      Gradle change for debug builds. Everything in FLEET-1 depends on it.
+      **UNBLOCKED 2026-08-11** — FLEET-2 landed. Read the node's own identity from
+      `BuildConfig.{VERSION_BASE,GIT_SHA,GIT_DIRTY,GIT_COMMIT_EPOCH_SECONDS}`
+      (`GIT_COMMIT_EPOCH_SECONDS` is the "newest-wins" comparator; an `unknown`/
+      dirty build must render as unknown, never current — `BuildIdentity.known`
+      already encodes that). The Jetson still needs its own version-report path.
+- [x] **FLEET-2 DONE 2026-08-11 — builds are now self-identifying.** Spec at
+      `design/FLEET-2-build-identity-spec.md`. Git values computed **once** in the
+      root `build.gradle.kts` (`providers.exec`, failing toward unknown/dirty) and
+      read by both modules via `rootProject.extra`. `versionName` is now
+      `0.1.0+<sha9>[.dirty]` (visible over `adb shell dumpsys package` and in the
+      app's boot log for free), plus four `BuildConfig` fields — `VERSION_BASE`,
+      `GIT_SHA` (fixed 9-char so a shallow CI clone and a full local clone agree),
+      `GIT_DIRTY`, `GIT_COMMIT_EPOCH_SECONDS` — so FLEET-1 announces without
+      string-parsing. **Deliberately no per-build wall-clock** (would make every
+      `assembleDebug`/`testDebugUnitTest` non-cacheable and adds no signal beyond
+      commit epoch + dirty); `versionCode` stays 1 so `adb install -r` never trips
+      a downgrade. `:beacon` had `buildConfig` off — now on. The `versionName`
+      format is a contract pinned by a `core/telemetry/BuildIdentity` render/parse
+      type and a test that asserts `BuildConfig.VERSION_NAME == render(the fields)`
+      — the Gradle↔Kotlin seam fails red if it drifts. app 819→839, beacon 82→88.
 - [ ] **The beacon still has almost no logging outside the paths touched
       2026-08-11.** It had two `Log.` calls in the whole module. Consider whether
       it needs the app's `RollingFileLog` treatment — it is the component that must

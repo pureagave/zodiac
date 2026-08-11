@@ -14,6 +14,12 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint")
 }
 
+val versionBase = rootProject.extra["zodiacVersionBase"] as String
+val gitSha = rootProject.extra["zodiacGitSha"] as String
+val gitDirty = rootProject.extra["zodiacGitDirty"] as Boolean
+val commitEpoch = rootProject.extra["zodiacCommitEpoch"] as Long
+val versionSuffix = if (gitDirty) "$gitSha.dirty" else gitSha
+
 android {
     namespace = "org.pureagave.zodiac.control"
     compileSdk = 35
@@ -27,8 +33,13 @@ android {
         // need a further drop; check each with `getprop ro.build.version.sdk`.
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 1 // UNCHANGED — see below
+        versionName = "$versionBase+$versionSuffix"
+
+        buildConfigField("String", "VERSION_BASE", "\"$versionBase\"")
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+        buildConfigField("boolean", "GIT_DIRTY", "$gitDirty")
+        buildConfigField("long", "GIT_COMMIT_EPOCH_SECONDS", "${commitEpoch}L")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

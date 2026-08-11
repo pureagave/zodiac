@@ -6,6 +6,60 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-11 — FLEET-2: every build now says what code it is
+
+Yesterday's lesson was that **nothing on a device could report its own build** —
+`versionCode=1` / `versionName=0.1.0` were pinned identical on every build, so
+install *time* was the only staleness signal and it lied whenever a clock was
+wrong (the beacon came back from a flat battery set to `Asia/Dubai`). That is the
+prerequisite for the fleet version monitor Rob asked for, and it is now closed.
+
+`versionName` is now `0.1.0+<sha9>[.dirty]` — e.g. `0.1.0+8897cab95`. It is in the
+APK manifest, so `adb shell dumpsys package <pkg>` reads it **without launching
+the app**, and the app's existing boot log (`ZodiacApplication.kt:84`) prints it
+for free. Alongside it, four structured `BuildConfig` fields so FLEET-1 can
+announce `(node, role, version, sha, epoch)` without string-parsing:
+`VERSION_BASE`, `GIT_SHA`, `GIT_DIRTY`, `GIT_COMMIT_EPOCH_SECONDS`.
+
+Decisions worth keeping:
+
+- **The sha is fixed at 9 chars** (`git rev-parse --short=9`). Git's default
+  abbreviation is adaptive — a shallow CI clone and a full local clone would
+  otherwise print *different* strings for the *same* commit, which a comparison
+  monitor would read as a false divergence. Fixing the width makes them agree.
+- **Commit epoch, not build wall-clock.** A per-build timestamp would change
+  `BuildConfig` on every `assembleDebug` and make **every `testDebugUnitTest` run
+  non-cacheable** — unacceptable for a project that runs the full gate constantly
+  — and it adds no signal the monitor can act on beyond commit epoch + the dirty
+  flag (two devices on the same commit with the same cleanliness are running
+  identical code). Because identity changes only on a commit or a clean↔dirty
+  transition, the build cache still works.
+- **Everything fails toward untrusted.** Git absent at build time →
+  `GIT_SHA=unknown`, `GIT_DIRTY=true`. The monitor must never mistake a build it
+  cannot place for a current one — `BuildIdentity.known` encodes exactly that, and
+  a test pins the `0.1.0+unknown.dirty` string round-trips back to `known=false`.
+- **`versionCode` stays 1** so `adb install -r` never trips a downgrade across the
+  fleet; the sha is the identity, not the code.
+
+The `versionName` format is a **contract**, pinned the way ZTHREAT is: git values
+computed once in the root `build.gradle.kts` (`providers.exec`) and read by both
+modules via `rootProject.extra`, and a pure `core/telemetry/BuildIdentity`
+render/parse type is the single definition of the string. A unit test asserts
+`BuildConfig.VERSION_NAME == BuildIdentity.render(the structured fields)`, so the
+Gradle side and the Kotlin side cannot silently drift. `:beacon` had `buildConfig`
+turned **off** — now on, with its own test that the four fields actually
+materialised (it would have gone red on the old `versionName = "0.1.0"`).
+
+Process note: spec written first (`design/FLEET-2-build-identity-spec.md`),
+implemented by a Sonnet subagent against it, then verified file-by-file against
+the spec and the generated `BuildConfig`/merged manifest by hand. app 819→**839**,
+beacon 82→**88**, jetson 432 untouched. Gate green, unscoped.
+
+FLEET-1 (the S9+ hero-display monitor) is now unblocked. The Jetson still needs
+its own version-report path before it can join the announcement.
+
+---
+
 ## 2026-08-11 — The fleet all runs the same code, and the beacon became an appliance
 
 Six devices, six different builds, none of it visible without a USB cable. All
