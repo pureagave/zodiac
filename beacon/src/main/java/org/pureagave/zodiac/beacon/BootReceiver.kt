@@ -11,11 +11,18 @@ import androidx.core.content.ContextCompat
  * thermal reboot must not leave the whole fleet blind until a human physically
  * picks up the phone (AUDIT-2026-08-09 B3).
  *
- * Default `false`: [PREF_AUTO_START] is unset on a fresh install, so a new
- * beacon never broadcasts before a human has pressed START once.
- * [BeaconActivity.onToggle] sets it on both the start and stop branches, so
- * boot always restores whatever was last explicitly chosen — the STOP button
- * stays a real stop, even across a reboot.
+ * **Default `true` (changed 2026-08-11).** The beacon is a power-on appliance:
+ * once it is mounted on the vehicle nobody can reach it, so having power must be
+ * sufficient to make it broadcast. A fresh install, a factory reset or a wiped
+ * phone therefore beacons on the next boot with no human involved.
+ *
+ * This does not make the STOP button a lie. [BeaconActivity.onToggle] writes the
+ * flag on *both* branches, so an explicit STOP persists across reboots exactly as
+ * before — the only thing that changed is the state before anyone has expressed
+ * an intent at all, and for a dedicated sensor phone "broadcast" is the right
+ * answer there. The old default cost the fleet its GPS after any reinstall until
+ * somebody remembered to press START, which is precisely the situation a mounted
+ * phone cannot recover from.
  *
  * Hard dependency on B5: a boot start is a background start
  * ([EXTRA_FROM_BACKGROUND] = true), and [safeForegroundTypes] is what keeps
@@ -34,7 +41,7 @@ class BootReceiver : BroadcastReceiver() {
     ) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val prefs = context.getSharedPreferences(TelemetryBroadcaster.PREFS_NAME, Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(PREF_AUTO_START, false)) return
+        if (!prefs.getBoolean(PREF_AUTO_START, AUTO_START_DEFAULT)) return
         val svc =
             Intent(context, TelemetryService::class.java)
                 .putExtra(EXTRA_FROM_BACKGROUND, true)
@@ -44,5 +51,11 @@ class BootReceiver : BroadcastReceiver() {
     companion object {
         /** Shared with [BeaconActivity.onToggle], which is the only writer. */
         internal const val PREF_AUTO_START = "auto_start"
+
+        /**
+         * Absent flag means "yes, broadcast". See the class doc: a mounted phone
+         * cannot be reached to press START, so power-on has to be enough.
+         */
+        internal const val AUTO_START_DEFAULT = true
     }
 }

@@ -137,6 +137,11 @@ object TelemetryBroadcaster : SensorEventListener {
     // APs that rate-limit/drop multicast.
     const val GROUP = "239.7.7.10"
     private const val LIMITED_BROADCAST = "255.255.255.255"
+
+    // How often to re-derive the subnet-broadcast target. Short enough that a
+    // beacon which booted before its router recovers in seconds rather than
+    // staying half-deaf for the night; long enough to be free.
+    private const val TARGET_REFRESH_MS = 5_000L
     private const val TTL = 1
     private const val HDT_INTERVAL_MS = 250L
     private const val ROTATION_MATRIX_SIZE = 9
@@ -180,6 +185,17 @@ object TelemetryBroadcaster : SensorEventListener {
     private var scope: CoroutineScope? = null
     private var socket: DatagramSocket? = null
     private var targets: List<InetAddress> = emptyList()
+
+    // The subnet-directed broadcast address is derived from the DHCP lease, so it
+    // is only knowable once WiFi is actually up. On the vehicle the phone and the
+    // travel router power up together and the phone usually wins the race, so at
+    // service start there is often no lease yet and the fallback resolves to the
+    // limited broadcast — which consumer APs do not reliably deliver, which is the
+    // whole reason the subnet fallback exists. Resolved once, that leaves the
+    // beacon on a multicast-only path for the rest of the boot, silently, on a
+    // phone nobody can reach. So re-resolve periodically and adopt any change.
+    private var wifiManager: WifiManager? = null
+    private var targetsResolvedAtMs: Long? = null
     private var sensorManager: SensorManager? = null
     private var nmeaListener: OnNmeaMessageListener? = null
     private var locationListener: LocationListener? = null
@@ -264,7 +280,9 @@ object TelemetryBroadcaster : SensorEventListener {
         // subnet-directed broadcast (reliably delivered by consumer APs, unlike
         // the limited 255.255.255.255). Belt-and-suspenders → the fleet gets the
         // telemetry whether or not the AP forwards multicast.
-        targets = listOf(InetAddress.getByName(GROUP), subnetBroadcast(app.getSystemService(Context.WIFI_SERVICE) as WifiManager))
+        wifiManager = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        targetsResolvedAtMs = null
+        refreshTargetsIfDue(SystemClock.elapsedRealtime())
         socket =
             MulticastSocket().apply {
                 timeToLive = TTL
@@ -374,6 +392,7 @@ object TelemetryBroadcaster : SensorEventListener {
         loopScope.launch {
             while (isActive) {
                 delay(TICK_DEAD_MS / 2)
+                refreshTargetsIfDue(SystemClock.elapsedRealtime())
                 tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)?.let { health ->
                     _status.value = "$health\n$lastGoodStatus"
                 }
@@ -449,6 +468,27 @@ object TelemetryBroadcaster : SensorEventListener {
         lastGoodStatus = body
         val health = tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)
         return if (health != null) "$health\n$body" else body
+    }
+
+    /**
+     * Re-derive the broadcast targets if they are stale. Cheap (a DHCP-info read),
+     * and it is what lets a beacon that booted before its router heal itself
+     * instead of spending the whole boot broadcasting into the void.
+     */
+    private fun refreshTargetsIfDue(nowMs: Long) {
+        val last = targetsResolvedAtMs
+        // `last == null` is the first resolution and must never be skipped:
+        // elapsedRealtime() counts from BOOT, so a service starting seconds after
+        // boot — exactly the vehicle case — would otherwise fail the interval test
+        // against a zero baseline and start with no targets at all.
+        if (last != null && nowMs - last < TARGET_REFRESH_MS) return
+        targetsResolvedAtMs = nowMs
+        @Suppress("DEPRECATION")
+        val ip = wifiManager?.dhcpInfo?.ipAddress ?: 0
+        val fresh = runCatching { BeaconNet.broadcastTargets(GROUP, ip, LIMITED_BROADCAST) }.getOrNull() ?: return
+        if (fresh != targets) {
+            targets = fresh
+        }
     }
 
     private fun send(line: String) {
@@ -585,10 +625,4 @@ object TelemetryBroadcaster : SensorEventListener {
      * (e.g. 192.168.0.234 → 192.168.0.255). Android reports `ipAddress`
      * little-endian, so the low three octets are the address's first three.
      */
-    private fun subnetBroadcast(wifi: WifiManager): InetAddress {
-        @Suppress("DEPRECATION")
-        val ip = wifi.dhcpInfo?.ipAddress ?: 0
-        val host = BeaconNet.subnetBroadcastHost(ip) ?: LIMITED_BROADCAST
-        return runCatching { InetAddress.getByName(host) }.getOrDefault(InetAddress.getByName(LIMITED_BROADCAST))
-    }
 }

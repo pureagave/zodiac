@@ -14,11 +14,12 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
 /**
- * A boot start must restore whatever the operator last explicitly chose, and
- * nothing else — not a fresh install, not an unrelated broadcast, and never
- * without [EXTRA_FROM_BACKGROUND], which is the contract B5's
- * [safeForegroundTypes] relies on to avoid requesting the microphone type on a
- * background start (AUDIT-2026-08-09 B3).
+ * A boot start must restore whatever the operator last explicitly chose, and in
+ * the absence of any choice it must broadcast anyway — the beacon is a power-on
+ * appliance and, once mounted on the vehicle, nobody can reach it to press START
+ * (changed 2026-08-11). Never without [EXTRA_FROM_BACKGROUND], which is the
+ * contract B5's [safeForegroundTypes] relies on to avoid requesting the
+ * microphone type on a background start (AUDIT-2026-08-09 B3).
  */
 @RunWith(RobolectricTestRunner::class)
 class BootReceiverTest {
@@ -48,10 +49,33 @@ class BootReceiverTest {
     }
 
     @Test
-    fun boot_with_autostart_disabled_starts_nothing() {
-        // Mutation target: delete the pref check — a fresh install (PREF_AUTO_START
-        // unset) or a phone whose operator's last action was STOP would
-        // auto-start anyway.
+    fun boot_with_no_stored_preference_still_broadcasts() {
+        // The appliance case, and the reason the default was inverted: a fresh
+        // install, a factory reset, or a phone nobody has ever pressed START on.
+        // Mounted on the vehicle it cannot be reached, so power-on has to be
+        // enough. Mutation target: flip AUTO_START_DEFAULT back to false.
+        // Cleared explicitly rather than relying on test isolation — a sibling
+        // test writes this very key, and a default-sensitive test that silently
+        // reads someone else's value proves nothing.
+        application
+            .getSharedPreferences(TelemetryBroadcaster.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply()
+
+        BootReceiver().onReceive(application, Intent(Intent.ACTION_BOOT_COMPLETED))
+
+        val started = shadowOf(application).nextStartedService
+        assertNotNull("an unconfigured beacon must still broadcast on boot", started)
+        assertEquals(TelemetryService::class.java.name, started!!.component?.className)
+        assertTrue(started.getBooleanExtra(EXTRA_FROM_BACKGROUND, false))
+    }
+
+    @Test
+    fun boot_after_an_explicit_stop_starts_nothing() {
+        // The STOP button is still a real stop, and still survives a reboot —
+        // that property is what makes flipping the default safe.
+        // Mutation target: delete the pref check entirely.
         setAutoStart(false)
         BootReceiver().onReceive(application, Intent(Intent.ACTION_BOOT_COMPLETED))
 

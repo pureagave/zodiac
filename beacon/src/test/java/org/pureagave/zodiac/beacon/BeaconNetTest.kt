@@ -1,6 +1,7 @@
 package org.pureagave.zodiac.beacon
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -70,5 +71,51 @@ class BeaconNetTest {
     fun subnet_broadcast_falls_back_to_null_when_no_address_yet() {
         // ip == 0 means WiFi has no DHCP lease; caller uses the limited broadcast.
         assertNull(BeaconNet.subnetBroadcastHost(0))
+    }
+
+    // --- broadcastTargets: the vehicle power-up race -------------------------
+
+    @Test
+    fun targets_always_include_the_fixed_fleet_multicast_group() {
+        // The group is a constant, so it is correct even with no DHCP lease --
+        // which is what keeps a beacon that booted before its router reachable
+        // at all on the multicast path.
+        val withLease = BeaconNet.broadcastTargets(GROUP, LEASE_192_168_0_234, LIMITED)
+        val noLease = BeaconNet.broadcastTargets(GROUP, 0, LIMITED)
+        assertEquals(GROUP, withLease[0].hostAddress)
+        assertEquals(GROUP, noLease[0].hostAddress)
+    }
+
+    @Test
+    fun a_dhcp_lease_yields_the_subnet_directed_broadcast() {
+        val targets = BeaconNet.broadcastTargets(GROUP, LEASE_192_168_0_234, LIMITED)
+        assertEquals("192.168.0.255", targets[1].hostAddress)
+    }
+
+    @Test
+    fun no_lease_yet_falls_back_to_the_limited_broadcast() {
+        // ipAddress == 0 is the normal state for the first seconds after the
+        // vehicle powers up: the phone boots faster than the travel router.
+        val targets = BeaconNet.broadcastTargets(GROUP, 0, LIMITED)
+        assertEquals(LIMITED, targets[1].hostAddress)
+    }
+
+    @Test
+    fun the_fallback_changes_once_a_lease_arrives() {
+        // The reason the caller re-resolves on a timer instead of trusting the
+        // value it got at start-up: these two are not the same address, and a
+        // beacon stuck on the first one is broadcasting into the void on any AP
+        // that does not forward the limited broadcast.
+        val before = BeaconNet.broadcastTargets(GROUP, 0, LIMITED)
+        val after = BeaconNet.broadcastTargets(GROUP, LEASE_192_168_0_234, LIMITED)
+        assertNotEquals(before[1], after[1])
+    }
+
+    private companion object {
+        const val GROUP = "239.7.7.10"
+        const val LIMITED = "255.255.255.255"
+
+        /** 192.168.0.234 as Android reports it: little-endian. */
+        const val LEASE_192_168_0_234 = (234 shl 24) or (0 shl 16) or (168 shl 8) or 192
     }
 }

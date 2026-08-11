@@ -1,5 +1,7 @@
 package org.pureagave.zodiac.beacon
 
+import java.net.InetAddress
+
 /**
  * Pure, Android-free helpers pulled out of [TelemetryBroadcaster] so the JVM
  * unit tests can exercise them without a device: GGA fix-health parsing and the
@@ -51,5 +53,29 @@ internal object BeaconNet {
         val b = (ipAddress shr OCTET2_SHIFT) and BYTE_MASK
         val c = (ipAddress shr OCTET3_SHIFT) and BYTE_MASK
         return "$a.$b.$c.255"
+    }
+
+    /**
+     * The two addresses a beacon frame is sent to: the fixed fleet multicast
+     * group, and the /24 subnet-directed broadcast derived from the current DHCP
+     * lease (consumer APs deliver that reliably; the limited 255.255.255.255 they
+     * often do not).
+     *
+     * Takes the raw DHCP address so the decision is testable without a device.
+     * [ipAddress] of 0 means "no lease yet" — which is the normal state for the
+     * first seconds after a vehicle powers up, since the phone boots faster than
+     * the travel router. That is why the caller re-resolves periodically instead
+     * of trusting the value it got at start-up.
+     */
+    fun broadcastTargets(
+        group: String,
+        ipAddress: Int,
+        limitedBroadcast: String,
+    ): List<InetAddress> {
+        val host = subnetBroadcastHost(ipAddress) ?: limitedBroadcast
+        val fallback =
+            runCatching { InetAddress.getByName(host) }
+                .getOrElse { InetAddress.getByName(limitedBroadcast) }
+        return listOf(InetAddress.getByName(group), fallback)
     }
 }
