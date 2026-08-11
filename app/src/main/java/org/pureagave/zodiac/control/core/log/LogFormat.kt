@@ -12,14 +12,25 @@ import java.time.format.DateTimeFormatter
 private const val PRIORITY_VERBOSE = 2
 private val PRIORITY_LETTERS = charArrayOf('V', 'D', 'I', 'W', 'E', 'A')
 
-private val TIMESTAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+// The trailing `XXX` is the UTC offset (`Z` at zero, `-06:00` otherwise), and it is deliberately glued to the
+// time with no space: `logLineSeverity` splits on spaces and expects the
+// priority letter in field 2, so a separate offset token would silently
+// break the viewer's colouring.
+private val TIMESTAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSXXX")
 
 /**
- * One log line: `2026-08-08 14:03:21.123 I/Gps: NET selected`.
+ * One log line: `2026-08-08 14:03:21.123-06:00 I/Gps: NET selected`.
  *
- * Local time, not UTC — these get read next to a laptop clock at camp, and a
- * timezone conversion between the screen and the log is one more thing to get
- * wrong at 3am. [zone] is injectable so the format is testable deterministically.
+ * Local time **with its UTC offset**. Local, because these get read next to a
+ * laptop clock at camp and a timezone conversion at 3am is one more thing to get
+ * wrong. The offset, because "local" is a claim about a device's own settings and
+ * a device can be wrong about them: on 2026-08-11 the beacon phone came back from
+ * a flat battery set to `Asia/Dubai` and wrote ten hours of timestamps that looked
+ * perfectly plausible and correlated with nothing. With the offset present, a
+ * fleet-wide log comparison is still possible, and a misconfigured device
+ * announces itself — a `+04:00` in the margin is impossible to misread.
+ *
+ * [zone] is injectable so the format is testable deterministically.
  *
  * A [stackTrace], when present, follows on its own lines. Line breaks inside
  * [message] are indented so a multi-line entry can't be mistaken for several

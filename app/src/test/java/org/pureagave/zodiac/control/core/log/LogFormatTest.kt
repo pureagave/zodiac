@@ -1,6 +1,7 @@
 package org.pureagave.zodiac.control.core.log
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.ZoneId
@@ -12,7 +13,7 @@ class LogFormatTest {
     fun formats_time_priority_tag_and_message() {
         val line = formatLogLine(EPOCH_MILLIS, PRIORITY_INFO, "Gps", "NET selected", zone = utc)
 
-        assertEquals("2026-08-08 21:03:21.123 I/Gps: NET selected", line)
+        assertEquals("2026-08-08 21:03:21.123Z I/Gps: NET selected", line)
     }
 
     @Test
@@ -36,7 +37,7 @@ class LogFormatTest {
     fun a_null_tag_still_produces_a_parseable_line() {
         val line = formatLogLine(EPOCH_MILLIS, PRIORITY_INFO, null, "no tag", zone = utc)
 
-        assertEquals("2026-08-08 21:03:21.123 I/-: no tag", line)
+        assertEquals("2026-08-08 21:03:21.123Z I/-: no tag", line)
     }
 
     @Test
@@ -45,7 +46,7 @@ class LogFormatTest {
         // burst of separate log entries when you're scanning at camp.
         val line = formatLogLine(EPOCH_MILLIS, PRIORITY_ERROR, "T", "first\nsecond", zone = utc)
 
-        assertEquals("2026-08-08 21:03:21.123 E/T: first\n  second", line)
+        assertEquals("2026-08-08 21:03:21.123Z E/T: first\n  second", line)
     }
 
     @Test
@@ -61,7 +62,7 @@ class LogFormatTest {
             )
 
         assertEquals(
-            "2026-08-08 21:03:21.123 E/Boom: died\n" +
+            "2026-08-08 21:03:21.123Z E/Boom: died\n" +
                 "  java.lang.IllegalStateException: nope\n" +
                 "  \tat Foo.bar(Foo.kt:1)",
             line,
@@ -72,7 +73,7 @@ class LogFormatTest {
     fun a_blank_stack_trace_adds_nothing() {
         val line = formatLogLine(EPOCH_MILLIS, PRIORITY_INFO, "T", "m", stackTrace = "   ", zone = utc)
 
-        assertEquals("2026-08-08 21:03:21.123 I/T: m", line)
+        assertEquals("2026-08-08 21:03:21.123Z I/T: m", line)
     }
 
     @Test
@@ -103,6 +104,31 @@ class LogFormatTest {
         assertEquals(LogSeverity.NORMAL, logLineSeverity("  \tat Foo.bar(Foo.kt:1)"))
         assertEquals(LogSeverity.NORMAL, logLineSeverity(""))
         assertEquals(LogSeverity.NORMAL, logLineSeverity("not a log line at all"))
+    }
+
+    @Test
+    fun the_line_carries_its_utc_offset_so_a_misconfigured_device_is_visible() {
+        // 2026-08-11: the beacon phone came back from a flat battery set to
+        // Asia/Dubai and wrote ten hours of plausible-looking timestamps that
+        // correlated with nothing. An offset in the margin makes that unmissable
+        // and keeps a fleet-wide log comparison possible.
+        val dubai = formatLogLine(EPOCH_MILLIS, PRIORITY_INFO, "T", "m", zone = ZoneId.of("Asia/Dubai"))
+        val denver = formatLogLine(EPOCH_MILLIS, PRIORITY_INFO, "T", "m", zone = ZoneId.of("America/Denver"))
+
+        assertTrue(dubai, dubai.startsWith("2026-08-09 01:03:21.123+04:00 "))
+        assertTrue(denver, denver.startsWith("2026-08-08 15:03:21.123-06:00 "))
+        // Same instant, different wall clocks -- which is exactly why the offset
+        // has to be on the line for the two to be comparable at all.
+        assertNotEquals(dubai.substringBefore(' '), denver.substringBefore(' '))
+    }
+
+    @Test
+    fun the_offset_does_not_disturb_severity_parsing() {
+        // logLineSeverity() splits on spaces and reads field 2; gluing the offset
+        // to the time keeps that field where it was. Mutation target: put a space
+        // before the offset.
+        val warn = formatLogLine(EPOCH_MILLIS, PRIORITY_WARN, "T", "m", zone = ZoneId.of("Asia/Dubai"))
+        assertEquals(LogSeverity.WARN, logLineSeverity(warn))
     }
 
     private companion object {
