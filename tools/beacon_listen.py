@@ -15,6 +15,14 @@ beacon phone, DO NOT unlock it, and see whether traffic returns on its own. On a
 file-based-encryption device with a secure lock screen, BOOT_COMPLETED does not
 fire until first unlock — so a phone with a PIN will simply never appear here,
 which is the failure this test exists to catch.
+
+⚠️ **Run this on the Jetson, not on the Mac.** Measured 2026-08-10: the macOS
+Application Firewall silently drops inbound UDP to python, so this tool reports
+"no traffic seen" on a busy bus and you conclude the beacon is dead. A control
+burst — multicast, subnet broadcast AND unicast straight at the laptop — was not
+heard at all, while the Jetson heard 93 frames of its own bus in 6 s. **Before
+trusting a negative result from any passive listener, send yourself a control
+packet and confirm the instrument can hear it.**
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ import argparse
 import collections
 import socket
 import struct
+import subprocess
 import sys
 import time
 
@@ -47,17 +56,53 @@ CHANNELS = {
 }
 
 
-def open_socket() -> socket.socket:
+def lan_ips() -> list:
+    """Every IPv4 address this host actually holds, most-likely-LAN first.
+
+    Needed because joining a multicast group with INADDR_ANY lets the OS pick the
+    interface, and on a laptop running a VPN (Tailscale here) that pick can land
+    on a tunnel that carries none of the vehicle's traffic. Symptom: a listener
+    that reports silence while the bus is busy -- measured 2026-08-10, when a
+    control burst sent straight at this machine was not heard at all.
+    """
+    out, seen = [], set()
+    try:
+        info = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        info = ""
+    for block in info.split("\n"):
+        line = block.strip()
+        if line.startswith("inet ") and "127.0.0.1" not in line:
+            ip = line.split()[1]
+            if ip not in seen:
+                seen.add(ip)
+                out.append(ip)
+    # Private LAN ranges before tunnel/link-local addresses.
+    out.sort(key=lambda a: (not (a.startswith("192.168.") or a.startswith("10.")), a))
+    return out
+
+
+def open_socket(ifaces: list) -> socket.socket:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if hasattr(socket, "SO_REUSEPORT"):
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     s.bind(("", PORT))
-    # Join on every interface: on a laptop the default route is not always the
-    # one carrying the vehicle's WiFi.
-    mreq = struct.pack("4sl", socket.inet_aton(GROUP), socket.INADDR_ANY)
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+    joined = []
+    for ip in ifaces:
+        try:
+            mreq = socket.inet_aton(GROUP) + socket.inet_aton(ip)
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            joined.append(ip)
+        except OSError:
+            pass
+    try:  # belt and braces: the wildcard join too
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                     struct.pack("4sl", socket.inet_aton(GROUP), socket.INADDR_ANY))
+    except OSError:
+        pass
+    print(f"joined {GROUP} on: {', '.join(joined) or '(wildcard only)'}", flush=True)
     s.settimeout(1.0)
     return s
 
@@ -77,7 +122,7 @@ def main() -> int:
                     help="give up after this long with no traffic (default 300 s)")
     args = ap.parse_args()
 
-    sock = open_socket()
+    sock = open_socket(lan_ips())
     print(f"listening on {GROUP}:{PORT} (+ subnet broadcast)  —  ^C to stop", flush=True)
 
     counts: collections.Counter = collections.Counter()
