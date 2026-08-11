@@ -225,6 +225,15 @@ API contract, not real OS scheduling.
       group still in `CockpitViewModel` after the 2026-08-10 split.
 
 ### Surfaced by the 2026-08-10 documentation audit
+- [ ] **Wire the beacon phone to permanent vehicle power** — it is the fleet's
+      only GNSS, so its charge state is a single point of failure for every
+      tablet's position and nav. The ~2-4 day battery figure is margin for a
+      failed charger, not an operating mode. (It went flat on the bench
+      2026-08-11 running unplugged — documented behaviour, not a defect.)
+      Confirm the vehicle supply is on a circuit that does not die with the
+      ignition, since the beacon is most useful when the car is parked and
+      people are milling around it.
+
 - [ ] **`CameraMount` has no tilt/pitch term** (`mount_az_deg` only), so the bearing
       math assumes a level optical axis. Guidance added to `HARDWARE.md`: mount
       level, ≤2°. Only needed if a pod genuinely cannot be mounted level — then add

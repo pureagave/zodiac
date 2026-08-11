@@ -138,6 +138,21 @@ that is for bring-up.
 Roles it fills: GNSS, magnetometer, IMU, microphone level, ambient light,
 shock and its own battery/health telemetry.
 
+**⚠️ This phone must be on permanent vehicle power.** It is the fleet's only
+GNSS — Fire tablets have no receiver at all — so its charge state is a single
+point of failure for *every* tablet's position, nav and drive-to guidance. The
+design budgets roughly **2-4 days on battery** if vehicle power fails (the
+partial wake lock plus the battery-optimisation exemption deliberately trade
+standby time for a tick loop that keeps running), which is a margin for a failed
+charger, **not** a way to run the beacon. It went flat on the bench on
+2026-08-11 while running unplugged, which is exactly the documented behaviour.
+
+The fleet does warn: `$ZBCN` carries battery percent, the ops footer renders
+**BATT** in fault red at or below 20%, and when the hub goes silent entirely
+`NetworkLocationSource`'s watchdog *clears* the readings rather than leaving a
+stale percentage on screen. So a dying beacon is visible for hours beforehand —
+provided somebody is looking at a tablet.
+
 **Planned replacement:** a Raspberry Pi Zero 2 W with a u-blox USB GNSS receiver
 and a roof antenna. The travel router keeps the AP and DHCP role in both cases.
 
