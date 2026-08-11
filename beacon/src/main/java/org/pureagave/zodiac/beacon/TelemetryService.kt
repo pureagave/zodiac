@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
@@ -19,6 +20,8 @@ import androidx.core.content.ContextCompat
  * process restart delivers a null intent, which [onStartCommand] treats the
  * same way without needing this extra at all. */
 const val EXTRA_FROM_BACKGROUND = "from_background"
+
+private const val TAG = "ZodiacBeacon"
 
 /**
  * Foreground service that runs [TelemetryBroadcaster] so the beacon keeps
@@ -48,7 +51,13 @@ class TelemetryService : Service() {
             startForeground(NOTIFICATION_ID, buildNotification(degradedText()), types)
         }
         acquireWakeLock()
-        TelemetryBroadcaster.start(this, micEnabled = micUsable)
+        // The wake lock is taken first (the odometer persist inside stop() needs
+        // the CPU awake), which means a throw in start() leaves this service
+        // alive, holding a wake lock, showing its notification — and broadcasting
+        // nothing, forever, on a phone bolted to a vehicle. Observed 2026-08-11
+        // after a cold boot. Never let that be silent again.
+        runCatching { TelemetryBroadcaster.start(this, micEnabled = micUsable) }
+            .onFailure { Log.e(TAG, "beacon: start() failed — the service is up but will not transmit", it) }
         return START_STICKY
     }
 

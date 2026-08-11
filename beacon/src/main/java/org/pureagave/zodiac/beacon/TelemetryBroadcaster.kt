@@ -282,12 +282,7 @@ object TelemetryBroadcaster : SensorEventListener {
         // telemetry whether or not the AP forwards multicast.
         wifiManager = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
         targetsResolvedAtMs = null
-        refreshTargetsIfDue(SystemClock.elapsedRealtime())
-        socket =
-            MulticastSocket().apply {
-                timeToLive = TTL
-                broadcast = true
-            }
+        maintainTransport(SystemClock.elapsedRealtime())
         val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = running
 
@@ -392,7 +387,7 @@ object TelemetryBroadcaster : SensorEventListener {
         loopScope.launch {
             while (isActive) {
                 delay(TICK_DEAD_MS / 2)
-                refreshTargetsIfDue(SystemClock.elapsedRealtime())
+                maintainTransport(SystemClock.elapsedRealtime())
                 tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)?.let { health ->
                     _status.value = "$health\n$lastGoodStatus"
                 }
@@ -475,7 +470,25 @@ object TelemetryBroadcaster : SensorEventListener {
      * and it is what lets a beacon that booted before its router heal itself
      * instead of spending the whole boot broadcasting into the void.
      */
-    private fun refreshTargetsIfDue(nowMs: Long) {
+    private fun maintainTransport(nowMs: Long) {
+        // The socket is created here rather than once in start() because start()
+        // runs at boot, before the vehicle's router is necessarily up, and any
+        // throw in start() used to leave the service alive with its wake lock
+        // held, its notification showing, and nothing on the wire — silently, on
+        // a phone nobody can reach. Retried every tick until it succeeds.
+        if (socket == null) {
+            socket =
+                runCatching {
+                    MulticastSocket().apply {
+                        timeToLive = TTL
+                        broadcast = true
+                    }
+                }.onFailure {
+                    Log.w(TAG, "beacon: socket not ready yet (${it.javaClass.simpleName}: ${it.message})")
+                }.getOrNull()
+            if (socket != null) Log.i(TAG, "beacon: transmit socket open")
+        }
+
         val last = targetsResolvedAtMs
         // `last == null` is the first resolution and must never be skipped:
         // elapsedRealtime() counts from BOOT, so a service starting seconds after
@@ -487,6 +500,7 @@ object TelemetryBroadcaster : SensorEventListener {
         val ip = wifiManager?.dhcpInfo?.ipAddress ?: 0
         val fresh = runCatching { BeaconNet.broadcastTargets(GROUP, ip, LIMITED_BROADCAST) }.getOrNull() ?: return
         if (fresh != targets) {
+            Log.i(TAG, "beacon: targets -> ${fresh.joinToString { it.hostAddress ?: "?" }}")
             targets = fresh
         }
     }
