@@ -55,6 +55,11 @@ private data class LogSnapshot(
     val agedOut: Long = 0L,
     /** Rotations the filesystem refused; non-zero means the cap is at risk. */
     val rotationFailures: Long = 0L,
+    /**
+     * Lines shed by the pre-file buffer under a burst, before they ever reached
+     * the rolling file. The one loss the file's own counters cannot see.
+     */
+    val overflow: Long = 0L,
     val lastError: String? = null,
 )
 
@@ -82,6 +87,13 @@ fun logViewerPanel(
     log: RollingFileLog,
     theme: ConceptTheme,
     onClose: () -> Unit,
+    /**
+     * Lines dropped by the pre-file buffer under a burst (see
+     * [org.pureagave.zodiac.control.data.log.FileLogTree.droppedBeforeWrite]).
+     * A supplier, so it is read fresh inside each snapshot; defaults to zero for
+     * previews and any caller that has no buffered tree.
+     */
+    bufferOverflow: () -> Long = { 0L },
 ) {
     var snapshot by remember { mutableStateOf(LogSnapshot()) }
     var reloads by remember { mutableIntStateOf(0) }
@@ -96,6 +108,7 @@ fun logViewerPanel(
                     dropped = log.droppedLines,
                     agedOut = log.discardedLines,
                     rotationFailures = log.rotationFailures,
+                    overflow = bufferOverflow(),
                     lastError = log.lastError?.let { "${it::class.java.simpleName}: ${it.message}" },
                 )
             }
@@ -216,6 +229,12 @@ private fun header(
         // log failing at its job (fault, red).
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (snapshot.agedOut > 0) headerChip("${snapshot.agedOut} AGED OUT", theme.accent)
+            // Buffer overflow is load-shedding, not an IO failure — the app
+            // out-logged the flash and the pre-file buffer shed the oldest to
+            // stay bounded. Coloured with AGED OUT (by-design loss), not with
+            // the red faults, but still on screen: it means the record has
+            // holes these other counters can't account for.
+            if (snapshot.overflow > 0) headerChip("${snapshot.overflow} OVERFLOW", theme.accent)
             if (snapshot.dropped > 0) headerChip("${snapshot.dropped} DROPPED", theme.error)
             if (snapshot.rotationFailures > 0) headerChip("${snapshot.rotationFailures} ROTATE FAIL", theme.error)
         }

@@ -51,6 +51,8 @@ fun cockpitScreen(
     viewModel: CockpitViewModel,
     burnInManager: BurnInMitigationManager,
     fileLog: RollingFileLog,
+    /** Lines the log's pre-file buffer shed under a burst; shown in the viewer. */
+    logBufferOverflow: () -> Long = { 0L },
     /** Beacon mic level — passenger visualiser only; null when no hub is heard. */
     audio: AudioLevel? = null,
     /** This tablet's role; see [org.pureagave.zodiac.control.core.passenger.DisplayRoleStore]. */
@@ -135,7 +137,12 @@ fun cockpitScreen(
                             },
                 )
                 if (logsOpen) {
-                    logViewerPanel(log = fileLog, theme = ThemeTracker, onClose = { logsOpen = false })
+                    logViewerPanel(
+                        log = fileLog,
+                        theme = ThemeTracker,
+                        onClose = { logsOpen = false },
+                        bufferOverflow = logBufferOverflow,
+                    )
                 }
             }
         }

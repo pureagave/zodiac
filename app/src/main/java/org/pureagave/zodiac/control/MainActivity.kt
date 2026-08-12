@@ -85,6 +85,7 @@ private fun zodiacApp() {
         viewModel = viewModel,
         burnInManager = app.burnInManager,
         fileLog = app.fileLog,
+        logBufferOverflow = { app.logBufferOverflow },
         audio = audio,
         passengerMode = passengerMode,
         onSetPassengerMode = app.displayRole::setPassengerMode,

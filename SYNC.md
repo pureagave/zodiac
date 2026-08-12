@@ -6,6 +6,46 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-12 — closed the last silent-loss channel in the logging path (`FileLogTree`)
+
+`RollingFileLog` counts every line it loses three ways (`droppedLines` for IO
+failure, `discardedLines` for aged-out, `rotationFailures`), all on the on-device
+viewer. But `FileLogTree` sat in front of it buffering through a
+`Channel(256, DROP_OLDEST)`, and **`DROP_OLDEST` + `trySend` reports success on
+every call** — it silently evicts the oldest to make room. So a burst that outran
+the flash lost lines *before* they ever reached the file's accounting, and nothing
+anywhere said so. This was the one gap the file's counters could never see.
+
+**Fix:** replaced the channel with a hand-rolled bounded `ArrayDeque` guarded by a
+cheap lock plus a **conflated doorbell** `Channel<Unit>` to wake the IO drain.
+Same drop-oldest policy (deliberate — "lines nearest the problem are worth
+keeping"), same non-blocking cost per log call (format outside the lock, push,
+poke — never a flash write on the caller). Every eviction now bumps
+`droppedBeforeWrite`. Kept drop-oldest rather than flipping to the trivially
+countable drop-newest, because the drop policy was a documented decision and the
+task was "count it," not "change it."
+
+**Surfaced:** an **"N OVERFLOW"** chip in the log viewer beside AGED OUT / DROPPED
+/ ROTATE FAIL — coloured with AGED OUT (accent = by-design load-shedding, not an
+IO fault). Plumbed `FileLogTree.droppedBeforeWrite` →
+`ZodiacApplication.logBufferOverflow` (a property read, so the viewer never sees
+the Timber type) → `cockpitScreen(logBufferOverflow)` → `logViewerPanel(bufferOverflow)`.
+
+**Trap caught:** the tree's `log()` override is Kotlin-`protected` by default
+(inherits Timber's visibility), so a direct `tree.log(6, "t", "msg", null)` from
+the test bound to Timber's *public* vararg `log(priority, message, *args)` instead
+— swapping tag/message and inferring a class tag. Made the override `public` and
+called it with named args (`tag =`, `t =`) so binding is unambiguous.
+
+**Tests:** 2, both mutation-proved on hardware-of-record (not predicted): drop the
+increment → overflow test goes red (2→0); count every push instead of only on
+overflow → the positive control goes red (0→3). Determinism from injecting the
+drain's dispatcher and **never advancing it** in the overflow case, so the buffer
+is *forced* full rather than raced. app 913→**915**, beacon 88, gate green
+(unscoped).
+
+---
+
 ## 2026-08-12 — nav authority is now automatic (OLED-derived), not a manual toggle
 
 Rob disliked the hidden top-center toggle (and the "nav entry disabled until you set

@@ -80,6 +80,14 @@ class ZodiacApplication : Application() {
         FileLogTree(log = fileLog, scope = applicationScope)
     }
 
+    /**
+     * Lines the file log's pre-file buffer shed under a burst — read by the
+     * on-device viewer so the pre-file loss is visible alongside the file's own
+     * counters. A property read, not the tree itself: the viewer stays clear of
+     * the Timber type.
+     */
+    val logBufferOverflow: Long get() = fileLogTree.droppedBeforeWrite
+
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())

@@ -201,10 +201,19 @@ API contract, not real OS scheduling.
 
 ### Surfaced by this session's work — not yet done
 
-- [ ] **`FileLogTree` (`data/log/`) buffers through a `Channel(256, DROP_OLDEST)`
-      and its overflow is still uncounted** — a burst silently loses lines before
-      they ever reach `RollingFileLog`, so the on-screen counters cannot see them.
-      The last silent loss channel in the logging path.
+- [x] **DONE 2026-08-12** — `FileLogTree` overflow is now counted. A
+      `Channel(256, DROP_OLDEST)` reports success on *every* `trySend`, so its
+      overflow was invisible by construction — the last silent-loss channel in
+      the logging path. Replaced with a hand-rolled bounded `ArrayDeque` + a
+      conflated doorbell (same drop-oldest policy, same non-blocking log call),
+      and every eviction bumps `droppedBeforeWrite`. Surfaced in the log viewer
+      as an "N OVERFLOW" chip beside AGED OUT/DROPPED/ROTATE FAIL, plumbed
+      `FileLogTree.droppedBeforeWrite` → `ZodiacApplication.logBufferOverflow` →
+      `cockpitScreen` → `logViewerPanel`. 2 tests (overflow counted + happy-path
+      positive control), both mutation-proved (drop-the-increment and
+      count-every-push each go red). Determinism from injecting the drain
+      dispatcher and never advancing it, so the buffer is *forced* full, not
+      raced. app 913→915.
 - [ ] **`BleLocationSource` `Error` is still terminal** — NET got capped re-bind
       plus a silence-triggered rejoin on 2026-08-10; BLE has the same shape and
       did not.
