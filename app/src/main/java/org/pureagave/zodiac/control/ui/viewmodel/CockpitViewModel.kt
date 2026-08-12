@@ -21,6 +21,9 @@ import org.pureagave.zodiac.control.core.model.MapLoadResult
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.core.model.VehicleCommand
 import org.pureagave.zodiac.control.core.navigation.ClockTime
+import org.pureagave.zodiac.control.core.ops.NavShareArbiter
+import org.pureagave.zodiac.control.core.ops.NavShareMessage
+import org.pureagave.zodiac.control.core.ops.NavSharePayload
 import org.pureagave.zodiac.control.core.ops.NavTarget
 import org.pureagave.zodiac.control.core.ops.PlayaPoi
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
@@ -31,6 +34,8 @@ import org.pureagave.zodiac.control.core.vision.VisionFeed
 import org.pureagave.zodiac.control.core.vision.driverAlerts
 import org.pureagave.zodiac.control.data.TelemetryRepository
 import org.pureagave.zodiac.control.data.VehicleConnectionGateway
+import org.pureagave.zodiac.control.data.nav.NavSharePublisher
+import org.pureagave.zodiac.control.data.nav.NoOpNavSharePublisher
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
 import org.pureagave.zodiac.control.data.prefs.CockpitPreferences
 import org.pureagave.zodiac.control.data.sensor.FakeLocationSource
@@ -100,6 +105,22 @@ class CockpitViewModel(
      * single new dependency; empty default for tests / pre-wiring.
      */
     private val beaconSensors: StateFlow<BeaconSensors> = MutableStateFlow(BeaconSensors()),
+    /**
+     * Whether *this device* currently holds nav authority — i.e. the live
+     * value behind [org.pureagave.zodiac.control.core.ops.NavAuthorityStore].
+     * Defaults **true** (deliberately unlike the store's own persisted
+     * default of false, see decision 6): ~10 existing `CockpitViewModelTest`
+     * scenarios call `setNavTarget`/`driveToAddress` and would silently no-op
+     * against a `false` default. Production always wires the real store's
+     * flow. Mirrors the `demoEnabled`-style comment on `RoutedThreatSource`.
+     */
+    navAuthorityFlow: StateFlow<Boolean> = MutableStateFlow(true),
+    /** Inbound `$ZNAV` messages from [org.pureagave.zodiac.control.data.nav.NavShareReceiver]; null default for tests/pre-wiring. */
+    private val navShareFlow: StateFlow<NavShareMessage?> = MutableStateFlow(null),
+    /** Where `$ZNAV` is transmitted; [NoOpNavSharePublisher] for tests/followers that must never touch the network. */
+    navPublisher: NavSharePublisher = NoOpNavSharePublisher,
+    /** This device's stable short id ([org.pureagave.zodiac.control.core.ops.NavShareProtocol.sanitizeSrc] applied to `Settings.Secure.ANDROID_ID`) — the arbiter's tie-break key. */
+    navSrcId: String = "0",
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CockpitUiState())
     val uiState: StateFlow<CockpitUiState> = _uiState.asStateFlow()
@@ -110,6 +131,16 @@ class CockpitViewModel(
     private val camera = MapCameraController(_uiState, viewModelScope, preferences, projection)
     private val navigation = NavigationController(_uiState, viewModelScope, projection)
     private val gps = GpsController(locationSource, fakeLocationSource, preferences, viewModelScope)
+    private val navShareArbiter = NavShareArbiter(mySrc = navSrcId)
+    private val navShare =
+        NavShareController(
+            navigation = navigation,
+            publisher = navPublisher,
+            isAuthority = { _uiState.value.navAuthority },
+            arbiter = navShareArbiter,
+            persistSeq = { seq -> preferences.setNavShareSeq(seq) },
+            scope = viewModelScope,
+        )
 
     /** Last shock count folded into the UI, and the timer that clears its alert banner. */
     private var lastShockCount: Long = 0
@@ -125,6 +156,10 @@ class CockpitViewModel(
         // latest state, not the path.)
         viewModelScope.launch {
             val saved = preferences.read()
+            // The Lamport counter must survive a reboot (decision 3): without
+            // this, a rebooted authority mints seq=1 and every follower still
+            // holding a higher persisted seq rejects it forever.
+            navShareArbiter.seed(preferences.readNavShareSeq())
             _uiState.update {
                 it.copy(
                     selectedLocationSource = saved.locationSource,
@@ -269,6 +304,22 @@ class CockpitViewModel(
                 }
             }
             launch {
+                // This device's nav authority, from the process-scoped
+                // NavAuthorityStore (a device property, not session state —
+                // see CockpitUiState.navAuthority's kdoc for why it's folded
+                // in here anyway).
+                navAuthorityFlow.collect { authority ->
+                    _uiState.update { it.copy(navAuthority = authority) }
+                }
+            }
+            launch {
+                // Adoption path for a shared nav target arriving from another
+                // authority tablet. NavShareController.onReceived is the only
+                // thing that touches the arbiter/NavigationController here —
+                // it never calls publisher.publish (the no-echo guarantee).
+                navShareFlow.collect { msg -> msg?.let(navShare::onReceived) }
+            }
+            launch {
                 // Low-rate Sensor Hub telemetry: ambient lux (auto-dim), health +
                 // odometer (footer), and shock events (transient alert per new bump).
                 beaconSensors.collect { sensors ->
@@ -325,18 +376,34 @@ class CockpitViewModel(
 
     fun recenterPan() = camera.recenterPan()
 
-    // --- Drive-to / navigation (delegated to NavigationController) ---
+    // --- Drive-to / navigation (delegated to NavigationController via
+    // NavShareController, which is the fleet-share authority gate — see
+    // NavShareController.userSet's kdoc. A follower's tap is a genuine no-op:
+    // no state change, no publish.) ---
 
-    fun setNavTarget(target: NavTarget) = navigation.setNavTarget(target)
+    fun setNavTarget(target: NavTarget) {
+        navShare.userSet(NavSharePayload.Preset(target))
+    }
 
-    fun driveToNearestToilet() = navigation.driveToNearestToilet()
+    fun driveToNearestToilet() {
+        navShare.userSet(NavSharePayload.Bath)
+    }
 
-    fun setAddressEntryOpen(open: Boolean) = navigation.setAddressEntryOpen(open)
+    /**
+     * Opening the address keypad is itself an entry point a follower must not
+     * get: closing (dismissing the overlay) is always allowed, but a
+     * follower's tap to *open* it stays a no-op, same central gate as the
+     * other three entry points.
+     */
+    fun setAddressEntryOpen(open: Boolean) {
+        if (open && !_uiState.value.navAuthority) return
+        navigation.setAddressEntryOpen(open)
+    }
 
     fun driveToAddress(
         clock: ClockTime,
         ringName: String,
-    ) = navigation.driveToAddress(clock, ringName)
+    ): Boolean = navShare.userSet(NavSharePayload.Address(clock, ringName))
 
     // --- Owned here: map load, vehicle commands, transport, concept ---
 
@@ -435,6 +502,10 @@ class CockpitViewModelFactory(
     private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
     private val visionFeedFlow: StateFlow<VisionFeed> = MutableStateFlow(VisionFeed.ABSENT),
     private val beaconSensors: StateFlow<BeaconSensors> = MutableStateFlow(BeaconSensors()),
+    private val navAuthorityFlow: StateFlow<Boolean> = MutableStateFlow(true),
+    private val navShareFlow: StateFlow<NavShareMessage?> = MutableStateFlow(null),
+    private val navPublisher: NavSharePublisher = NoOpNavSharePublisher,
+    private val navSrcId: String = "0",
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -450,6 +521,10 @@ class CockpitViewModelFactory(
                 threatsFlow = threatsFlow,
                 visionFeedFlow = visionFeedFlow,
                 beaconSensors = beaconSensors,
+                navAuthorityFlow = navAuthorityFlow,
+                navShareFlow = navShareFlow,
+                navPublisher = navPublisher,
+                navSrcId = navSrcId,
             ) as T
         }
         error("Unknown ViewModel class: ${modelClass.name}")

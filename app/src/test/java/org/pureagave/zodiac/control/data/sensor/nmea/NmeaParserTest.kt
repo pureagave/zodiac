@@ -5,6 +5,10 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.pureagave.zodiac.control.core.ops.NavShareMessage
+import org.pureagave.zodiac.control.core.ops.NavSharePayload
+import org.pureagave.zodiac.control.core.ops.NavShareProtocol
+import org.pureagave.zodiac.control.core.ops.NavTarget
 
 class NmeaParserTest {
     @Test
@@ -595,6 +599,28 @@ class NmeaParserTest {
         assertNotNull(fix)
         assertEquals(-48.1173, fix!!.location.lat, COORD_TOLERANCE)
         assertEquals(-11.516667, fix.location.lon, COORD_TOLERANCE)
+    }
+
+    // --- Cross-port hygiene: $ZNAV rides its own group/port (239.7.7.30:10130,
+    // core/ops/NavShareProtocol), a new type on a new channel that must not
+    // touch NmeaParser's allow-list at all -- not even to be silently
+    // ignored by the type dispatch, every entry point must reject it. ---
+
+    @Test
+    fun a_valid_znav_sentence_is_rejected_by_every_nmeaparser_entry_point() {
+        // Built via NavShareProtocol so this is a genuinely valid $ZNAV wire
+        // sentence, not a hand-mangled string that would reject for the
+        // wrong reason.
+        val znav = NavShareProtocol.build(NavShareMessage(seq = 1, src = "ABC123", payload = NavSharePayload.Preset(NavTarget.HOME)))
+
+        assertNull(NmeaParser.parse(znav))
+        assertNull(NmeaParser.parseHeadingDeg(znav))
+        assertNull(NmeaParser.parseVehicleTelemetry(znav))
+        assertNull(NmeaParser.parseAudioLevel(znav))
+        assertNull(NmeaParser.parseAmbientLight(znav))
+        assertNull(NmeaParser.parseShockEvent(znav))
+        assertNull(NmeaParser.parseBeaconHealth(znav))
+        assertNull(NmeaParser.parseOdometer(znav))
     }
 
     private companion object {

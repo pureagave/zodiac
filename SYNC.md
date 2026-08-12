@@ -6,6 +6,52 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-12 — Shared nav target (`$ZNAV`): the fleet's first device-to-device channel
+
+The operator enters a destination on the **S9+**; it now reaches the **A54 HUD** and
+every other tablet. Until today the chosen destination was local session state on
+whatever device typed it — the app only ever *received* on the bus (beacon GPS,
+Jetson threats). This is its first *transmit*.
+
+**Key reuse — no new HUD.** `DriverNightScreen` already draws a heading arch showing
+`bearingToTarget − heading` off `activeDriveTarget`; once the shared target lands in
+`activeDriveTarget`, that arch just follows it. The whole feature is "share the
+target," not "build guidance."
+
+**Wire:** `$ZNAV` on **239.7.7.30:10130**, NMEA + XOR checksum, `Locale.US`, sent
+twice (multicast + subnet broadcast) like the beacon, regex-pinned grammar, `parse`
+never throws. Semantic payloads (PRESET/ADDR/BATH/CLEAR) reconstruct through the same
+`NavigationController` methods a local entry uses; BATH stays dynamic; CLEAR→HOME
+(there is no null-target state). Rides the same bus, so it works over the Jetson
+backup AP too.
+
+**Concurrency:** last-write-wins between the two authorities via a **Lamport `(seq,
+src)`** total order; the setter owns and re-broadcasts every **3 s** (so a HUD that
+reboots / cold-starts / fails over re-syncs in seconds); `seq` **persists across
+reboot** — without that a rebooted authority emits a low seq and is ignored forever
+(caught by the planner). Own-echo is ignored; **adoption never publishes** (the sole
+`publish` is in `userSet`) — that asymmetry is the no-echo guarantee.
+
+**Authority:** a per-device `navAuthority` preference (default **false**), enabled on
+the S9+ and A54, toggled by a hidden **top-center** long-press (all four corners were
+taken). Followers adopt-and-display but their drive-to entry is disabled so a
+passenger can't divert the fleet. ⚠️ **After any fresh install every device is a
+follower → nav entry is disabled fleet-wide until top-center-toggled on the S9+/A54.**
+
+**Process:** spec → Fable planner → Sonnet implementer → independent Opus verifier.
+Verifier: all six behaviors PASS with file:line evidence, no bugs, and it added +1
+test (VM seeds the arbiter from the persisted seq — every prior test used seq 0, so a
+`seed(0)` mutant passed everything) which it **mutation-proved**. Bugs the planner
+caught pre-build: the seq-persistence-or-ignored-forever trap, and
+`ClockTime.format()` being locale-unpinned (the builder pins `Locale.US` itself).
+
+app 847→**914** tests, beacon green, gate green, fleet reflashed. Minor (deferred):
+detekt `thresholdInInterfaces` 11→13 because `navShareSeq` (Lamport wire-state, not a
+user preference) landed in `CockpitPreferences` — arguably its own seam per
+"split, don't bump," but it shares the DataStore so the refactor is cosmetic.
+
+---
+
 ## 2026-08-12 — Beacon radio/power config, verified across a reboot (closes the B3 reboot test)
 
 Settled and **hardware-verified** the XCover beacon's radio config, and set a

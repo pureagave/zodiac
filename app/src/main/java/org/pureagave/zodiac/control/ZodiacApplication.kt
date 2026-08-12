@@ -3,6 +3,7 @@ package org.pureagave.zodiac.control
 import android.app.Application
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -17,6 +18,8 @@ import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.log.RollingFileLog
+import org.pureagave.zodiac.control.core.ops.NavAuthorityStore
+import org.pureagave.zodiac.control.core.ops.NavShareProtocol
 import org.pureagave.zodiac.control.core.passenger.DisplayRoleStore
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.data.FakeTelemetryRepository
@@ -27,6 +30,8 @@ import org.pureagave.zodiac.control.data.art.ArtImageStore
 import org.pureagave.zodiac.control.data.discovery.BmApiClient
 import org.pureagave.zodiac.control.data.discovery.DiscoveryRepository
 import org.pureagave.zodiac.control.data.log.FileLogTree
+import org.pureagave.zodiac.control.data.nav.NavShareReceiver
+import org.pureagave.zodiac.control.data.nav.NavShareSender
 import org.pureagave.zodiac.control.data.playa.AssetsPlayaMapRepository
 import org.pureagave.zodiac.control.data.playa.PlayaMapBinaryCache
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
@@ -157,6 +162,51 @@ class ZodiacApplication : Application() {
             read = { preferences.read().passengerMode },
             write = { preferences.setPassengerMode(it) },
         )
+    }
+
+    /**
+     * Whether this tablet may set + broadcast the shared nav target. Process-
+     * scoped for the same reason as [displayRole] — a device property, not
+     * session state. Provisioned on the S9+ and A54; the two Fires stay
+     * followers (spec R3).
+     */
+    val navAuthority: NavAuthorityStore by lazy {
+        NavAuthorityStore(
+            scope = applicationScope,
+            read = { preferences.read().navAuthority },
+            write = { preferences.setNavAuthority(it) },
+        )
+    }
+
+    /**
+     * The shared nav target's transmit path — the app's first device-to-
+     * device sender. Every device constructs one (cheap: it opens no socket
+     * until [org.pureagave.zodiac.control.data.nav.NavShareSender.publish] is
+     * first called), but only a nav-authority device's ViewModel ever calls
+     * `publish` on it.
+     */
+    val navShareSender: NavShareSender by lazy {
+        NavShareSender(scope = applicationScope, applicationContext = this)
+    }
+
+    /**
+     * This device's stable short id for `$ZNAV`'s `src` field — the last six
+     * characters of `Settings.Secure.ANDROID_ID`, uppercased. Read once; it
+     * does not change across the process lifetime (or, in practice, ever).
+     */
+    val navSrcId: String by lazy {
+        NavShareProtocol.sanitizeSrc(Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID))
+    }
+
+    /**
+     * The shared nav target's receive path. Every device runs one (spec R4 —
+     * reception is universal, unlike sending), started eagerly on first
+     * access same as [networkLocationSource].
+     */
+    val navShareReceiver: NavShareReceiver by lazy {
+        NavShareReceiver(applicationContext = this, scope = applicationScope).also {
+            applicationScope.launch { it.start() }
+        }
     }
 
     /**

@@ -66,6 +66,15 @@ complexity:
     # DRIVER HUD's decisions are allowed to live, so growth here is by design;
     # split it by concern (placement / alerting / coverage) if it goes further.
     thresholdInObjects: 22
+    # Default 11 was tight for CockpitPreferences once $ZNAV added
+    # setNavAuthority + readNavShareSeq/setNavShareSeq alongside the existing
+    # nine (one method per persisted field/snapshot op, same shape as
+    # readBurnInConfig/setBurnInConfig before it), landing it at 12 functions
+    # -- 13 is just above that count. If a new preference would push past it,
+    # consider whether it's really session state vs. a candidate for its own
+    # small store (see NavAuthorityStore/DisplayRoleStore) before bumping
+    # this again.
+    thresholdInInterfaces: 13
 
 naming:
   FunctionNaming:

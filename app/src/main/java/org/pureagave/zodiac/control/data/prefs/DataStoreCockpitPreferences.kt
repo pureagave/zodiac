@@ -42,6 +42,7 @@ class DataStoreCockpitPreferences(
                     .coerceIn(MIN_ZOOM, MAX_ZOOM),
             concept = prefs[KEY_CONCEPT]?.toConceptOrNull() ?: default.concept,
             passengerMode = prefs[KEY_PASSENGER_MODE] ?: default.passengerMode,
+            navAuthority = prefs[KEY_NAV_AUTHORITY] ?: default.navAuthority,
         )
     }
 
@@ -65,8 +66,18 @@ class DataStoreCockpitPreferences(
         dataStore.edit { it[KEY_PASSENGER_MODE] = enabled }
     }
 
+    override suspend fun setNavAuthority(enabled: Boolean) {
+        dataStore.edit { it[KEY_NAV_AUTHORITY] = enabled }
+    }
+
     override suspend fun setConcept(concept: CockpitConcept) {
         dataStore.edit { it[KEY_CONCEPT] = concept.name }
+    }
+
+    override suspend fun readNavShareSeq(): Int = (currentPrefs()[KEY_NAV_SHARE_SEQ] ?: 0).coerceAtLeast(0)
+
+    override suspend fun setNavShareSeq(seq: Int) {
+        dataStore.edit { it[KEY_NAV_SHARE_SEQ] = seq }
     }
 
     // 15 independent per-field `?: default` reads — flat, not branching logic;
@@ -151,6 +162,8 @@ class DataStoreCockpitPreferences(
         val KEY_PIXELS_PER_METER = doublePreferencesKey("pixels_per_meter")
         val KEY_CONCEPT = stringPreferencesKey("cockpit_concept")
         val KEY_PASSENGER_MODE = booleanPreferencesKey("passenger_mode")
+        val KEY_NAV_AUTHORITY = booleanPreferencesKey("nav_authority")
+        val KEY_NAV_SHARE_SEQ = intPreferencesKey("nav_share_seq")
 
         val KEY_BI_SHIFT_ENABLED = booleanPreferencesKey("bi_shift_enabled")
         val KEY_BI_SHIFT_AMP = intPreferencesKey("bi_shift_amp_px")

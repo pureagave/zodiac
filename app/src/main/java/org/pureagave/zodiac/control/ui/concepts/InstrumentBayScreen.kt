@@ -161,6 +161,7 @@ fun instrumentBayScreen(
                 onSelectBath = viewModel::driveToNearestToilet,
                 onOpenAddress = { viewModel.setAddressEntryOpen(true) },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = state.navAuthority,
             )
             // Operational readout footer: BRC clock / sunrise-sunset / return-to-camp,
             // in the bay's tile aesthetic (replaced the decorative hazard chevron).

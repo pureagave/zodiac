@@ -21,6 +21,10 @@ object FleetBus {
     const val THREAT_GROUP = "239.7.7.20"
     const val THREAT_PORT = 10120
 
+    /** Shared nav target ($ZNAV) between authority tablets. */
+    const val NAV_GROUP = "239.7.7.30"
+    const val NAV_PORT = 10130
+
     /** Link-local only — one hop, never past the vehicle's own switch/AP. */
     const val TTL = 1
 }

@@ -175,6 +175,31 @@ data class CockpitUiState(
      * needs to know that's what they're looking at.
      */
     val locationFallbackActive: Boolean = false,
+    /**
+     * Whether *this device* may set + broadcast the shared nav target
+     * (`$ZNAV`) — true on the S9+ and A54, false on the two Fires (spec R3).
+     * Gates the drive-to entry points (chips, ADDR keypad) both at the
+     * ViewModel (`NavShareController.userSet`'s central gate) and here in the
+     * UI, so a follower's controls visibly do nothing rather than silently
+     * eating a tap.
+     *
+     * A device property, not session state — the same tension
+     * `passengerMode`/`DisplayRoleStore` sits in, and it is handled the same
+     * way there: it lives in a small process-scoped store
+     * ([org.pureagave.zodiac.control.core.ops.NavAuthorityStore]), *not*
+     * `CockpitPreferences`' session snapshot. It is folded in here anyway
+     * (unlike `passengerMode`, which never enters `CockpitUiState`) because,
+     * unlike the passenger toggle, the ViewModel itself needs the current
+     * value synchronously to gate every send — reading a separate `StateFlow`
+     * from inside `NavShareController.userSet` would work but would split
+     * "what can this device do" across two sources of truth the UI also has
+     * to agree on. Default **true** so a bare `CockpitUiState()` (most tests)
+     * renders/behaves as authority-enabled without extra wiring; production
+     * folds the real store's value in before the first frame via the
+     * existing prefs-first init ordering, same as every other persisted field
+     * here.
+     */
+    val navAuthority: Boolean = true,
 ) {
     /**
      * The three beacon readings the ops footer draws, bundled — they arrive on

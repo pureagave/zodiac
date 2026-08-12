@@ -17,4 +17,13 @@ class FleetBusTest {
         assertNotEquals(FleetBus.TELEMETRY_GROUP, FleetBus.THREAT_GROUP)
         assertNotEquals(FleetBus.TELEMETRY_PORT, FleetBus.THREAT_PORT)
     }
+
+    @Test
+    fun nav_group_is_a_valid_multicast_address_distinct_from_the_others() {
+        assertTrue("nav group must be multicast", InetAddress.getByName(FleetBus.NAV_GROUP).isMulticastAddress)
+        assertNotEquals(FleetBus.NAV_GROUP, FleetBus.TELEMETRY_GROUP)
+        assertNotEquals(FleetBus.NAV_GROUP, FleetBus.THREAT_GROUP)
+        assertNotEquals(FleetBus.NAV_PORT, FleetBus.TELEMETRY_PORT)
+        assertNotEquals(FleetBus.NAV_PORT, FleetBus.THREAT_PORT)
+    }
 }

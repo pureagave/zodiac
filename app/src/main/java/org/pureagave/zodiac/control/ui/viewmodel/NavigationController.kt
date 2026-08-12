@@ -103,14 +103,18 @@ internal class NavigationController(
      * Drive to a typed-in city address (clock + ring letter, e.g. 2:15 & H).
      * Resolves it to a point on the polar grid and makes it the active custom
      * target so the chevron + route guide there. No-op on an unknown ring.
+     * Returns whether it actually applied — [NavShareController.userSet] only
+     * publishes an `ADDR` message once this proves the target resolved, so a
+     * bad ring name never gets broadcast to the fleet as though it landed.
      */
     fun driveToAddress(
         clock: ClockTime,
         ringName: String,
-    ) {
-        val target = addressTarget(clock, ringName, projection) ?: return
+    ): Boolean {
+        val target = addressTarget(clock, ringName, projection) ?: return false
         state.update { it.copy(customTarget = target, driveToBath = false) }
         recomputeRoute()
+        return true
     }
 
     /**

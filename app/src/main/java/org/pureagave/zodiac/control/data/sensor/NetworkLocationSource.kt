@@ -591,10 +591,15 @@ private object NoOpMulticastLockHandle : MulticastLockHandle {
     override fun release() = Unit
 }
 
-private class WifiMulticastLockHandle(context: Context) : MulticastLockHandle {
+/**
+ * Not `private`: [org.pureagave.zodiac.control.data.nav.NavShareReceiver]
+ * reuses this same seam under its own [tag] rather than inventing a second
+ * `WifiManager.MulticastLock` wrapper.
+ */
+internal class WifiMulticastLockHandle(context: Context, tag: String = "zodiac-nmea") : MulticastLockHandle {
     private val lock: WifiManager.MulticastLock? =
         (context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)
-            ?.createMulticastLock("zodiac-nmea")
+            ?.createMulticastLock(tag)
             ?.apply { setReferenceCounted(false) }
 
     override val isHeld: Boolean

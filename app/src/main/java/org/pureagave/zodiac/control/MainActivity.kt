@@ -78,6 +78,7 @@ private fun zodiacApp() {
 
     val audio by app.networkLocationSource.audioLevel.collectAsStateWithLifecycle()
     val passengerMode by app.displayRole.passengerMode.collectAsStateWithLifecycle()
+    val navAuthority by app.navAuthority.enabled.collectAsStateWithLifecycle()
     cockpitScreen(
         viewModel = viewModel,
         burnInManager = app.burnInManager,
@@ -86,6 +87,8 @@ private fun zodiacApp() {
         passengerMode = passengerMode,
         onSetPassengerMode = app.displayRole::setPassengerMode,
         artImages = app.artImages,
+        navAuthority = navAuthority,
+        onSetNavAuthority = app.navAuthority::setEnabled,
     )
     // Emitted *after* the cockpit deliberately: siblings at the root stack in
     // declaration order, so a gate declared first draws underneath the whole
@@ -113,6 +116,10 @@ private fun rememberCockpitViewModel(app: ZodiacApplication): CockpitViewModel =
                 threatsFlow = app.threatSource.threats,
                 visionFeedFlow = app.threatSource.feedState,
                 beaconSensors = app.networkLocationSource.beaconSensors,
+                navAuthorityFlow = app.navAuthority.enabled,
+                navShareFlow = app.navShareReceiver.messages,
+                navPublisher = app.navShareSender,
+                navSrcId = app.navSrcId,
             ),
     )
 

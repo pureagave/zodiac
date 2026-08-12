@@ -43,6 +43,9 @@ import org.pureagave.zodiac.control.core.model.Telemetry
 import org.pureagave.zodiac.control.core.model.VehicleCommand
 import org.pureagave.zodiac.control.core.navigation.ClockTime
 import org.pureagave.zodiac.control.core.navigation.clockToBearing
+import org.pureagave.zodiac.control.core.ops.NavShareMessage
+import org.pureagave.zodiac.control.core.ops.NavSharePayload
+import org.pureagave.zodiac.control.core.ops.NavShareProtocol
 import org.pureagave.zodiac.control.core.ops.NavTarget
 import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
@@ -55,6 +58,7 @@ import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.VisionFeed
 import org.pureagave.zodiac.control.data.FakeVehicleGateway
 import org.pureagave.zodiac.control.data.TelemetryRepository
+import org.pureagave.zodiac.control.data.nav.NavSharePublisher
 import org.pureagave.zodiac.control.data.playa.PlayaMapRepository
 import org.pureagave.zodiac.control.data.prefs.CockpitPreferences
 import org.pureagave.zodiac.control.data.prefs.CockpitPrefsSnapshot
@@ -1309,6 +1313,431 @@ class CockpitViewModelTest {
                 store.clear()
             }
         }
+
+    // --- $ZNAV send half (Phase 2): an authority device's local sets update
+    // state and publish exactly once each, with a monotonically incrementing
+    // Lamport seq. The receive half (adopt/yield/no-echo/follower-gating)
+    // lands in Phase 3, once NavShareReceiver exists. ---
+
+    @Test
+    fun navAuthority_localSet_updatesStateAndPublishesExactlyOneParseableZnavWithIncrementingSeq() =
+        runTest {
+            val publisher = FakeNavSharePublisher()
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, publisher = publisher)
+                advanceUntilIdle()
+
+                vm.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+                assertEquals(NavTarget.MAN, vm.uiState.value.navTarget)
+                assertEquals(1, publisher.published.size)
+                val first = NavShareProtocol.parse(publisher.published[0])
+                assertNotNull("a published sentence must itself parse", first)
+                assertEquals(1, first!!.seq)
+                assertEquals(NavSharePayload.Preset(NavTarget.MAN), first.payload)
+
+                vm.setNavTarget(NavTarget.TEMPLE)
+                advanceUntilIdle()
+                assertEquals(2, publisher.published.size)
+                val second = NavShareProtocol.parse(publisher.published[1])
+                assertNotNull(second)
+                assertEquals(2, second!!.seq)
+                assertEquals(NavSharePayload.Preset(NavTarget.TEMPLE), second.payload)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navAuthority_driveToAddress_publishesOnSuccess_andSeqPersists() =
+        runTest {
+            val publisher = FakeNavSharePublisher()
+            val prefs = RecordingCockpitPreferences()
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, publisher = publisher, preferences = prefs)
+                advanceUntilIdle()
+
+                val applied = vm.driveToAddress(ClockTime(2, 15), "H")
+                advanceUntilIdle()
+
+                assertTrue("a resolvable address must apply", applied)
+                assertEquals("2:15 & H", vm.uiState.value.customTarget?.label)
+                assertEquals(1, publisher.published.size)
+                assertEquals(listOf(1), prefs.navShareSeqs)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navAuthority_driveToAddress_unknownRing_doesNotPublish() =
+        runTest {
+            val publisher = FakeNavSharePublisher()
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, publisher = publisher)
+                advanceUntilIdle()
+
+                val applied = vm.driveToAddress(ClockTime(4, 0), "Z")
+                advanceUntilIdle()
+
+                assertFalse("an unresolvable ring must not apply", applied)
+                assertTrue("an unresolvable ring must not publish either", publisher.published.isEmpty())
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navAuthority_bath_publishesBathPayload() =
+        runTest {
+            val publisher = FakeNavSharePublisher()
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, publisher = publisher)
+                advanceUntilIdle()
+
+                vm.driveToNearestToilet()
+                advanceUntilIdle()
+
+                assertTrue(vm.uiState.value.driveToBath)
+                assertEquals(1, publisher.published.size)
+                assertEquals(NavSharePayload.Bath, NavShareProtocol.parse(publisher.published[0])!!.payload)
+            } finally {
+                store.clear()
+            }
+        }
+
+    // --- $ZNAV receive half (Phase 3): adoption applies via the same
+    // NavigationController methods a local set uses, never publishes
+    // (no-echo), yields ownership on a higher remote seq, and follower
+    // devices are gated at every one of the four entry points. ---
+
+    @Test
+    fun navShare_receivedMessage_appliesLikeALocalCall_andNeverPublishes_noEcho() =
+        runTest {
+            val publisher = FakeNavSharePublisher()
+            val navShareFlow = MutableStateFlow<NavShareMessage?>(null)
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, publisher = publisher, navShareFlow = navShareFlow)
+                advanceUntilIdle()
+
+                navShareFlow.value = NavShareMessage(seq = 1, src = "OTHER", payload = NavSharePayload.Address(ClockTime(2, 15), "H"))
+                advanceUntilIdle()
+
+                assertEquals("2:15 & H", vm.uiState.value.customTarget?.label)
+                assertEquals("adoption must never publish", 0, publisher.published.size)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navShare_receivedBath_setsDriveToBath() =
+        runTest {
+            val navShareFlow = MutableStateFlow<NavShareMessage?>(null)
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, navShareFlow = navShareFlow)
+                advanceUntilIdle()
+
+                navShareFlow.value = NavShareMessage(seq = 1, src = "OTHER", payload = NavSharePayload.Bath)
+                advanceUntilIdle()
+
+                assertTrue(vm.uiState.value.driveToBath)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navShare_receivedClear_setsTargetToHome() =
+        runTest {
+            val navShareFlow = MutableStateFlow<NavShareMessage?>(null)
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, navShareFlow = navShareFlow)
+                advanceUntilIdle()
+                // Start somewhere other than HOME so CLEAR is an observable change.
+                vm.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+                assertEquals(NavTarget.MAN, vm.uiState.value.navTarget)
+
+                navShareFlow.value = NavShareMessage(seq = 2, src = "OTHER", payload = NavSharePayload.Clear)
+                advanceUntilIdle()
+
+                assertEquals(NavTarget.HOME, vm.uiState.value.navTarget)
+                assertFalse(vm.uiState.value.driveToBath)
+                assertNull(vm.uiState.value.customTarget)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navShare_receivedUnknownRingAddress_adoptsNothing_andDoesNotCrash() =
+        runTest {
+            val navShareFlow = MutableStateFlow<NavShareMessage?>(null)
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, navShareFlow = navShareFlow)
+                advanceUntilIdle()
+                val before = vm.uiState.value.customTarget
+
+                navShareFlow.value = NavShareMessage(seq = 1, src = "OTHER", payload = NavSharePayload.Address(ClockTime(4, 0), "Z"))
+                advanceUntilIdle()
+
+                assertEquals("an unresolvable ring must not change the target", before, vm.uiState.value.customTarget)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navShare_ownSrcEcho_isIgnored() =
+        runTest {
+            val publisher = FakeNavSharePublisher()
+            val navShareFlow = MutableStateFlow<NavShareMessage?>(null)
+            val store = ViewModelStore()
+            try {
+                val vm =
+                    navShareVm(
+                        this.backgroundScope,
+                        store,
+                        navAuthority = true,
+                        publisher = publisher,
+                        navShareFlow = navShareFlow,
+                        navSrcId = "ME",
+                    )
+                advanceUntilIdle()
+                val before = vm.uiState.value.navTarget
+
+                // A high-seq message that claims to be from this very device --
+                // the receiver hearing its own broadcast reflected back.
+                navShareFlow.value = NavShareMessage(seq = 999, src = "ME", payload = NavSharePayload.Preset(NavTarget.TEMPLE))
+                advanceUntilIdle()
+
+                assertEquals("own-echo must never be adopted", before, vm.uiState.value.navTarget)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navShare_higherSeqRemote_yieldsOwnership_stateFollowsRemote_andPublisherStops() =
+        runTest {
+            val publisher = FakeNavSharePublisher()
+            val navShareFlow = MutableStateFlow<NavShareMessage?>(null)
+            val store = ViewModelStore()
+            try {
+                val vm =
+                    navShareVm(
+                        this.backgroundScope,
+                        store,
+                        navAuthority = true,
+                        publisher = publisher,
+                        navShareFlow = navShareFlow,
+                        navSrcId = "ME",
+                    )
+                advanceUntilIdle()
+
+                // This device sets locally first -- it becomes the owner (seq=1).
+                vm.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+                assertEquals(NavTarget.MAN, vm.uiState.value.navTarget)
+                assertEquals(0, publisher.stopCalls)
+
+                // The other authority sets a moment later with a higher seq.
+                navShareFlow.value = NavShareMessage(seq = 5, src = "OTHER", payload = NavSharePayload.Preset(NavTarget.TEMPLE))
+                advanceUntilIdle()
+
+                assertEquals("state must follow the higher-seq remote target", NavTarget.TEMPLE, vm.uiState.value.navTarget)
+                assertEquals("yielding ownership must stop the periodic re-broadcast", 1, publisher.stopCalls)
+            } finally {
+                store.clear()
+            }
+        }
+
+    // --- Follower gating: a device without nav authority must leave every
+    // one of the four entry points a genuine no-op -- no state change, no
+    // publish -- with a positive (navAuthority = true) control beside each. ---
+
+    @Test
+    fun follower_setNavTarget_isNoOp_authorityPositiveControlChanges() =
+        runTest {
+            val followerPublisher = FakeNavSharePublisher()
+            val followerStore = ViewModelStore()
+            val authorityPublisher = FakeNavSharePublisher()
+            val authorityStore = ViewModelStore()
+            try {
+                val follower = navShareVm(this.backgroundScope, followerStore, navAuthority = false, publisher = followerPublisher)
+                val authority = navShareVm(this.backgroundScope, authorityStore, navAuthority = true, publisher = authorityPublisher)
+                advanceUntilIdle()
+
+                follower.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+                assertEquals("a follower's set must be a genuine no-op", NavTarget.HOME, follower.uiState.value.navTarget)
+                assertTrue(followerPublisher.published.isEmpty())
+
+                authority.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+                assertEquals("positive control: an authority's set applies", NavTarget.MAN, authority.uiState.value.navTarget)
+                assertEquals(1, authorityPublisher.published.size)
+            } finally {
+                followerStore.clear()
+                authorityStore.clear()
+            }
+        }
+
+    @Test
+    fun follower_driveToNearestToilet_isNoOp_authorityPositiveControlChanges() =
+        runTest {
+            val followerPublisher = FakeNavSharePublisher()
+            val followerStore = ViewModelStore()
+            val authorityPublisher = FakeNavSharePublisher()
+            val authorityStore = ViewModelStore()
+            try {
+                val follower = navShareVm(this.backgroundScope, followerStore, navAuthority = false, publisher = followerPublisher)
+                val authority = navShareVm(this.backgroundScope, authorityStore, navAuthority = true, publisher = authorityPublisher)
+                advanceUntilIdle()
+
+                follower.driveToNearestToilet()
+                advanceUntilIdle()
+                assertFalse("a follower's BATH tap must be a genuine no-op", follower.uiState.value.driveToBath)
+                assertTrue(followerPublisher.published.isEmpty())
+
+                authority.driveToNearestToilet()
+                advanceUntilIdle()
+                assertTrue("positive control: an authority's BATH tap applies", authority.uiState.value.driveToBath)
+                assertEquals(1, authorityPublisher.published.size)
+            } finally {
+                followerStore.clear()
+                authorityStore.clear()
+            }
+        }
+
+    @Test
+    fun follower_driveToAddress_isNoOp_authorityPositiveControlChanges() =
+        runTest {
+            val followerPublisher = FakeNavSharePublisher()
+            val followerStore = ViewModelStore()
+            val authorityPublisher = FakeNavSharePublisher()
+            val authorityStore = ViewModelStore()
+            try {
+                val follower = navShareVm(this.backgroundScope, followerStore, navAuthority = false, publisher = followerPublisher)
+                val authority = navShareVm(this.backgroundScope, authorityStore, navAuthority = true, publisher = authorityPublisher)
+                advanceUntilIdle()
+
+                val followerApplied = follower.driveToAddress(ClockTime(2, 15), "H")
+                advanceUntilIdle()
+                assertFalse("a follower's address entry must be a genuine no-op", followerApplied)
+                assertNull(follower.uiState.value.customTarget)
+                assertTrue(followerPublisher.published.isEmpty())
+
+                val authorityApplied = authority.driveToAddress(ClockTime(2, 15), "H")
+                advanceUntilIdle()
+                assertTrue("positive control: an authority's address entry applies", authorityApplied)
+                assertEquals("2:15 & H", authority.uiState.value.customTarget?.label)
+                assertEquals(1, authorityPublisher.published.size)
+            } finally {
+                followerStore.clear()
+                authorityStore.clear()
+            }
+        }
+
+    @Test
+    fun follower_setAddressEntryOpenTrue_staysClosed_authorityPositiveControlOpens() =
+        runTest {
+            val followerStore = ViewModelStore()
+            val authorityStore = ViewModelStore()
+            try {
+                val follower = navShareVm(this.backgroundScope, followerStore, navAuthority = false)
+                val authority = navShareVm(this.backgroundScope, authorityStore, navAuthority = true)
+                advanceUntilIdle()
+
+                follower.setAddressEntryOpen(true)
+                advanceUntilIdle()
+                assertFalse("a follower must not be able to open the address keypad", follower.uiState.value.addressEntryOpen)
+
+                authority.setAddressEntryOpen(true)
+                advanceUntilIdle()
+                assertTrue("positive control: an authority can open it", authority.uiState.value.addressEntryOpen)
+
+                // Closing is always allowed, even for a follower.
+                follower.setAddressEntryOpen(false)
+                advanceUntilIdle()
+                assertFalse(follower.uiState.value.addressEntryOpen)
+            } finally {
+                followerStore.clear()
+                authorityStore.clear()
+            }
+        }
+
+    @Test
+    fun navShareSeq_persistsOnUserSet_andOnAdoptingAHigherSeq() =
+        runTest {
+            val navShareFlow = MutableStateFlow<NavShareMessage?>(null)
+            val prefs = RecordingCockpitPreferences()
+            val store = ViewModelStore()
+            try {
+                val vm =
+                    navShareVm(
+                        this.backgroundScope,
+                        store,
+                        navAuthority = true,
+                        navShareFlow = navShareFlow,
+                        preferences = prefs,
+                        navSrcId = "ME",
+                    )
+                advanceUntilIdle()
+
+                vm.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+                assertEquals(listOf(1), prefs.navShareSeqs)
+
+                navShareFlow.value = NavShareMessage(seq = 7, src = "OTHER", payload = NavSharePayload.Preset(NavTarget.TEMPLE))
+                advanceUntilIdle()
+
+                assertEquals("adopting a higher seq must persist it too", listOf(1, 7), prefs.navShareSeqs)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun navShareSeq_seededFromPersistedValueOnInit_soARebootedAuthorityOutbidsHistory() =
+        runTest {
+            // A rebooted authority: the DataStore already holds seq=41 from
+            // before the power cycle. The VM must seed its arbiter from that on
+            // init, so the very next local set mints 42 -- not 1, which every
+            // follower still holding maxSeen=41 would reject forever. Guards the
+            // `arbiter.seed(preferences.readNavShareSeq())` init call itself:
+            // with it removed (or seeded from 0) this device would restart at 1.
+            val publisher = FakeNavSharePublisher()
+            val prefs = RecordingCockpitPreferences(initialNavShareSeq = 41)
+            val store = ViewModelStore()
+            try {
+                val vm = navShareVm(this.backgroundScope, store, navAuthority = true, publisher = publisher, preferences = prefs)
+                advanceUntilIdle()
+
+                vm.setNavTarget(NavTarget.MAN)
+                advanceUntilIdle()
+
+                val published = NavShareProtocol.parse(publisher.published.single())
+                assertNotNull("a published sentence must itself parse", published)
+                assertEquals(
+                    "a rebooted authority must resume above its persisted history, not restart at 1",
+                    42,
+                    published!!.seq,
+                )
+                assertEquals(listOf(42), prefs.navShareSeqs)
+            } finally {
+                store.clear()
+            }
+        }
 }
 
 /** How long a shock/impact alert banner stays before it clears (mirrors the VM constant). */
@@ -1363,6 +1792,52 @@ private fun driveToVm(
             locationSource = newFakeRoutedLocationSource(scope),
             preferences = NoOpCockpitPreferences(),
             fakeLocationSource = FakeLocationSource(scope = scope),
+        )
+    return ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+}
+
+/** Recording [NavSharePublisher] fake: every [publish] call and every [stop] call is captured, in order, for the send/no-echo/yield assertions. */
+private class FakeNavSharePublisher : NavSharePublisher {
+    val published = mutableListOf<String>()
+    var stopCalls = 0
+        private set
+
+    override fun publish(sentence: String) {
+        published += sentence
+    }
+
+    override fun stop() {
+        stopCalls++
+    }
+}
+
+/**
+ * A VM wired for `$ZNAV` scenarios: a fixed [navAuthority] flow, the given
+ * [publisher] (defaulting to a fresh recording fake), an optional inbound
+ * [navShareFlow] for adoption tests, and [preferences] (defaulting to a fresh
+ * [RecordingCockpitPreferences], which tracks `navShareSeqs`).
+ */
+private fun navShareVm(
+    scope: CoroutineScope,
+    store: ViewModelStore,
+    navAuthority: Boolean,
+    publisher: NavSharePublisher = FakeNavSharePublisher(),
+    navShareFlow: StateFlow<NavShareMessage?> = MutableStateFlow(null),
+    preferences: CockpitPreferences = RecordingCockpitPreferences(),
+    navSrcId: String = "ME",
+): CockpitViewModel {
+    val factory =
+        CockpitViewModelFactory(
+            telemetryRepository = StaticTelemetryRepo(),
+            vehicleGateway = FakeVehicleGateway(),
+            playaMapRepository = NoOpPlayaMapRepository,
+            locationSource = newFakeRoutedLocationSource(scope),
+            preferences = preferences,
+            fakeLocationSource = FakeLocationSource(scope = scope),
+            navAuthorityFlow = MutableStateFlow(navAuthority),
+            navShareFlow = navShareFlow,
+            navPublisher = publisher,
+            navSrcId = navSrcId,
         )
     return ViewModelProvider(store, factory)[CockpitViewModel::class.java]
 }
@@ -1494,21 +1969,33 @@ private class NoOpCockpitPreferences : CockpitPreferences {
 
     override suspend fun setPassengerMode(enabled: Boolean) = Unit
 
+    override suspend fun setNavAuthority(enabled: Boolean) = Unit
+
     override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
 
     override suspend fun setBurnInConfig(config: BurnInConfig) = Unit
+
+    override suspend fun readNavShareSeq(): Int = 0
+
+    override suspend fun setNavShareSeq(seq: Int) = Unit
 }
 
 private class RecordingCockpitPreferences(
     // See NoOpCockpitPreferences: pinned to FAKE, independent of the production
     // DEFAULT, because most call sites' registry fixtures don't register NET.
     private val snapshot: CockpitPrefsSnapshot = CockpitPrefsSnapshot.DEFAULT.copy(locationSource = LocationSourceType.FAKE),
+    // Simulates a persisted Lamport seq surviving a reboot: the VM seeds its
+    // arbiter from readNavShareSeq() on init, so a non-zero value here proves
+    // the seed actually happened (the next userSet must outbid it).
+    initialNavShareSeq: Int = 0,
 ) : CockpitPreferences {
     val locationSources = mutableListOf<LocationSourceType>()
     val mapModes = mutableListOf<MapMode>()
     val tiltDegs = mutableListOf<Int>()
     val zooms = mutableListOf<Double>()
     val concepts = mutableListOf<CockpitConcept>()
+    val navShareSeqs = mutableListOf<Int>()
+    private var storedNavShareSeq = initialNavShareSeq
 
     override suspend fun read(): CockpitPrefsSnapshot = snapshot
 
@@ -1534,9 +2021,18 @@ private class RecordingCockpitPreferences(
 
     override suspend fun setPassengerMode(enabled: Boolean) = Unit
 
+    override suspend fun setNavAuthority(enabled: Boolean) = Unit
+
     override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
 
     override suspend fun setBurnInConfig(config: BurnInConfig) = Unit
+
+    override suspend fun readNavShareSeq(): Int = storedNavShareSeq
+
+    override suspend fun setNavShareSeq(seq: Int) {
+        storedNavShareSeq = seq
+        navShareSeqs += seq
+    }
 }
 
 private class StaticTelemetryRepo : TelemetryRepository {

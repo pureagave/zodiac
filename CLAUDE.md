@@ -184,14 +184,23 @@ keeps the drawn route on the drawn streets.
 - **Discovery** (`data/discovery/`) — offline-first BM API cache in `filesDir`
   (not `cacheDir` — Android may purge that). A failed or partial fetch never
   clobbers a good cache.
-- **Preferences** (`data/prefs/`) — 21 DataStore keys, enums stored by name, every
+- **Preferences** (`data/prefs/`) — 23 DataStore keys, enums stored by name, every
   numeric read clamped, corruption handler installed. Default GPS source is
   **`NET`, not `FAKE`**.
+- **Nav target share** (`core/ops/NavShare*`, `data/nav/`) — the S9+ and A54 are
+  **nav-authority** tablets; only they may set + broadcast the drive-to target
+  over `$ZNAV` (`239.7.7.30:10130`, `docs/PROTOCOLS.md` §5). Every tablet adopts
+  it through the same `NavigationController` entry points a local set uses, so
+  the DRIVER HUD's existing heading arch just starts pointing at the shared
+  target — no new HUD UI. `NavShareArbiter` is a pure `(seq, src)` Lamport
+  ordering + single-owner state machine; adoption never re-publishes, which is
+  the whole no-echo guarantee. Followers (the two Fires) get the target but
+  their local drive-to controls are gated no-ops.
 
 ### Hidden corner gestures
 
 Top-left = park · bottom-left = burn-in tuning panel · bottom-right = log viewer
-· top-right = toggle passenger role.
+· top-right = toggle passenger role · top-center = toggle nav authority.
 
 ## `:beacon` — the sensor hub
 

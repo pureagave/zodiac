@@ -15,6 +15,7 @@ the fleet bus. This is the byte-level reference for both.
 |---|---|---|---|---|
 | Telemetry (NMEA) | `239.7.7.10` | `10110` | `:beacon` | every `:app` tablet; `zvision`'s `$ZAUD` listener |
 | Threats (ZTHREAT) | `239.7.7.20` | `10120` | `zvision` | every `:app` tablet |
+| Shared nav target (ZNAV) | `239.7.7.30` | `10130` | a nav-authority `:app` tablet | every `:app` tablet |
 
 Multicast TTL is **1** — nothing leaves the vehicle's subnet. `239.0.0.0/8` is
 administratively scoped.
@@ -36,8 +37,9 @@ Constants are declared in three mirrored places:
 | `:beacon` | `beacon/src/main/java/org/pureagave/zodiac/beacon/TelemetryBroadcaster.kt` |
 | `zvision` | `jetson/zvision/fleet_bus.py` |
 
-Note `FleetBus.TTL` is declared on the app side but unused there — receivers do
-not set TTL; it is a sender concern.
+`FleetBus.TTL` is used on the app side by `NavShareSender` (`$ZNAV` is the
+app's first device-to-device transmit path — every prior `:app` role was a
+receiver). Receivers never set TTL; it is purely a sender concern.
 
 ---
 
@@ -472,3 +474,132 @@ reported at 42.5° (implying a ~61° horizontal half-FOV); the horizontal readin
 would have reported 32.3°. The historical note below is kept so that anyone
 reading a bearing off the bus knows the edge values are unverified until it is
 resolved.
+
+---
+
+## 5. `ZNAV` — shared nav target (`:app` ↔ `:app`)
+
+`239.7.7.30` : `10130`. Single-language, `:app`-only — no golden corpus, no
+cross-language drift risk (§3 doesn't apply). Builder + parser both live in
+`core/ops/NavShareProtocol.kt`; the Lamport ordering + ownership state machine
+is `core/ops/NavShareArbiter.kt`, kept separate and pure (no I/O) from the
+send/receive plumbing (`data/nav/NavShareSender.kt`,
+`data/nav/NavShareReceiver.kt`).
+
+### 5.1 Operating model
+
+The S9+ (entry display) and the A54 (HUD) are **nav-authority** tablets: only
+they may set + broadcast the destination. The two Fires (and every other
+tablet) **adopt** it but cannot change it locally — a passenger poking a Fire
+must not be able to diverge the HUD's guidance. `CockpitUiState.navAuthority`
+gates both the ViewModel's send path (`NavShareController.userSet`, the hard
+gate) and the UI's affordance (`driveToBar`'s `enabled`, the address keypad).
+
+The DRIVER HUD's heading arch (`DriverNightScreen.kt`) already reads
+`CockpitUiState.activeDriveTarget` — this feature only gets the S9+'s chosen
+target onto that field on every tablet; no new HUD UI was added.
+
+### 5.2 Framing and grammar
+
+Same framing as §2.1 (`$<BODY>*<CC>\r\n`, US-ASCII, `Locale.US`, two-hex XOR
+checksum, 1–2 hex digits accepted on read). Four sentence shapes:
+
+```
+$ZNAV,<seq>,<src>,PRESET,<HOME|MAN|TEMPLE>*CC\r\n     e.g. $ZNAV,7,4A0C11,PRESET,MAN*CC
+$ZNAV,<seq>,<src>,ADDR,<H:MM>,<RING>*CC\r\n           e.g. $ZNAV,8,4A0C11,ADDR,2:15,H*CC
+$ZNAV,<seq>,<src>,BATH*CC\r\n
+$ZNAV,<seq>,<src>,CLEAR*CC\r\n
+```
+
+| Field | Grammar | Semantics |
+|---|---|---|
+| `seq` | `[0-9]{1,9}` | Lamport counter, ≥ 1 on the wire; fits Int32 |
+| `src` | `[A-Z0-9]{1,8}` | stable device id (last 6 of `Settings.Secure.ANDROID_ID`, uppercased); the ordering tie-break key |
+| preset | `HOME\|MAN\|TEMPLE` | maps to `NavTarget` by name |
+| clock | `[0-9]{1,2}:[0-9]{2}` | hours **2..10**, minutes 0..59 (mirrors `ClockEntry`'s `isCityClock`); out of range → the whole sentence rejects |
+| ring | `[A-Z]{1,9}` | must be a key of `StreetRingRadiiM` (ESPLANADE, A..K) → else rejects |
+
+Any violation — bad checksum, unknown type, wrong field count, an
+out-of-range clock/ring — makes `NavShareProtocol.parse` return null. It never
+throws: range checks run *before* constructing a `ClockTime`, whose own
+`require` allows the wider 1..12 display range and would throw outside it.
+
+**The payload is semantic, not resolved coordinates.** `PRESET` and `ADDR`
+reconstruct through `NavigationController`'s own entry points on the
+receiving side (`setNavTarget` / `driveToAddress`) — the exact same call a
+local user action makes, so there is one code path and no risk of the two
+sides drifting. `BATH` stays dynamic: every device resolves its own
+nearest-toilet live from the shared ego (position is already fleet-wide via
+the beacon), so all devices agree without shipping a coordinate. `CLEAR` has
+no "no target" state to clear to — `CockpitUiState.activeDriveTarget` always
+falls back to a preset, default `HOME` — so `CLEAR` adopts `PRESET,HOME`'s
+effect; it stays a distinct wire type because the *intent* ("cancel") is
+worth keeping legible in a capture even though the resulting state is
+identical.
+
+### 5.3 Ordering, ownership, re-broadcast
+
+Total order on `(seq, src)`: higher `seq` wins outright; an equal `seq` is
+broken by the lexicographically greater `src`. A device adopts a received
+message iff its key is strictly greater than the last key it applied (locally
+or by a prior adoption) — a device that has never applied anything (late
+join) adopts the first valid message it hears.
+
+The device whose last-applied key carries its own `src` is the **owner** and
+the sole periodic re-broadcaster, every **3 s** — long enough to be cheap,
+short enough that a HUD that reboots, cold-starts, or fails over to the
+Jetson's backup AP re-syncs within seconds. Setting locally always outbids
+everything seen so far and makes that device the owner; adopting a
+higher-seq remote message yields ownership (`NavSharePublisher.stop()` on the
+device that had it).
+
+**Adoption never re-broadcasts** — `NavShareController.onReceived` never
+calls `publish`, full stop. That, not just the arbiter refusing to *adopt* a
+device's own echo, is what stops every device re-transmitting everything it
+hears. Own-echo is real and expected: the receiver binds wildcard and the
+sender transmits both multicast and subnet broadcast (§1's "every sender
+transmits twice"), so a device hears its own transmission reflected back —
+`NavShareArbiter.onReceived` ignores any message whose `src` equals its own
+before doing anything else.
+
+**No byte-window dedup needed**, unlike `$ZSHK` (§2.9's 200 ms window):
+adoption keyed on `(seq, src)` is idempotent on its own. A byte-identical
+re-delivery of the same message parses to an equal `NavShareMessage`, and
+since `NavShareReceiver.messages` is a `StateFlow`, a value-equal re-emission
+doesn't even notify the collector — the double-delivery problem dissolves
+for free instead of needing its own guard.
+
+### 5.4 Seq persistence
+
+The Lamport counter must survive a reboot: without persistence, a rebooted
+authority mints `seq = 1` on its first set, and every follower still holding
+a higher seq from before the reboot rejects it forever. `CockpitPreferences`
+persists the counter separately from the settings snapshot (`readNavShareSeq`
+/ `setNavShareSeq`, the same shape as `readBurnInConfig` / `setBurnInConfig`)
+— written on a local user-set and on adopting a higher seq, not on every
+periodic re-broadcast.
+
+**Known residual gap, documented rather than fixed:** a *fresh install*
+mid-week starts its counter at 0. If that tablet sets locally before hearing
+any traffic, its low seq loses to whatever the rest of the fleet already
+agreed on, until it hears a higher-seq re-broadcast (within the owner's next
+3 s tick) and catches up. Acceptable: it self-heals within seconds and only
+affects a tablet that has never before participated.
+
+### 5.5 Authority + reception (spec R3/R4)
+
+Authority (`navAuthority`) is a per-device `CockpitPreferences` boolean,
+default **false** — opt-in, provisioned on the S9+ and A54 rather than every
+fresh install defaulting to "can broadcast." Toggled by a hidden top-center
+long-press (mirroring the existing four hidden-corner gestures) with a ~2 s
+transient "NAV AUTHORITY ON/OFF" confirmation, since the A54 runs DRIVER,
+which has no drive-to bar to show the state persistently.
+
+Reception is universal — every tablet runs a `NavShareReceiver` regardless of
+its own authority, mirroring `NetworkLocationSource`'s hardened listener
+(wildcard bind + group join via the shared `openFleetNmeaSocket` seam, a held
+`WifiManager.MulticastLock` under its own `"zodiac-znav"` tag, rebuild on
+`rejoinSilentMs` (30 s) silence, capped-exponential backoff on bind/read
+failure). Unlike GPS, silence is `$ZNAV`'s normal idle state — no owner means
+no traffic — so the periodic rebuild-on-silence exists purely to survive an
+AP failover mid-idle, not to detect a dead feed.

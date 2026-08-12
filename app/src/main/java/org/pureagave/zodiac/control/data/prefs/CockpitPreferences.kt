@@ -26,6 +26,15 @@ data class CockpitPrefsSnapshot(
      * where nobody is going to reconfigure it.
      */
     val passengerMode: Boolean,
+    /**
+     * This tablet may set + broadcast the shared nav target (`$ZNAV`) — the
+     * S9+ and the A54 HUD, not the Fires. Persisted per device, same reasoning
+     * as [passengerMode]: it is a property of which physical tablet this is,
+     * not of the drive in progress. Defaults **false** — authority is opt-in,
+     * provisioned deliberately on the two tablets that should have it, rather
+     * than every fresh install defaulting to "can broadcast."
+     */
+    val navAuthority: Boolean,
 ) {
     companion object {
         val DEFAULT =
@@ -42,6 +51,7 @@ data class CockpitPrefsSnapshot(
                 pixelsPerMeter = DEFAULT_PIXELS_PER_METER,
                 concept = CockpitConcept.RADAR,
                 passengerMode = false,
+                navAuthority = false,
             )
 
         const val DEFAULT_PIXELS_PER_METER: Double = 0.18
@@ -68,6 +78,8 @@ interface CockpitPreferences {
 
     suspend fun setPassengerMode(enabled: Boolean)
 
+    suspend fun setNavAuthority(enabled: Boolean)
+
     /**
      * Burn-in mitigation tuning, persisted as individual keys so each timeout /
      * modulation parameter is independently adjustable from the on-device tuning
@@ -77,4 +89,16 @@ interface CockpitPreferences {
     suspend fun readBurnInConfig(): BurnInConfig
 
     suspend fun setBurnInConfig(config: BurnInConfig)
+
+    /**
+     * The last Lamport `$ZNAV` seq this device has seen or set, so a reboot
+     * doesn't restart the counter at 0 and get silently outbid by every
+     * follower still holding a higher seq from before the reboot. Wire state,
+     * not a user preference — kept separate from [CockpitPrefsSnapshot] the
+     * same way [readBurnInConfig] is. Defaults to 0 (a fresh install with no
+     * history yet).
+     */
+    suspend fun readNavShareSeq(): Int
+
+    suspend fun setNavShareSeq(seq: Int)
 }

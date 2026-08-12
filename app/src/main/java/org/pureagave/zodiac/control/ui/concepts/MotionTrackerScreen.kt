@@ -234,6 +234,7 @@ fun motionTrackerScreen(
                 onSelectBath = viewModel::driveToNearestToilet,
                 onOpenAddress = { viewModel.setAddressEntryOpen(true) },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = state.navAuthority,
             )
             Spacer(Modifier.height(6.dp))
             opsReadout(

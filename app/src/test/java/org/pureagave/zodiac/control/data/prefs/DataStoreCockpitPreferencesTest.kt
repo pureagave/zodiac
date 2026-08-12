@@ -237,6 +237,41 @@ class DataStoreCockpitPreferencesTest {
     private fun TestScope.newStore(): DataStore<Preferences> =
         PreferenceDataStoreFactory.create(scope = this.backgroundScope) { tmp.newFile("prefs_${nextFileId++}.preferences_pb") }
 
+    @Test
+    fun nav_authority_defaults_false_and_round_trips() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefs()
+            assertEquals(false, prefs.read().navAuthority)
+
+            prefs.setNavAuthority(true)
+            assertEquals(true, prefs.read().navAuthority)
+
+            prefs.setNavAuthority(false)
+            assertEquals(false, prefs.read().navAuthority)
+        }
+
+    @Test
+    fun nav_share_seq_defaults_to_zero_and_round_trips() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefs()
+            assertEquals(0, prefs.readNavShareSeq())
+
+            prefs.setNavShareSeq(42)
+            assertEquals(42, prefs.readNavShareSeq())
+        }
+
+    @Test
+    fun nav_share_seq_negative_is_clamped_to_zero_on_read() =
+        runTest(UnconfinedTestDispatcher()) {
+            val prefs = newPrefs()
+
+            prefs.setNavShareSeq(-7)
+
+            // A tampered/corrupt value must not resurrect as a negative seq --
+            // the arbiter's ordering assumes seq >= 0.
+            assertEquals(0, prefs.readNavShareSeq())
+        }
+
     private fun TestScope.newPrefs(): DataStoreCockpitPreferences = DataStoreCockpitPreferences(newStore())
 
     private companion object {

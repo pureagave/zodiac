@@ -14,6 +14,9 @@
     <!-- NET GPS source: hold a MulticastLock so the WiFi driver stops filtering
          the fleet's UDP broadcast NMEA before it reaches the app. -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- NavShareSender ($ZNAV): derives the /24 subnet broadcast target from
+         WifiManager.dhcpInfo, the app's first device-to-device transmit path. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <!-- Bluetooth Classic SPP for NMEA GPS receivers (Phase 4d). -->
     <uses-permission
