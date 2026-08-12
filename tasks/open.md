@@ -98,9 +98,13 @@ for every item are in the audit doc; this is the work list.
 None of these can be proven in CI; the phone is API 29 and Robolectric models the
 API contract, not real OS scheduling.
 
-- [ ] **Reboot test** — start beacon, `adb reboot`, confirm `$ZBCN` reaches a
-      tablet within ~90 s with zero phone interaction. This is the acceptance
-      test for B3.
+- [x] **Reboot test — PASSED 2026-08-12 (beacon side).** `adb reboot` the XCover →
+      it came back with **zero phone interaction** and the beacon auto-started
+      (fresh pid), logging `transmit socket open` + `targets -> 239.7.7.10,
+      192.168.86.255` within the boot window. Also confirmed the airplane-mode +
+      WiFi radio config survives a reboot (see SYNC 2026-08-12). ⚠️ End-to-end
+      *tablet receipt* of `$ZBCN` not re-checked this session (the Mac can't
+      listen — needs the Jetson listener); the transmit side is proven.
 - [ ] **Sideloaded update** — install a new signed APK over a running beacon,
       confirm `MY_PACKAGE_REPLACED` restarts it.
 - [ ] **No lock-screen credential on the beacon phone** — `BOOT_COMPLETED` only

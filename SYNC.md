@@ -6,6 +6,64 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-12 — Beacon radio/power config, verified across a reboot (closes the B3 reboot test)
+
+Settled and **hardware-verified** the XCover beacon's radio config, and set a
+fleet-wide radio policy.
+
+**Beacon (XCover) config — VERIFIED:** airplane mode **ON**, WiFi **ON**, Location
+**ON** (high accuracy), Bluetooth **OFF**, NFC **OFF**, factory WiFi MAC
+`f8:f1:e6:01:8b:6b`.
+
+- **Why airplane mode:** the phone has no SIM. Cellular with no SIM does nothing
+  but keep the modem powered, scanning for towers/PLMNs it can never register on
+  — and at BRC (flooded / no coverage) it scans *harder* ("searching" drains more
+  than "connected to a strong tower"). Pure waste + heat, zero function. Airplane
+  mode kills cellular/BT/NFC; WiFi is re-enabled on top (Android keeps WiFi on in
+  airplane mode).
+- **GPS is unaffected by airplane mode** — GNSS is receive-only, and A-GPS
+  wouldn't work over cellular without a SIM anyway (WiFi/Starlink can still
+  assist). So no GPS penalty from airplane mode.
+- **Reboot test PASSED** (acceptance for this config *and* B3): `adb reboot` →
+  came back airplane ON, WiFi enabled, Location on, factory MAC held, and the
+  **beacon auto-started (fresh pid) and logged `transmit socket open` +
+  `targets -> 239.7.7.10, 192.168.86.255`** within the boot window, **zero phone
+  interaction**. Beacon side proven on hardware; end-to-end tablet *receipt* not
+  re-checked this session (the Mac can't listen — needs the Jetson listener).
+- Still required: **permanent vehicle power.** Airplane mode extends the
+  flat-battery margin; it does not replace power (the beacon died from a flat
+  battery earlier 2026-08-12).
+
+**Fleet radio policy — the rule:** WiFi is the only radio the fleet uses. Keep GPS
+on only where there is a real GPS chip — the app's `FailoverLocationSource` uses
+the device's own GPS as a backup if the beacon (NET) dies, so ON for the Samsungs,
+moot for the Fires (no GNSS; they report only `location.network`). Airplane mode
+only where there is a cellular modem to silence (A54, XCover). Everything else
+(BT, NFC) off.
+
+| Device | WiFi | Airplane | BT | NFC | Location |
+|---|---|---|---|---|---|
+| S9+ (hero) | on | — (no modem) | off | off | **on** (failover) |
+| A54 (driver) | on | **on** (no SIM) | off | off | **on** (failover) |
+| Fire 9th / 11th | on | — | off | — | off (no GPS) |
+| XCover (beacon) | on | **on** | off | off | **on** (needs GPS) |
+
+Applied via adb where possible (S9+ Bluetooth off; Fire 11th location off; S9+
+location kept on). **adb cannot toggle NFC (Samsung blocks it) or Fire-OS
+Bluetooth (`No shell command implementation`)** — those are Settings-UI only. The
+A54 was on battery / unreachable at config time; its radio config is pending.
+
+**WiFi MAC randomization audit (same session):** none of the fleet *rotates* its
+MAC — two already on factory MAC (A54 `80:07:94:37:98:05`, Fire 9th
+`0c:ee:99:12:11:a4`), the rest on *persistent* (stable) randomization. adb cannot
+force the factory MAC — Samsung blocks `cmd wifi` (`Uid 2000 does not have access
+to wifi commands`) and Fire OS silently ignores `-r`. It is a per-network
+Settings toggle ("Phone MAC" / "Use device MAC"), and it does not carry to a new
+network (the car WiFi will need it set there too). Plan: pin IPs via DHCP
+reservation on the car router using each device's factory MAC.
+
+---
+
 ## 2026-08-12 — 2026 placements released; the camp placer was dropping 56% of camps
 
 BM's Innovate team published the 2026 art/camp placements (null on 2026-08-10,
