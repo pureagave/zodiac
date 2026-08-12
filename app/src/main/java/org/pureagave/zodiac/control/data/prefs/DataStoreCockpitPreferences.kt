@@ -42,7 +42,6 @@ class DataStoreCockpitPreferences(
                     .coerceIn(MIN_ZOOM, MAX_ZOOM),
             concept = prefs[KEY_CONCEPT]?.toConceptOrNull() ?: default.concept,
             passengerMode = prefs[KEY_PASSENGER_MODE] ?: default.passengerMode,
-            navAuthority = prefs[KEY_NAV_AUTHORITY] ?: default.navAuthority,
         )
     }
 
@@ -64,10 +63,6 @@ class DataStoreCockpitPreferences(
 
     override suspend fun setPassengerMode(enabled: Boolean) {
         dataStore.edit { it[KEY_PASSENGER_MODE] = enabled }
-    }
-
-    override suspend fun setNavAuthority(enabled: Boolean) {
-        dataStore.edit { it[KEY_NAV_AUTHORITY] = enabled }
     }
 
     override suspend fun setConcept(concept: CockpitConcept) {
@@ -162,7 +157,6 @@ class DataStoreCockpitPreferences(
         val KEY_PIXELS_PER_METER = doublePreferencesKey("pixels_per_meter")
         val KEY_CONCEPT = stringPreferencesKey("cockpit_concept")
         val KEY_PASSENGER_MODE = booleanPreferencesKey("passenger_mode")
-        val KEY_NAV_AUTHORITY = booleanPreferencesKey("nav_authority")
         val KEY_NAV_SHARE_SEQ = intPreferencesKey("nav_share_seq")
 
         val KEY_BI_SHIFT_ENABLED = booleanPreferencesKey("bi_shift_enabled")

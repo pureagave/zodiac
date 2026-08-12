@@ -106,13 +106,15 @@ class CockpitViewModel(
      */
     private val beaconSensors: StateFlow<BeaconSensors> = MutableStateFlow(BeaconSensors()),
     /**
-     * Whether *this device* currently holds nav authority — i.e. the live
-     * value behind [org.pureagave.zodiac.control.core.ops.NavAuthorityStore].
-     * Defaults **true** (deliberately unlike the store's own persisted
-     * default of false, see decision 6): ~10 existing `CockpitViewModelTest`
-     * scenarios call `setNavTarget`/`driveToAddress` and would silently no-op
-     * against a `false` default. Production always wires the real store's
-     * flow. Mirrors the `demoEnabled`-style comment on `RoutedThreatSource`.
+     * Whether *this device* currently holds nav authority — automatic and
+     * device-derived: production wires in a constant flow of
+     * [org.pureagave.zodiac.control.burnin.BurnInDeviceProfile.visualModulationSupported]
+     * (true on the OLED Samsungs, false on the LCD Fires), computed once at
+     * `MainActivity` startup — there is no runtime toggle. Defaults **true**
+     * here so ~10 existing `CockpitViewModelTest` scenarios that call
+     * `setNavTarget`/`driveToAddress` without wiring this flow explicitly
+     * don't silently no-op; the follower-gating tests inject `false` directly.
+     * Mirrors the `demoEnabled`-style comment on `RoutedThreatSource`.
      */
     navAuthorityFlow: StateFlow<Boolean> = MutableStateFlow(true),
     /** Inbound `$ZNAV` messages from [org.pureagave.zodiac.control.data.nav.NavShareReceiver]; null default for tests/pre-wiring. */
@@ -304,10 +306,10 @@ class CockpitViewModel(
                 }
             }
             launch {
-                // This device's nav authority, from the process-scoped
-                // NavAuthorityStore (a device property, not session state —
-                // see CockpitUiState.navAuthority's kdoc for why it's folded
-                // in here anyway).
+                // This device's nav authority — automatic and device-derived
+                // (see CockpitUiState.navAuthority's kdoc); folded into
+                // CockpitUiState because the ViewModel needs it synchronously
+                // to gate every send.
                 navAuthorityFlow.collect { authority ->
                     _uiState.update { it.copy(navAuthority = authority) }
                 }

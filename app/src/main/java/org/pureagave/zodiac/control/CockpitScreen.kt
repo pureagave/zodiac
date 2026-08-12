@@ -2,13 +2,9 @@ package org.pureagave.zodiac.control
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,12 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.delay
 import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.burnin.burnInScaffold
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
@@ -30,7 +22,6 @@ import org.pureagave.zodiac.control.core.model.CockpitConcept
 import org.pureagave.zodiac.control.core.ops.sunTimes
 import org.pureagave.zodiac.control.core.telemetry.AudioLevel
 import org.pureagave.zodiac.control.data.art.ArtImageStore
-import org.pureagave.zodiac.control.ui.concepts.StatusBlue
 import org.pureagave.zodiac.control.ui.concepts.ThemeTracker
 import org.pureagave.zodiac.control.ui.concepts.driverNightScreen
 import org.pureagave.zodiac.control.ui.concepts.instrumentBayScreen
@@ -67,9 +58,6 @@ fun cockpitScreen(
     onSetPassengerMode: (Boolean) -> Unit = {},
     /** Pre-rendered art images; null outside the passenger display. */
     artImages: ArtImageStore? = null,
-    /** Whether this tablet may set + broadcast the shared nav target; see [org.pureagave.zodiac.control.core.ops.NavAuthorityStore]. */
-    navAuthority: Boolean = true,
-    onSetNavAuthority: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val cycle: () -> Unit = viewModel::cycleConcept
@@ -149,66 +137,10 @@ fun cockpitScreen(
                 if (logsOpen) {
                     logViewerPanel(log = fileLog, theme = ThemeTracker, onClose = { logsOpen = false })
                 }
-                // Fifth hidden hot zone, top-center: toggles this tablet's nav
-                // authority. The other four corners are taken (top-left park,
-                // bottom-left burn-in tuning, bottom-right log viewer,
-                // top-right passenger role). DRIVER (the A54's concept) has no
-                // drive-to bar to visibly show enabled/disabled, hence the
-                // transient text confirmation rather than a persistent chip.
-                navAuthorityHotZone(navAuthority = navAuthority, onSetNavAuthority = onSetNavAuthority)
             }
         }
     }
 }
 
-/**
- * The top-center hidden long-press that flips this device's nav authority,
- * plus its own ~2 s "NAV AUTHORITY ON/OFF" transient confirmation. Split out
- * of [cockpitScreen] purely to keep that dispatcher's own branching down —
- * the confirmation's remember/LaunchedEffect state belongs with the gesture
- * that drives it either way.
- */
-@Composable
-private fun BoxScope.navAuthorityHotZone(
-    navAuthority: Boolean,
-    onSetNavAuthority: (Boolean) -> Unit,
-) {
-    var confirmation by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(confirmation) {
-        if (confirmation != null) {
-            delay(NAV_AUTHORITY_CONFIRMATION_MS)
-            confirmation = null
-        }
-    }
-    Box(
-        modifier =
-            Modifier
-                .align(Alignment.TopCenter)
-                .size(LOG_HOT_ZONE)
-                .pointerInput(navAuthority) {
-                    detectTapGestures(
-                        onLongPress = {
-                            val next = !navAuthority
-                            onSetNavAuthority(next)
-                            confirmation = if (next) "NAV AUTHORITY ON" else "NAV AUTHORITY OFF"
-                        },
-                    )
-                },
-    )
-    confirmation?.let { message ->
-        Text(
-            text = message,
-            color = StatusBlue,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-        )
-    }
-}
-
 /** Corner hot-zone for the log-viewer long-press; mirrors the burn-in scaffold's. */
 private val LOG_HOT_ZONE = 56.dp
-
-/** How long the "NAV AUTHORITY ON/OFF" transient confirmation stays on screen. */
-private const val NAV_AUTHORITY_CONFIRMATION_MS = 2_000L

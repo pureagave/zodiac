@@ -588,12 +588,12 @@ affects a tablet that has never before participated.
 
 ### 5.5 Authority + reception (spec R3/R4)
 
-Authority (`navAuthority`) is a per-device `CockpitPreferences` boolean,
-default **false** — opt-in, provisioned on the S9+ and A54 rather than every
-fresh install defaulting to "can broadcast." Toggled by a hidden top-center
-long-press (mirroring the existing four hidden-corner gestures) with a ~2 s
-transient "NAV AUTHORITY ON/OFF" confirmation, since the A54 runs DRIVER,
-which has no drive-to bar to show the state persistently.
+Authority — automatic, not a toggle: it *is* OLED-device-ness,
+`BurnInDeviceProfile.visualModulationSupported()` (`Build.MANUFACTURER !=
+"Amazon"`, case-insensitive), computed once at `MainActivity` startup and
+wired into `CockpitViewModel` as a constant flow. True on the two Samsungs
+(S9+, A54), false on the two Fires — no per-device provisioning step, no
+runtime state to drift, no hidden gesture.
 
 Reception is universal — every tablet runs a `NavShareReceiver` regardless of
 its own authority, mirroring `NetworkLocationSource`'s hardened listener

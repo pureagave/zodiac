@@ -18,7 +18,6 @@ import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.core.connection.TransportType
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
 import org.pureagave.zodiac.control.core.log.RollingFileLog
-import org.pureagave.zodiac.control.core.ops.NavAuthorityStore
 import org.pureagave.zodiac.control.core.ops.NavShareProtocol
 import org.pureagave.zodiac.control.core.passenger.DisplayRoleStore
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
@@ -161,20 +160,6 @@ class ZodiacApplication : Application() {
             scope = applicationScope,
             read = { preferences.read().passengerMode },
             write = { preferences.setPassengerMode(it) },
-        )
-    }
-
-    /**
-     * Whether this tablet may set + broadcast the shared nav target. Process-
-     * scoped for the same reason as [displayRole] — a device property, not
-     * session state. Provisioned on the S9+ and A54; the two Fires stay
-     * followers (spec R3).
-     */
-    val navAuthority: NavAuthorityStore by lazy {
-        NavAuthorityStore(
-            scope = applicationScope,
-            read = { preferences.read().navAuthority },
-            write = { preferences.setNavAuthority(it) },
         )
     }
 

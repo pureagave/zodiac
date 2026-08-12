@@ -21,6 +21,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.pureagave.zodiac.control.burnin.BurnInDeviceProfile
 import org.pureagave.zodiac.control.core.permission.PermissionPrompt
 import org.pureagave.zodiac.control.core.permission.grantedAnythingNew
 import org.pureagave.zodiac.control.core.permission.permissionPromptFor
@@ -78,7 +81,6 @@ private fun zodiacApp() {
 
     val audio by app.networkLocationSource.audioLevel.collectAsStateWithLifecycle()
     val passengerMode by app.displayRole.passengerMode.collectAsStateWithLifecycle()
-    val navAuthority by app.navAuthority.enabled.collectAsStateWithLifecycle()
     cockpitScreen(
         viewModel = viewModel,
         burnInManager = app.burnInManager,
@@ -87,8 +89,6 @@ private fun zodiacApp() {
         passengerMode = passengerMode,
         onSetPassengerMode = app.displayRole::setPassengerMode,
         artImages = app.artImages,
-        navAuthority = navAuthority,
-        onSetNavAuthority = app.navAuthority::setEnabled,
     )
     // Emitted *after* the cockpit deliberately: siblings at the root stack in
     // declaration order, so a gate declared first draws underneath the whole
@@ -116,7 +116,13 @@ private fun rememberCockpitViewModel(app: ZodiacApplication): CockpitViewModel =
                 threatsFlow = app.threatSource.threats,
                 visionFeedFlow = app.threatSource.feedState,
                 beaconSensors = app.networkLocationSource.beaconSensors,
-                navAuthorityFlow = app.navAuthority.enabled,
+                // Authority = OLED (non-Amazon) device, computed once at
+                // startup rather than a per-device toggle — the S9+ and A54
+                // are always authorities, the two Fires always follow. A
+                // constant flow keeps the ViewModel's existing collector (and
+                // the follower-gating tests that inject navAuthorityFlow
+                // directly) unchanged.
+                navAuthorityFlow = MutableStateFlow(BurnInDeviceProfile.visualModulationSupported()).asStateFlow(),
                 navShareFlow = app.navShareReceiver.messages,
                 navPublisher = app.navShareSender,
                 navSrcId = app.navSrcId,

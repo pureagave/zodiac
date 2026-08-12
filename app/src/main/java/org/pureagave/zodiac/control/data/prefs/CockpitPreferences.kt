@@ -26,15 +26,6 @@ data class CockpitPrefsSnapshot(
      * where nobody is going to reconfigure it.
      */
     val passengerMode: Boolean,
-    /**
-     * This tablet may set + broadcast the shared nav target (`$ZNAV`) — the
-     * S9+ and the A54 HUD, not the Fires. Persisted per device, same reasoning
-     * as [passengerMode]: it is a property of which physical tablet this is,
-     * not of the drive in progress. Defaults **false** — authority is opt-in,
-     * provisioned deliberately on the two tablets that should have it, rather
-     * than every fresh install defaulting to "can broadcast."
-     */
-    val navAuthority: Boolean,
 ) {
     companion object {
         val DEFAULT =
@@ -51,7 +42,6 @@ data class CockpitPrefsSnapshot(
                 pixelsPerMeter = DEFAULT_PIXELS_PER_METER,
                 concept = CockpitConcept.RADAR,
                 passengerMode = false,
-                navAuthority = false,
             )
 
         const val DEFAULT_PIXELS_PER_METER: Double = 0.18
@@ -77,8 +67,6 @@ interface CockpitPreferences {
     suspend fun setConcept(concept: CockpitConcept)
 
     suspend fun setPassengerMode(enabled: Boolean)
-
-    suspend fun setNavAuthority(enabled: Boolean)
 
     /**
      * Burn-in mitigation tuning, persisted as individual keys so each timeout /

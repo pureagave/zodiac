@@ -1969,8 +1969,6 @@ private class NoOpCockpitPreferences : CockpitPreferences {
 
     override suspend fun setPassengerMode(enabled: Boolean) = Unit
 
-    override suspend fun setNavAuthority(enabled: Boolean) = Unit
-
     override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
 
     override suspend fun setBurnInConfig(config: BurnInConfig) = Unit
@@ -2020,8 +2018,6 @@ private class RecordingCockpitPreferences(
     }
 
     override suspend fun setPassengerMode(enabled: Boolean) = Unit
-
-    override suspend fun setNavAuthority(enabled: Boolean) = Unit
 
     override suspend fun readBurnInConfig(): BurnInConfig = BurnInConfig()
 

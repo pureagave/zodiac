@@ -66,15 +66,17 @@ complexity:
     # DRIVER HUD's decisions are allowed to live, so growth here is by design;
     # split it by concern (placement / alerting / coverage) if it goes further.
     thresholdInObjects: 22
-    # Default 11 was tight for CockpitPreferences once $ZNAV added
-    # setNavAuthority + readNavShareSeq/setNavShareSeq alongside the existing
-    # nine (one method per persisted field/snapshot op, same shape as
-    # readBurnInConfig/setBurnInConfig before it), landing it at 12 functions
-    # -- 13 is just above that count. If a new preference would push past it,
-    # consider whether it's really session state vs. a candidate for its own
-    # small store (see NavAuthorityStore/DisplayRoleStore) before bumping
-    # this again.
-    thresholdInInterfaces: 13
+    # Default 11 fires at count >= threshold, not >, so CockpitPreferences'
+    # current 11 functions (read/set per persisted field + readBurnInConfig/
+    # setBurnInConfig + readNavShareSeq/setNavShareSeq, one method per
+    # persisted field/snapshot op) still needs a one-over bump even after
+    # $ZNAV's authority toggle (setNavAuthority) was removed -- authority is
+    # now computed from BurnInDeviceProfile.visualModulationSupported() rather
+    # than persisted, so this dropped back from 13 (its post-$ZNAV high) to
+    # 12. If a new preference pushes past it, consider whether it's really
+    # session state vs. a candidate for its own small store (see
+    # DisplayRoleStore) before bumping this again.
+    thresholdInInterfaces: 12
 
 naming:
   FunctionNaming:

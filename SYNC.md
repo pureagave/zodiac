@@ -6,6 +6,27 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-12 — nav authority is now automatic (OLED-derived), not a manual toggle
+
+Rob disliked the hidden top-center toggle (and the "nav entry disabled until you set
+it" footgun). Replaced it: `navAuthority` is now computed once at startup from
+`BurnInDeviceProfile.visualModulationSupported()` (= non-Amazon = the OLED Samsungs) —
+the **same discriminator the burn-in dimming already uses**. So the **S9+ and A54 are
+always nav authorities and the Fires always follow**, with no toggle, no preference,
+no provisioning step. Wired as a constant `MutableStateFlow(...)` into the VM's
+existing `navAuthorityFlow` seam, so the follower-gating tests (which inject that flow)
+are unchanged.
+
+Removed: `NavAuthorityStore`, the `navAuthority` DataStore key + `setNavAuthority`, and
+the top-center hot zone. Kept everything else — `$ZNAV` send/adopt, Lamport `(seq,src)`
++ its seq persistence, and the follower lock-out on the Fires. detekt
+`thresholdInInterfaces` 13→**12** (removing `setNavAuthority` left `CockpitPreferences`
+at 11 functions, but the rule fires at `>=`, so 11 still trips the default 11 — 12 is
+the true minimum, measured not assumed). app 914→**913** (−1 preference round-trip
+test). Gate green. Supersedes the toggle design in the prior `$ZNAV` entry.
+
+---
+
 ## 2026-08-12 — Shared nav target (`$ZNAV`): the fleet's first device-to-device channel
 
 The operator enters a destination on the **S9+**; it now reaches the **A54 HUD** and
