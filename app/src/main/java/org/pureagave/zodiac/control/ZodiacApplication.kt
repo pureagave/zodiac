@@ -281,11 +281,21 @@ class ZodiacApplication : Application() {
             // legitimately uses cacheDir because bundled JSON assets back it),
             // discovery has no fallback if this evaporates.
             storageDir = filesDir,
-            // Active year. 2026 art/camp locations are embargoed until ~3 weeks
-            // pre-event, so this returns nothing until BM releases them — no markers
-            // now, auto-populating (correctly placed) on release. Matches the 2026
-            // base map; no 2025 art shown ~583 m off the moved city.
+            // Active year. Matches the 2026 base map; no 2025 art shown ~583 m
+            // off the moved city.
             year = GoldenSpike.ACTIVE_YEAR,
+            // Bundled offline fallback so a device that has never reached the API
+            // still boots with the full art/camp overlay instead of a blank one.
+            // Generated from a real device's cache (see tools/), so its format is
+            // exactly what DiscoveryRepository.parsePois expects. Absent asset =>
+            // null => no seed, which is fine before the file ships.
+            seedJson = {
+                runCatching {
+                    assets.open("brc/${GoldenSpike.ACTIVE_YEAR}/discovery_seed.json")
+                        .bufferedReader()
+                        .use { it.readText() }
+                }.getOrNull()
+            },
         )
     }
 }

@@ -33,6 +33,13 @@ class DiscoveryRepository(
     private val scope: CoroutineScope,
     storageDir: File,
     private val year: Int,
+    // Bundled offline fallback: returns the seed JSON
+    // (`assets/brc/<year>/discovery_seed.json`) so a device that has NEVER
+    // reached the API still boots with the full art/camp overlay instead of a
+    // blank one — the gap the disk cache alone cannot cover, since a cold device
+    // has no cache to serve. Same on-disk format as the cache, so it parses
+    // through the same [parsePois]. Default = no seed (used by tests).
+    private val seedJson: () -> String? = { null },
     // Test seam for the atomic-write path: lets a test inject a write that dies
     // partway through (simulating a power cut mid-write) without needing to race
     // a real thread. Default is the real "write the tmp file" step.
@@ -45,14 +52,21 @@ class DiscoveryRepository(
 
     init {
         scope.launch {
-            // Serve cache instantly, then refresh on launch and roughly nightly
+            // Serve the best offline copy instantly — the disk cache if we have
+            // one, else the bundled seed so a never-fetched device still boots
+            // with the full overlay — then refresh on launch and roughly nightly
             // while the process lives. A failed refresh (offline) is a no-op, so
             // the last good full dataset keeps serving through connectivity gaps.
-            loadCache()?.let {
-                if (it.isNotEmpty()) {
-                    _pois.value = it
-                    Timber.i("discovery: %d served %d record(s) from disk cache", year, it.size)
-                }
+            val cached = loadCache()?.takeIf { it.isNotEmpty() }
+            val initial = cached ?: loadSeed()
+            if (initial != null) {
+                _pois.value = initial
+                Timber.i(
+                    "discovery: %d served %d record(s) from %s",
+                    year,
+                    initial.size,
+                    if (cached != null) "disk cache" else "bundled seed",
+                )
             }
             while (isActive) {
                 refresh()
@@ -162,29 +176,49 @@ class DiscoveryRepository(
     private fun loadCache(): List<PlayaPoi>? {
         if (!cacheFile.exists()) return null
         return try {
-            val arr = JSONArray(cacheFile.readText())
-            (0 until arr.length()).map { i ->
-                val o = arr.getJSONObject(i)
-                val point = if (o.has("eastM")) PlayaPoint(o.getDouble("eastM"), o.getDouble("northM")) else null
-                PlayaPoi(
-                    uid = o.optString("uid"),
-                    name = o.optString("name"),
-                    kind = runCatching { PoiKind.valueOf(o.optString("kind")) }.getOrDefault(PoiKind.ART),
-                    point = point,
-                    subtitle = o.optString("subtitle"),
-                    hometown = o.optStringOrNull("hometown"),
-                    description = o.optStringOrNull("description"),
-                    address = o.optStringOrNull("address"),
-                    category = o.optStringOrNull("category"),
-                    program = o.optStringOrNull("program"),
-                    guidedTours = o.optBoolean("guided_tours", false),
-                    selfGuidedTour = o.optBoolean("self_guided_tour_map", false),
-                    needsVolunteers = o.optBoolean("needs_volunteers", false),
-                )
-            }
+            parsePois(cacheFile.readText())
         } catch (e: Exception) {
             Timber.w(e, "discovery: %d cache file is corrupt; treating as a miss", year)
             null
+        }
+    }
+
+    /**
+     * The bundled offline fallback ([seedJson]), parsed through the same
+     * [parsePois] as the disk cache. Only consulted when the disk cache is
+     * empty/absent, and a malformed or absent seed just yields null (no seed) —
+     * it must never be able to crash a cold start.
+     */
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
+    private fun loadSeed(): List<PlayaPoi>? =
+        try {
+            seedJson()?.let(::parsePois)?.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            Timber.w(e, "discovery: %d bundled seed is unparseable; skipping", year)
+            null
+        }
+
+    /** Parse the shared on-disk / seed JSON array into POIs. Throws on malformed input. */
+    private fun parsePois(text: String): List<PlayaPoi> {
+        val arr = JSONArray(text)
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val point = if (o.has("eastM")) PlayaPoint(o.getDouble("eastM"), o.getDouble("northM")) else null
+            PlayaPoi(
+                uid = o.optString("uid"),
+                name = o.optString("name"),
+                kind = runCatching { PoiKind.valueOf(o.optString("kind")) }.getOrDefault(PoiKind.ART),
+                point = point,
+                subtitle = o.optString("subtitle"),
+                hometown = o.optStringOrNull("hometown"),
+                description = o.optStringOrNull("description"),
+                address = o.optStringOrNull("address"),
+                category = o.optStringOrNull("category"),
+                program = o.optStringOrNull("program"),
+                guidedTours = o.optBoolean("guided_tours", false),
+                selfGuidedTour = o.optBoolean("self_guided_tour_map", false),
+                needsVolunteers = o.optBoolean("needs_volunteers", false),
+            )
         }
     }
 

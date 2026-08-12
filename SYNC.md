@@ -6,6 +6,65 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-12 — 2026 placements released; the camp placer was dropping 56% of camps
+
+BM's Innovate team published the 2026 art/camp placements (null on 2026-08-10,
+live now). Pulled everything current and, in the process, the real data exposed a
+latent bug that had been invisible precisely *because* placements were null.
+
+### What the data actually was
+
+- **Art:** 331 records, every one carrying `location.gps_latitude/longitude` +
+  a top-level `location_string`. 314 placed; **17 project to a placeholder
+  ~11,000 km coordinate with no clock/distance fallback** (spec/test entries +
+  a few not-yet-placed pieces) and are correctly dropped by the ≤5 km
+  plausibility gate. `parseArt` reads exactly those fields, so **art placement
+  worked as-is**.
+- **Camps:** 1190 records, all with a clock/street address.
+- **GIS:** base map (streets, blocks, plazas, outlines, gate road, dmz)
+  **byte-identical** to what shipped; only `cpns` (+1 node, a Deep-Playa Music
+  Zone; one non-nav "Point 3" nudged ~5 m — the Man/Temple/plazas unchanged),
+  `toilets` (+2), and `trash_fence` (refined polygon) changed. No georeference or
+  nav-target impact. Art thumbnails: 2 withdrawn pieces removed, `index.json`
+  refreshed (no new pieces).
+
+### The bug: `campPoint` assumed a fixed field order
+
+`campPoint(frontage, intersection)` hard-assumed `frontage` = clock and
+`intersection` = street letter. But the feed **varies the order**: "G & 9:15"
+(letter first) vs "4:30 & D" (clock first). Half the camps have the letter in
+`frontage`, so `parseClock("G")` returned null and they were dropped. Measured:
+**only 375 of 1190 camps placed; 672 (56%) silently missing.** Never caught
+because the whole path had never run against real data until today — the exact
+"never exercised" shape this project keeps getting bitten by.
+
+Fixed to detect which token is the clock (parses as H:MM) vs the ring letter
+(resolves in `StreetRingRadiiM`, with an `ESP`→`ESPLANADE` alias) regardless of
+order — the corner is identical either way, so it only recovers drops, never
+moves a camp. **Verified live on-device against the API: 1075 camps placed** (up
+from 375). Tests cover both orders + the false-placement guards.
+
+### Offline guarantee: bundled discovery seed (Rob's requirement)
+
+`DiscoveryRepository` had **no bundled fallback** — a device that had never
+reached the API and boots offline showed the full base map but a **blank
+art/camp overlay**. Now there is a bundled seed
+(`assets/brc/2026/discovery_seed.json`, 427 KB) served on cold start when the
+disk cache is empty; the disk cache still wins when present, and a live fetch
+still overwrites both. So the layering is: **baked seed = floor, cache + live
+refresh = freshness.** Matches the project's own baked-asset philosophy (an APK
+asset can't fail to load or arrive half-downloaded).
+
+The seed was generated the safe way — **warm a real device on the fixed build,
+pull its actual `filesDir/discovery_2026.json` via `run-as`, bundle that exact
+file** — so its format is byte-for-byte what `loadCache` expects, no
+reimplementation to drift. (Production emits the artifact.)
+
+app 839→**847** (4 campPoint + 4 seed tests), beacon 88, gate green. Fleet
+reflashed; cold-offline seed path verified on a wiped device.
+
+---
+
 ## 2026-08-11 — Jetson camera-ring USB & bandwidth, measured; plan documented
 
 Freed the Jetson's USB-C from the flash host `grr` (LAN path verified, zvision

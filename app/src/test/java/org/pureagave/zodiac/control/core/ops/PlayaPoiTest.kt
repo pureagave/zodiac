@@ -40,6 +40,39 @@ class PlayaPoiTest {
     }
 
     @Test
+    fun camp_address_places_the_same_whichever_field_holds_the_clock() {
+        // The 2026 feed varies the order: "G & 9:15" carries the letter in
+        // `frontage`, "4:30 & D" the clock. Both must land on the same corner as
+        // the canonical (clock, letter) call — this is the bug that silently
+        // dropped 672 of 1190 camps when frontage was assumed to be the clock.
+        assertEquals(campPoint("2:00", "E"), campPoint("E", "2:00"))
+        assertEquals(campPoint("9:15", "G"), campPoint("G", "9:15"))
+    }
+
+    @Test
+    fun real_feed_camps_in_both_orders_place_on_their_rings() {
+        // Snuggles: frontage="G", intersection="9:15" (letter first).
+        val snuggles = campPoint("G", "9:15")!!
+        assertEquals(1470.0, hypot(snuggles.eastM, snuggles.northM), 1.0) // G ring
+        // The Airship: frontage="4:30", intersection="D" (clock first).
+        val airship = campPoint("4:30", "D")!!
+        assertEquals(1150.0, hypot(airship.eastM, airship.northM), 1.0) // D ring
+    }
+
+    @Test
+    fun esplanade_places_and_tolerates_the_esp_abbreviation() {
+        val spelled = campPoint("3:00", "Esplanade")!!
+        assertEquals(761.5, hypot(spelled.eastM, spelled.northM), 1.0)
+        assertEquals(spelled, campPoint("ESP", "3:00")) // reversed order + abbreviation
+    }
+
+    @Test
+    fun two_clocks_or_two_letters_do_not_false_place() {
+        assertNull(campPoint("3:00", "9:00")) // both clocks — no ring letter
+        assertNull(campPoint("E", "G")) // both letters — no clock
+    }
+
+    @Test
     fun camp_with_unplaceable_address_is_null() {
         assertNull(campPoint("2:00", "Center Camp Plaza"))
         assertNull(campPoint(null, "E"))

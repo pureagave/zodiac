@@ -80,19 +80,46 @@ fun artPoint(
 ): PlayaPoint = projection.project(LatLon(lon = lon, lat = lat))
 
 /**
- * Camps carry `frontage` (clock, e.g. "2:00") + `intersection` (street letter,
- * e.g. "E"). Project via the clock bearing and the letter's ring radius. Returns
- * null when either is missing/unrecognised (e.g. a plaza/portal address).
+ * Camps carry a BRC address split across two feed fields, `frontage` and
+ * `intersection` — but the feed **does not fix which field holds which**: it is
+ * "G & 9:15" for a camp fronting a lettered street and "4:30 & D" for one
+ * fronting a radial, so either field may be the clock or the ring letter. We
+ * detect which is which (a clock parses as "H:MM"; a ring letter resolves in
+ * [StreetRingRadiiM]) and place at that ring/clock corner regardless of order.
+ * Returns null when no (clock, ring) pairing is found — a plaza/portal or other
+ * irregular address that does not sit on a lettered ring.
+ *
+ * Assuming a fixed order (frontage = clock) dropped 672 of the 1190 camps on the
+ * 2026 feed. The corner is identical whichever field held which token, so this
+ * only ever recovers a placement — it never moves one.
  */
 fun campPoint(
     frontage: String?,
-    street: String?,
+    intersection: String?,
     axisBearingDeg: Double = BRC_AXIS_BEARING_DEG_2025,
 ): PlayaPoint? {
-    val clock = frontage?.let(::parseClock) ?: return null
-    val radius = street?.trim()?.uppercase()?.let { StreetRingRadiiM[it] } ?: return null
+    val (clock, radius) =
+        pairClockAndRing(frontage, intersection)
+            ?: pairClockAndRing(intersection, frontage)
+            ?: return null
     val bearingRad = Math.toRadians(clockToBearing(clock, axisBearingDeg))
     return PlayaPoint(eastM = radius * sin(bearingRad), northM = radius * cos(bearingRad))
+}
+
+/** A (clock, ringRadius) pair iff [clockToken] parses as a clock and [ringToken] as a ring letter. */
+private fun pairClockAndRing(
+    clockToken: String?,
+    ringToken: String?,
+): Pair<ClockTime, Double>? {
+    val clock = clockToken?.let(::parseClock) ?: return null
+    val radius = ringRadius(ringToken) ?: return null
+    return clock to radius
+}
+
+/** Ring radius for a street letter, tolerating the GIS's `ESP` abbreviation for the Esplanade. */
+private fun ringRadius(name: String?): Double? {
+    val key = name?.trim()?.uppercase()?.let { if (it == "ESP") "ESPLANADE" else it } ?: return null
+    return StreetRingRadiiM[key]
 }
 
 /** Parse a "H:MM" (or "H") clock string; 0 maps to 12. Null if out of range. */

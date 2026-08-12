@@ -566,10 +566,6 @@
    "name": "Pointy Thing Over There"
   },
   {
-   "uid": "a2IVI000002g16b2AA",
-   "name": "Shred Hard and Prosper"
-  },
-  {
    "uid": "a2IVI000002g19p2AA",
    "name": "Trash Fence Souvenirs"
   },
@@ -1250,10 +1246,6 @@
    "name": "Mushrooms of Sirsasana"
   },
   {
-   "uid": "a2IVI000003Cyeb2AC",
-   "name": "Oh Ice Is!"
-  },
-  {
    "uid": "a2IVI000003D3Pq2AK",
    "name": "What the Eyes Cannot See, the Soul Remembers"
   },
@@ -1282,6 +1274,11 @@
    "uid": "a2IVI000002ffvh2AA",
    "name": "No jokes allowed!",
    "why": "line drawing, not a photo"
+  },
+  {
+   "uid": "a2IVI000002g16b2AA",
+   "name": "Shred Hard and Prosper",
+   "why": "download failed: HTTP Error 404: Not Found"
   },
   {
    "uid": "a2IVI000002hKIT2A2",

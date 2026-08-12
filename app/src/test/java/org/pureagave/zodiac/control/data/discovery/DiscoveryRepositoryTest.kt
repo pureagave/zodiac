@@ -68,6 +68,94 @@ class DiscoveryRepositoryTest {
         File(tmp.root, "discovery_$year.json").writeText(arr.toString())
     }
 
+    /** Serialise POIs into the same JSON string the bundled seed asset carries. */
+    private fun seedJsonOf(pois: List<PlayaPoi>): String {
+        val arr = JSONArray()
+        pois.forEach { p ->
+            val o = JSONObject()
+            o.put("uid", p.uid)
+            o.put("name", p.name)
+            o.put("kind", p.kind.name)
+            o.put("subtitle", p.subtitle)
+            p.point?.let {
+                o.put("eastM", it.eastM)
+                o.put("northM", it.northM)
+            }
+            arr.put(o)
+        }
+        return arr.toString()
+    }
+
+    @Test
+    fun serves_the_bundled_seed_when_there_is_no_disk_cache() =
+        runTest {
+            // The playa nightmare: a device that has never reached the API, and is
+            // offline. With no seed the overlay is blank; the seed must boot it
+            // fully. SuspendForeverSource so the live refresh can't mask the seed.
+            val seed = listOf(poi("s1", "Seed Art"), poi("s2", "Seed Camp", PoiKind.CAMP))
+            val repo =
+                DiscoveryRepository(
+                    SuspendForeverSource(),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                    seedJson = { seedJsonOf(seed) },
+                )
+            runCurrent()
+            assertEquals(listOf("s1", "s2"), repo.pois.value.map { it.uid })
+        }
+
+    @Test
+    fun disk_cache_wins_over_the_bundled_seed() =
+        runTest {
+            // A device that has fetched before serves its (fresher) cache, not the
+            // frozen seed baked into the APK.
+            writeCache(listOf(poi("c1", "Cached")))
+            val repo =
+                DiscoveryRepository(
+                    SuspendForeverSource(),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                    seedJson = { seedJsonOf(listOf(poi("s1", "Seed"))) },
+                )
+            runCurrent()
+            assertEquals(listOf("c1"), repo.pois.value.map { it.uid })
+        }
+
+    @Test
+    fun a_successful_fetch_replaces_the_bundled_seed() =
+        runTest {
+            // Online path: the seed is only a floor — a live fetch overwrites it.
+            val repo =
+                DiscoveryRepository(
+                    ListSource(listOf(poi("f1", "Fresh"))),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                    seedJson = { seedJsonOf(listOf(poi("s1", "Seed"))) },
+                )
+            runCurrent()
+            assertEquals(listOf("f1"), repo.pois.value.map { it.uid })
+        }
+
+    @Test
+    fun a_malformed_seed_is_ignored_not_fatal() =
+        runTest {
+            // A corrupt bundled asset must degrade to "no seed", never crash the
+            // cold start — the same fail-open discipline as a corrupt cache file.
+            val repo =
+                DiscoveryRepository(
+                    SuspendForeverSource(),
+                    backgroundScope,
+                    tmp.root,
+                    year,
+                    seedJson = { "{ this is not valid json" },
+                )
+            runCurrent()
+            assertEquals(emptyList<String>(), repo.pois.value.map { it.uid })
+        }
+
     @Test
     fun serves_disk_cache_before_the_first_fetch_completes() =
         runTest {

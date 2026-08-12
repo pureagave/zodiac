@@ -678,12 +678,18 @@ Being HID, the Stream Deck is found by USB vid:pid by the library — immune to 
 
 ## 🟡 Waiting on the world
 
-- [ ] **BM 2026 art/camp placements.** `location` and `location_string` are
-      null on all 332 art records; everything else (artist, hometown,
-      description, programme, images) is published and already in the app.
-      **When BM publishes placements, the map markers, the ART card and the
-      approach detection all light up with no code change.** Re-run
-      `tools/prerender_art.py` then to pick up any new pieces.
+- [x] **BM 2026 art/camp placements — RELEASED and pulled in 2026-08-12.** 331
+      art (314 placed; 17 are placeholder/test coords, correctly gated at 5 km),
+      1190 camps (1075 placed). GIS re-pulled (only cpns/toilets/trash_fence
+      changed; base map identical). **Exposed a latent bug:** `campPoint` assumed
+      `frontage`=clock but the feed varies the order — only 375/1190 camps placed
+      until fixed to be order-robust (now 1075, verified live). And added a
+      **bundled discovery seed** (`assets/brc/2026/discovery_seed.json`) so a
+      never-fetched offline device isn't blank. Fleet reflashed. See SYNC
+      2026-08-12.
+      - [ ] *(follow-up, low)* 17 art carry a placeholder GPS with no
+            clock/distance fallback, so they can't be placed. If BM later fills
+            their real coords a re-pull picks them up; nothing to do until then.
 - [ ] **Fire HD 10 perf profiling** — the Fire is on the bench now, so the
       whole `design/PERFORMANCE.md` section is unblocked. Top item: GPU
       layer-promotion of the rasterised map. It's a profiling campaign
