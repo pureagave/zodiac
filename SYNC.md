@@ -6,6 +6,48 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-11 — Jetson camera-ring USB & bandwidth, measured; plan documented
+
+Freed the Jetson's USB-C from the flash host `grr` (LAN path verified, zvision
+active, WiFi down so wired Ethernet is now the sole access path — acceptable). The
+question that followed — can the ring's cameras go on the USB-C, and how does
+bandwidth split — is now a design doc: `design/jetson-camera-ring-usb.md`.
+
+Measured on the live box (`lsusb -t`, `/sys/kernel/debug/usb/devices`,
+`v4l2-ctl`), so this replaces guesswork:
+
+- **Two independent host budgets.** The four Type-A ports are ONE onboard hub on
+  `3610000.usb` — they **share a single 480 Mbps HS lane** (+ one 10 Gbps SS).
+  Splitting cameras across those four ports adds *zero* bandwidth. The **USB-C is
+  a separate controller** `3550000.usb` (dual-role, `usb2-0-role-switch`,
+  currently device mode) = a **second independent 480 + SS budget**. That is the
+  only way to add USB-2 bandwidth.
+- **The Type-A hub is FULL:** optical (Arducam) + FTDI/DMX + PureThermal +
+  **Stream Deck**. The deck took the port the old notes called "1 free," so the
+  USB-C is the real expansion port now.
+- **Optical = USB 2.0**, and the Arducam offers **MJPG/H264/YUYV** (onboard
+  compression). **IR/thermal = 12 Mbps full-speed**, ~3 Mbps — negligible.
+  Pipeline runs `--hz 8`.
+- **The rule is compressed-vs-raw, not port count.** MJPEG/H.264 @ 8 Hz puts the
+  whole 4-optical+IR ring at ~50 Mbps — fits one 480 lane 8× over, so bandwidth
+  stops being the constraint and **physical ports + decode CPU** take over. Raw
+  YUYV 720p is ~118 Mbps/cam → 4× ≈ the 480 ceiling, which is the only case that
+  forces a split across controllers.
+- **Recommendation:** ring behind ONE **powered** hub on the USB-C, MJPEG @ 8 Hz,
+  pinned by `by-path`. The hub gets its own `3550000.usb-…` sub-chain, so it does
+  **not** renumber the existing Type-A `by-path`s — sidesteps the identity-churn
+  trap in the USB-identity section.
+- **Gotcha:** oversubscribed isochronous UVC **fails to START** (`-ENOSPC`), it
+  does not degrade — test the whole ring streaming at once.
+
+**Scheduled 2026-08-12:** switch the USB-C to host, plug a powered hub + camera,
+confirm SuperSpeed + a stable `by-path`, and check the role survives a reboot
+(persist in the device tree if not). Datasheet-vs-measured is called out
+explicitly in the doc — the USB-C's SuperSpeed *host* capability on this unit is
+the one thing still to be confirmed on hardware.
+
+---
+
 ## 2026-08-11 — FLEET-2: every build now says what code it is
 
 Yesterday's lesson was that **nothing on a device could report its own build** —

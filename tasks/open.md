@@ -544,6 +544,13 @@ defect list. Each is verified against the code, with `file:line`.
 
 ## 🔌 USB device identity — measured 2026-08-09
 
+> **Camera-ring USB + bandwidth plan:** [`design/jetson-camera-ring-usb.md`](../design/jetson-camera-ring-usb.md)
+> — measured topology (two independent host budgets; the Type-A hub is now
+> **full**: optical + DMX + thermal + Stream Deck), the compressed-vs-raw
+> bandwidth rule, and the recommendation to hang the ring off a **powered hub on
+> the freed USB-C** (its own `3550000.usb-…` `by-path` sub-chain, so it does not
+> renumber the Type-A cameras). **USB-C host-mode test scheduled 2026-08-12.**
+
 Today every camera is pinned **by port** (`/dev/v4l/by-path/...usb-0:2.3:1.0...`,
 where `2.3` is the physical port chain). Measured what identity is actually
 available:
