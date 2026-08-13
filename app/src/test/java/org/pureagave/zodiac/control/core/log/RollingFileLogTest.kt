@@ -1,6 +1,7 @@
 package org.pureagave.zodiac.control.core.log
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -211,6 +212,43 @@ class RollingFileLogTest {
 
         assertEquals("no new failure once the path cleared", failuresWhileBlocked, log.rotationFailures)
         assertTrue("the line is really on disk", log.files().flatMap { it.readLines() }.contains("lands after recovery"))
+    }
+
+    @Test
+    fun a_stalled_mid_cascade_shift_is_counted_and_the_lines_it_destroys_are_aged_out() {
+        // The keep=1 refusal tests only ever exercise the *final* rename. With
+        // keep>=2 there is a shift cascade (`.1`->`.2`->...) whose own failure
+        // path — bump rotationFailures, and count the stranded segment's lines
+        // as aged out when the delete below finally destroys them — is otherwise
+        // never reached. Blocking the shift *target* (t.2.log) stages exactly
+        // that: a non-empty directory refuses both the delete and the rename.
+        val log = log(maxBytes = 40L, keep = 2)
+        var i = 0
+        while (!File(tempFolder.root, "t.1.log").isFile) log.append("entry-${i++}")
+
+        val slotOne = File(tempFolder.root, "t.1.log")
+        val slotTwo = File(tempFolder.root, "t.2.log")
+        assertFalse("staging: the cascade has not reached slot 2 yet", slotTwo.exists())
+        val strandedLines = slotOne.readLines().size.toLong()
+        val agedBefore = log.discardedLines
+        val failBefore = log.rotationFailures
+        assertTrue("staging: slot 1 holds real lines to lose", strandedLines > 0)
+
+        assertTrue(slotTwo.mkdirs())
+        File(slotTwo, "occupant").writeText("x")
+
+        // Force the next rotation; the t.1->t.2 shift inside it now stalls.
+        repeat(BLOCKED_LINES) { log.append("more-${i++}") }
+
+        assertTrue("the stalled shift is recorded, not ignored", log.rotationFailures > failBefore)
+        assertTrue(
+            "and the lines it stranded are counted as aged out, not silently gone",
+            log.discardedLines >= agedBefore + strandedLines,
+        )
+        // The bound is the reason the stall is tolerated at all: files must not
+        // grow without limit just because a shift was refused. (t.2.log is a
+        // directory now, so files() excludes it — only real segments are checked.)
+        log.files().forEach { assertTrue("${it.name} is ${it.length()} B", it.length() <= OVERSIZE_ALLOWANCE) }
     }
 
     /**

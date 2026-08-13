@@ -64,6 +64,23 @@ private data class LogSnapshot(
 )
 
 /**
+ * The list item to scroll to so the newest line rests at the bottom, or null
+ * when there is nothing to show. When [agedOut] > 0 the "N earlier lines aged
+ * out" banner takes item 0 and pushes every line down one, so the newest line
+ * lives at [lineCount] rather than [lineCount] - 1. Off by one here lands the
+ * view on the banner or one line shy of the newest — the entry you opened this
+ * for. Pulled out of the composable so the arithmetic is unit-testable.
+ */
+internal fun logViewerScrollTarget(
+    lineCount: Int,
+    agedOut: Long,
+): Int? {
+    if (lineCount <= 0) return null
+    val leading = if (agedOut > 0) 1 else 0
+    return (lineCount - 1) + leading
+}
+
+/**
  * On-device log viewer — the last [TAIL_LINES] of the rolling file.
  *
  * The premise of the whole logging feature is a tablet that misbehaved hours
@@ -113,10 +130,8 @@ fun logViewerPanel(
                 )
             }
         snapshot = read
-        // Newest last, and the newest is what you opened this for. The
-        // aged-out marker, when present, is item 0 and shifts the rest.
-        val leading = if (read.agedOut > 0) 1 else 0
-        if (read.lines.isNotEmpty()) listState.scrollToItem(read.lines.lastIndex + leading)
+        // Newest last, and the newest is what you opened this for.
+        logViewerScrollTarget(read.lines.size, read.agedOut)?.let { listState.scrollToItem(it) }
     }
     val lines = snapshot.lines
 

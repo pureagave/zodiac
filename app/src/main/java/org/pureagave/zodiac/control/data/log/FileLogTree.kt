@@ -90,7 +90,10 @@ class FileLogTree(
         }
     }
 
-    override fun isLoggable(
+    // public (not Timber's protected default) for the same reason log() is:
+    // the priority floor is load-bearing and a test must be able to read it
+    // directly. Timber still calls it virtually, so widening changes nothing.
+    public override fun isLoggable(
         tag: String?,
         priority: Int,
     ): Boolean = priority >= minPriority
@@ -107,8 +110,6 @@ class FileLogTree(
         val line = formatLogLine(clock(), priority, tag, message, t?.stackTraceString())
         synchronized(lock) {
             buffer.addLast(line)
-            // Drop oldest until back under the cap. Under the lock, so the
-            // count and the eviction can never disagree.
             // Drop oldest until back under the cap. Under the lock, so the
             // count and the eviction can never disagree.
             while (buffer.size > bufferLines) {
