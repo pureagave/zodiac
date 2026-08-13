@@ -631,10 +631,6 @@ class ParkOnExitTest(unittest.TestCase):
         self.assertEqual(0, t.park().channels[cfg.dimmer_channel])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ReachableArcTest(unittest.TestCase):
     """The camera ring sees the whole circle; the moving head does not. It is
     mounted to light forward and both sides and cannot throw behind the vehicle
@@ -725,3 +721,7 @@ class ReachableArcTrackerTest(unittest.TestCase):
         trk.update([self.t(30.0, size=0.7, tid=7)], dt=0.1)
         frame = trk.update([self.t(160.0, size=0.9, tid=7), self.t(-25.0, size=0.4, tid=9)], dt=0.1)
         self.assertEqual(9, frame.target_id)
+
+
+if __name__ == "__main__":
+    unittest.main()
