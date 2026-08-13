@@ -6,6 +6,43 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — landed the P1/P2 audit fixes: 6-group plan→implement→verify pipeline, all PASS
+
+Ran a Workflow over the six module-groups of `docs/AUDIT-2026-08-13.md`'s P1/P2
+findings: each group **planned by Opus → implemented + mutation-tested by Sonnet in
+its own worktree → adversarially verified by Opus**. All six returned **verify =
+PASS, no regressions, gate-green**; cherry-picked onto `main` (disjoint files) and
+re-gated together: gradle green, **jetson 432→459**, **app 997 / beacon 93**.
+**18 findings fixed, 28 tests added, 2 deferred** (the two hardware-sensitive ones
+flagged up front). Kiosk P0 + exit code shipped separately just before this.
+
+- **threat** (`e24baa2`) — `NetworkThreatSource` now rebuilds its socket on capped
+  backoff + silence-rejoin (the GPS twin's structure); no longer goes deaf for the
+  night after a router power-cycle. Stale `RoutedThreatSource` doc fixed.
+- **collision** (`1c58e08`) — flag no longer dark at closest range (closing off
+  unclamped height); 1–2 frame prune grace so a single dropout no longer erases the
+  track+baseline; windowed az-rate; globally-nearest track association.
+- **failover** (`db2e008`) — `stop()` self-quiesces (running-flag gate) and
+  `SystemLocationSource.stop()` is exception-safe, so a stopped source can't be
+  shown as a live NET fix; test now advances time past `stop()`.
+- **surroundring** (`d2f2513`) — rear collision alert now speed-gated like the
+  forward brake (no more CHECK-REAR alarm-fatigue while parked); the **real**
+  `LeptonUwFovReferenceTest` now derives ±64° from geometry (the comment claimed a
+  test that didn't exist).
+- **dmx** (`1920218`) — DMX send off the hot loop (a wedged `olad` no longer
+  throttles the ZTHREAT HUD); BLACKOUT + crash fail-safe now honour the configured
+  universe/URL (kill no longer lies on a non-default universe); vacuous stern-seam
+  test made real. **Deferred:** the live two-writer authority latch (systemd, needs
+  on-box validation) — existing `/run/zodiac/light-mode` backlog item.
+- **beacon** (`e305d60`) — see the dedicated entry below. **Deferred:** binding the
+  transmit socket to the WiFi `Network` (touches the fleet's only GNSS; needs
+  on-hardware validation) — tracked in `tasks/open.md`.
+
+Remaining audit items: the **P3 batch** (untriaged) and the full **#9/#10** write-ups
+still to fold into `docs/AUDIT-2026-08-13.md`.
+
+---
+
 ## 2026-08-13 — kiosk P0 fixed: a working exit from device-owner lock (was factory-reset-only)
 
 The #10 audit (map-touch/kiosk pass) found a **P0**: a kiosked (device-owner)
