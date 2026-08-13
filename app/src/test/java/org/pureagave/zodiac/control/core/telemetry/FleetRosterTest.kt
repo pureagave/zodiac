@@ -123,4 +123,56 @@ class FleetRosterTest {
     fun empty_input_is_empty() {
         assertEquals(emptyList<FleetRosterEntry>(), FleetRoster.compute(emptyList(), now, stale))
     }
+
+    @Test
+    fun staleAfter_boundary_is_exclusive_so_exactly_the_window_is_still_online() {
+        // The rule is strictly `> staleAfter`: a peer last heard EXACTLY staleAfter
+        // ago is still online; one ms older is OFFLINE. This pins the boundary that
+        // a `>`→`>=` mutation would silently move by one tick.
+        val atWindow = byNode(FleetRoster.compute(listOf(obs("A", 200), obs("B", 200, ageMs = stale)), now, stale))
+        assertEquals("exactly staleAfter old is still online", FleetStatus.CURRENT, atWindow["B"])
+        val pastWindow = byNode(FleetRoster.compute(listOf(obs("A", 200), obs("B", 200, ageMs = stale + 1)), now, stale))
+        assertEquals(FleetStatus.OFFLINE, pastWindow["B"])
+    }
+
+    @Test
+    fun self_is_unknown_when_its_own_build_is_dirty() {
+        // The one rule binds self too: our own dirty build is never CURRENT, even
+        // though self is exempt from OFFLINE.
+        val s = byNode(FleetRoster.compute(listOf(obs("SELF", 200, self = true, dirty = true)), now, stale))
+        assertEquals(FleetStatus.UNKNOWN, s["SELF"])
+    }
+
+    @Test
+    fun an_offline_peer_with_the_newest_build_still_sets_the_bar() {
+        // "latest" is the newest epoch among ALL known observations, not only the
+        // live ones (spec): a peer that HAD the newest build but went quiet still
+        // makes a live older peer read BEHIND, not falsely CURRENT.
+        val s =
+            byNode(
+                FleetRoster.compute(
+                    listOf(obs("GONE", 300, ageMs = stale + 1), obs("LIVE", 200)),
+                    now,
+                    stale,
+                ),
+            )
+        assertEquals(FleetStatus.OFFLINE, s["GONE"])
+        assertEquals("a newer, now-offline build must still shame a live older one", FleetStatus.BEHIND, s["LIVE"])
+    }
+
+    @Test
+    fun rows_of_the_same_status_are_ordered_by_name() {
+        // Two OFFLINE peers supplied out of name order must return name-sorted, so
+        // the secondary comparator (not merely a stable insertion order) is pinned.
+        val entries =
+            FleetRoster.compute(
+                listOf(
+                    obs("N2", 200, ageMs = stale + 1, name = "Zulu"),
+                    obs("N1", 200, ageMs = stale + 1, name = "Alpha"),
+                ),
+                now,
+                stale,
+            )
+        assertEquals(listOf("Alpha", "Zulu"), entries.map { it.version.name })
+    }
 }

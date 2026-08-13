@@ -157,6 +157,37 @@ class BuildIdentityTest {
         assertFalse(parsed.known)
     }
 
+    @Test
+    fun render_and_parse_are_inverse_across_dirty_unknown_and_odd_bases() {
+        // render must be a true inverse of parse for the whole field matrix, not
+        // just the "0.1.0" happy path: pre-release bases with '-'/'~', an empty
+        // base, a full 40-char sha, and the fail-closed unknown identity.
+        val cases =
+            listOf(
+                BuildIdentity("0.1.0-rc.1", "abcdef1", dirty = false, 1L),
+                BuildIdentity("0.1.0-rc.1", "abcdef1", dirty = true, 1L),
+                BuildIdentity("", "abcdef123", dirty = false, 5L),
+                BuildIdentity("2.0~beta", "0123456789abcdef", dirty = true, 9L),
+                BuildIdentity("0.1.0", BuildIdentity.UNKNOWN_SHA, dirty = true, 0L),
+                BuildIdentity("0.1.0", "a".repeat(40), dirty = false, 42L),
+            )
+        cases.forEach { id ->
+            assertEquals("round-trip failed for $id", id, BuildIdentity.parse(id.render(), id.commitEpochSeconds))
+        }
+    }
+
+    @Test
+    fun a_base_containing_the_plus_separator_fails_closed_to_unknown() {
+        // '+' is the field separator, so a base that itself contains '+' is
+        // ambiguous. VERSION_BASE is "0.1.0" (no '+'), so this never occurs in
+        // practice — the test pins that the ambiguity degrades to a fail-closed
+        // unknown identity rather than a surprising "current"-looking one.
+        val id = BuildIdentity("1.0+meta", "abcdef1", dirty = false, 1L)
+        val parsed = BuildIdentity.parse(id.render(), 1L)
+        assertEquals("split is at the FIRST '+', truncating the base", "1.0", parsed.base)
+        assertFalse("the remaining sha segment is non-hex, so it reads unknown", parsed.known)
+    }
+
     // --- Contract test: guards the Gradle wiring in root + app build.gradle.kts ---
 
     @Test

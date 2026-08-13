@@ -50,9 +50,13 @@ object FleetVersionProtocol {
     private const val DIRTY_IDX = 4
     private const val EPOCH_IDX = 5
 
-    private const val CHECKSUM_HEX_MIN_LEN = 1
-    private const val CHECKSUM_HEX_MAX_LEN = 2
     private const val CHECKSUM_RADIX = 16
+
+    // The checksum is validated with the same regex discipline as every field
+    // (ZTHREAT rule) rather than a trusting toInt: [0-9a-f] with a leading `+`/`-`
+    // is what a bare toIntOrNull(16) would swallow, so `*+0` / `*-0` would else be
+    // accepted for a body whose XOR is 0. One or two hex digits, either case.
+    private val CHECKSUM_REGEX = Regex("[0-9A-Fa-f]{1,2}")
 
     private val NODE_REGEX = Regex("[A-Z0-9]{1,8}")
     private val NAME_REGEX = Regex("[A-Za-z0-9._-]{1,16}")
@@ -77,7 +81,9 @@ object FleetVersionProtocol {
                 sanitizeBase(version.identity.base),
                 version.identity.sha,
                 dirty,
-                version.identity.commitEpochSeconds.coerceAtLeast(0).toString(),
+                // Clamped into the grammar's [0-9]{1,10} range so the emitted
+                // sentence always parses back (an 11-digit epoch would not).
+                version.identity.commitEpochSeconds.coerceIn(0, MAX_EPOCH).toString(),
             ).joinToString(",")
         return "\$$body*${checksumHex(body)}\r\n"
     }
@@ -135,12 +141,10 @@ object FleetVersionProtocol {
         body: String,
         checksumStr: String,
     ): Boolean {
-        val expected =
-            checksumStr
-                .takeIf { it.length in CHECKSUM_HEX_MIN_LEN..CHECKSUM_HEX_MAX_LEN }
-                ?.toIntOrNull(CHECKSUM_RADIX)
-                ?: return false
-        return xorChecksum(body) == expected
+        // Grammar-check first (rejects a signed or non-hex checksum); the regex
+        // guarantees 1-2 hex digits, so toInt cannot fail here.
+        if (!CHECKSUM_REGEX.matches(checksumStr)) return false
+        return xorChecksum(body) == checksumStr.toInt(CHECKSUM_RADIX)
     }
 
     private fun xorChecksum(body: String): Int {
@@ -153,4 +157,8 @@ object FleetVersionProtocol {
 
     private const val NODE_MAX_LEN = 8
     private const val LABEL_MAX_LEN = 16
+
+    // Largest value the epoch grammar ([0-9]{1,10}) can carry: 10 nines. Well
+    // below Long.MAX and past year 2286, so it only ever bounds pathological input.
+    private const val MAX_EPOCH = 9_999_999_999L
 }
