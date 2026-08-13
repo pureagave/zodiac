@@ -1,20 +1,24 @@
 package org.pureagave.zodiac.control.data.vision
 
 import android.content.Context
-import android.net.wifi.WifiManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.ThreatProtocol
+import org.pureagave.zodiac.control.data.sensor.MulticastLockHandle
+import org.pureagave.zodiac.control.data.sensor.NoOpMulticastLockHandle
+import org.pureagave.zodiac.control.data.sensor.WifiMulticastLockHandle
 import java.net.DatagramPacket
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -25,8 +29,8 @@ import java.net.SocketTimeoutException
  * Receives thermal detections broadcast by the edge box (Jetson) over UDP —
  * one [ThreatProtocol] frame per datagram on port 10120 — and exposes them as
  * the live contact list. Same shape as `NetworkLocationSource`: binds a
- * datagram socket, holds a [WifiManager.MulticastLock] so Android doesn't
- * filter the broadcast, and unwinds promptly on [stop] via a read timeout.
+ * datagram socket, holds a [MulticastLockHandle] so Android doesn't filter
+ * the broadcast, and unwinds promptly on [stop] via a read timeout.
  *
  * A watchdog clears the contacts to empty when no frame has arrived for
  * [staleMs] — so a dropped feed reads as "all clear / no data" rather than a
@@ -52,6 +56,14 @@ class NetworkThreatSource(
     private val retryBaseMs: Long = RETRY_BASE_MS,
     private val retryMaxMs: Long = RETRY_MAX_MS,
     private val rejoinSilentMs: Long = REJOIN_SILENT_MS,
+    // Seam for the WifiManager.MulticastLock (mirrors `NetworkLocationSource`,
+    // AUDIT-2026-08-09 C5): Context is null in every JVM unit test today, so
+    // without this parameter the lock path — and its double-acquire bug — is
+    // never exercised by a test. Real callers (ZodiacApplication) just pass a
+    // Context, same as before; tests can inject a fake handle and assert
+    // acquire()/release() counts.
+    private val multicastLockHandle: MulticastLockHandle =
+        applicationContext?.let { WifiMulticastLockHandle(it, "zodiac-threats") } ?: NoOpMulticastLockHandle,
     /**
      * Seam for opening (bind + group join) the listening socket. Production
      * uses [openThreatSocket]; tests inject a factory that counts attempts
@@ -67,6 +79,14 @@ class NetworkThreatSource(
      * promptly instead of parking a thread.
      */
     private val backoffWait: suspend (Long) -> Unit = { delay(it) },
+    /**
+     * Seam for the clock, mirroring the injectable clocks elsewhere in this
+     * repo (`FailoverLocationSource`'s `nowMs`, the burn-in manager). Lets a
+     * test observe exactly what state is visible at the moment liveness is
+     * stamped, without which the ingest-ordering invariant this class
+     * documents was never actually pinned.
+     */
+    private val nowMs: () -> Long = { System.nanoTime() / NANOS_PER_MS },
 ) : ThreatSource {
     private val _threats = MutableStateFlow<List<DriverThreat>>(emptyList())
     override val threats: StateFlow<List<DriverThreat>> = _threats.asStateFlow()
@@ -82,15 +102,21 @@ class NetworkThreatSource(
      * between attempts (backing off after a failure, or rebuilding after
      * silence). Exactly one socket exists at a time.
      */
-    private var socket: MulticastSocket? = null
-    private var multicastLock: WifiManager.MulticastLock? = null
+    @Volatile private var socket: MulticastSocket? = null
 
     @Volatile private var lastRxMs: Long = 0L
 
     override suspend fun start() {
-        job?.cancel()
+        if (job?.isActive == true) {
+            // Already running. RoutedThreatSource may call start() more than
+            // once for the same source; a redundant start must be a genuine
+            // no-op rather than cancel the live listener and re-acquire the
+            // multicast lock out from under it (mirrors `NetworkLocationSource`,
+            // AUDIT-2026-08-09 C5).
+            return
+        }
         watchdog?.cancel()
-        acquireMulticastLock()
+        multicastLockHandle.acquire()
         job = scope.launch(Dispatchers.IO) { runListener(this) }
         watchdog =
             scope.launch {
@@ -98,8 +124,15 @@ class NetworkThreatSource(
                     if (nowMs() - lastRxMs > staleMs) {
                         // Feed has gone silent: mark it dead (so a routed source can
                         // fall back) and clear any lingering contacts to all-clear.
-                        if (_feedAlive.value) _feedAlive.value = false
-                        if (_threats.value.isNotEmpty()) _threats.value = emptyList()
+                        // update{} re-reads lastRxMs inside the CAS rather than
+                        // writing unconditionally: ingest() stamps lastRxMs
+                        // *before* it publishes, so a frame landing between the
+                        // outer check above and this clear makes the retried CAS
+                        // see the fresh timestamp and keep the frame — closing
+                        // the check-then-clear race that would otherwise flash a
+                        // real contact to ABSENT for one frame.
+                        _feedAlive.update { alive -> if (nowMs() - lastRxMs > staleMs) false else alive }
+                        _threats.update { contacts -> if (nowMs() - lastRxMs > staleMs) emptyList() else contacts }
                     }
                     delay(staleMs / 2)
                 }
@@ -107,15 +140,20 @@ class NetworkThreatSource(
     }
 
     override suspend fun stop() {
-        job?.cancel()
-        watchdog?.cancel()
+        // cancelAndJoin, not cancel: cancellation is cooperative, so a
+        // datagram already inside ingestFrame() would otherwise finish AFTER
+        // the clears below and repopulate the very state we just cleared
+        // (mirrors `NetworkLocationSource.stop()`). Joining first makes the
+        // clears the last word.
+        job?.cancelAndJoin()
+        watchdog?.cancelAndJoin()
         job = null
         watchdog = null
         withContext(Dispatchers.IO) {
             runCatching { socket?.close() }
             socket = null
         }
-        releaseMulticastLock()
+        multicastLockHandle.release()
         _threats.value = emptyList()
         _feedAlive.value = false
     }
@@ -214,14 +252,24 @@ class NetworkThreatSource(
     }
 
     /**
-     * Parse one datagram and, only on a successful [ThreatProtocol] frame,
-     * stamp liveness and publish. Split out of [pump] to keep that loop
-     * shallow — [pump] already counted this packet toward the rejoin-silence
-     * timer regardless of whether it parses, so garbage on the port defers a
-     * rejoin without ever claiming the vision feed is live.
+     * Decode one datagram to a string and delegate to [ingestFrame]. Split out
+     * of [pump] to keep that loop shallow — [pump] already counted this packet
+     * toward the rejoin-silence timer regardless of whether it parses, so
+     * garbage on the port defers a rejoin without ever claiming the vision
+     * feed is live.
      */
     private fun ingestPacket(packet: DatagramPacket) {
-        ThreatProtocol.parse(String(packet.data, 0, packet.length, Charsets.US_ASCII))?.let {
+        ingestFrame(String(packet.data, 0, packet.length, Charsets.US_ASCII))
+    }
+
+    /**
+     * Parse one frame and, only on a successful [ThreatProtocol] frame, stamp
+     * liveness and publish. Split out of [ingestPacket] so a test can drive it
+     * directly with no socket involved — the only way to observe, rather than
+     * infer, that the timestamp write really does happen before the publish.
+     */
+    internal fun ingestFrame(frame: String) {
+        ThreatProtocol.parse(frame)?.let {
             // Order matters: stamp liveness before publishing so a watchdog
             // tick can't see fresh contacts with a stale timestamp and clear
             // them. An empty frame is a valid "all clear" — still a live feed.
@@ -276,22 +324,6 @@ class NetworkThreatSource(
         val reason: ListenEnd,
         val received: Boolean,
     )
-
-    private fun acquireMulticastLock() {
-        val wifi = applicationContext?.applicationContext?.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
-        multicastLock =
-            wifi.createMulticastLock("zodiac-threats").apply {
-                setReferenceCounted(false)
-                runCatching { acquire() }
-            }
-    }
-
-    private fun releaseMulticastLock() {
-        multicastLock?.let { lock -> runCatching { if (lock.isHeld) lock.release() } }
-        multicastLock = null
-    }
-
-    private fun nowMs(): Long = System.nanoTime() / NANOS_PER_MS
 
     companion object {
         const val STALE_MS: Long = 1_500L

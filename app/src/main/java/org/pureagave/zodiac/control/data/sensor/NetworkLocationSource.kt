@@ -582,8 +582,13 @@ interface MulticastLockHandle {
     fun release()
 }
 
-/** Used when there is no [Context] to hold a lock against (every JVM unit test today). */
-private object NoOpMulticastLockHandle : MulticastLockHandle {
+/**
+ * Used when there is no [Context] to hold a lock against (every JVM unit test
+ * today). Not `private`: `NetworkThreatSource` shares this same no-op rather
+ * than declaring a second do-nothing [MulticastLockHandle] for its own JVM
+ * tests.
+ */
+internal object NoOpMulticastLockHandle : MulticastLockHandle {
     override val isHeld: Boolean = false
 
     override fun acquire() = Unit

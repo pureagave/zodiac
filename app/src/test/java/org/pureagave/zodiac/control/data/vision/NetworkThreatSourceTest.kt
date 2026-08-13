@@ -2,18 +2,17 @@ package org.pureagave.zodiac.control.data.vision
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.net.FleetBus
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.ThreatProtocol
+import org.pureagave.zodiac.control.data.sensor.MulticastLockHandle
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -116,31 +115,6 @@ class NetworkThreatSourceTest {
                     "silence must mark the feed dead so the fallback can take over",
                     waitUntil(4_000) { !source.feedAlive.value },
                 )
-            } finally {
-                source.stop()
-                scope.cancel()
-            }
-        }
-
-    @Test
-    fun liveness_is_stamped_before_contacts_are_published() =
-        runBlocking {
-            // The ordering invariant the source documents but nothing pinned: if
-            // contacts were published before the timestamp, a watchdog tick
-            // landing in between would see fresh contacts against a stale clock
-            // and clear them — dropping real people off the HUD intermittently.
-            val port = 10224
-            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-            val source = NetworkThreatSource(scope = scope, port = port, staleMs = 400)
-            try {
-                source.start()
-                val held =
-                    waitUntil(4_000) {
-                        sendUdp("ZTHREAT;7:12.0:0.6:1", port)
-                        source.feedAlive.value && source.threats.value.size == 1
-                    }
-                assertTrue("contacts and liveness must be consistent", held)
-                assertEquals(7, source.threats.value.first().id)
             } finally {
                 source.stop()
                 scope.cancel()
@@ -325,17 +299,16 @@ class NetworkThreatSourceTest {
     @Test(timeout = 60_000)
     fun stop_during_a_retry_backoff_returns_promptly() =
         runBlocking {
-            // NetworkThreatSource.stop() deliberately calls job.cancel(), not
-            // cancelAndJoin() (the P3 race is out of scope) — so stop() itself
-            // always returns immediately and can't be the thing this test
-            // measures. What actually matters is whether the *cancelled*
-            // listener coroutine unwinds promptly afterwards, which is only
-            // true if the parked backoff is itself cancellable.
+            // NetworkThreatSource.stop() now calls job.cancelAndJoin() (mirrors
+            // NetworkLocationSource.stop(), so a datagram already inside
+            // ingestFrame() can't finish after stop()'s clears and repopulate
+            // them) — so stop() itself is what this test measures directly,
+            // valid now that stop() genuinely joins the listener.
             //
             // Mutation: swap the default backoffWait for a non-cancellable
-            // wait (Thread.sleep(it)) — cancel() then can't interrupt the
+            // wait (Thread.sleep(it)) — cancelAndJoin then can't interrupt the
             // parked backoff, the listener coroutine keeps sleeping for the
-            // full retry interval regardless, and the join below times out.
+            // full retry interval regardless, and stop() itself blocks for it.
             val port = 10229
             val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
             val factory = CountingSocketFactory(port, failFirst = Int.MAX_VALUE)
@@ -353,12 +326,7 @@ class NetworkThreatSourceTest {
                     "precondition: parked in the backoff after a failed open",
                     waitUntil(8_000) { factory.attempts.get() >= 1 },
                 )
-                source.stop()
-                val children = scope.coroutineContext[Job]!!.children.toList()
-                val elapsed =
-                    measureTimeMillis {
-                        withTimeout(3_000) { children.forEach { it.join() } }
-                    }
+                val elapsed = measureTimeMillis { source.stop() }
                 assertTrue(
                     "a cancelled backoff must unwind promptly, not sleep out the full retry interval; took ${elapsed}ms",
                     elapsed < 3_000,
@@ -397,6 +365,146 @@ class NetworkThreatSourceTest {
                 assertTrue(
                     "every superseded socket must be closed — a night of rejoins must not leak descriptors",
                     factory.opened.dropLast(1).all { it.isClosed },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    // --- start() must be genuinely idempotent (mirrors AUDIT-2026-08-09 C5,
+    // the GPS twin's bug): a redundant start() used to cancel+relaunch the
+    // live listener and re-acquire the multicast lock out from under it,
+    // leaking a held, non-refcounted MulticastLock. ---
+
+    /** Counts acquire()/release() unconditionally, copied from the GPS twin's test. */
+    private class FakeMulticastLockHandle : MulticastLockHandle {
+        var acquireCalls = 0
+            private set
+        var releaseCalls = 0
+            private set
+        override var isHeld: Boolean = false
+            private set
+
+        override fun acquire() {
+            acquireCalls++
+            isHeld = true
+        }
+
+        override fun release() {
+            releaseCalls++
+            isHeld = false
+        }
+    }
+
+    @Test
+    fun double_start_acquires_the_multicast_lock_exactly_once() =
+        runBlocking {
+            // Mutation: remove the `job?.isActive == true` guard at the top
+            // of start().
+            val port = 10231
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val lock = FakeMulticastLockHandle()
+            val source = NetworkThreatSource(scope = scope, port = port, multicastLockHandle = lock)
+            try {
+                source.start()
+                source.start()
+                assertEquals("a redundant start() must not re-acquire the lock", 1, lock.acquireCalls)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_releases_the_multicast_lock_acquired_by_start() =
+        runBlocking {
+            // Mutation: delete the multicastLockHandle.release() call in stop().
+            val port = 10232
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val lock = FakeMulticastLockHandle()
+            val source = NetworkThreatSource(scope = scope, port = port, multicastLockHandle = lock)
+            source.start()
+            source.stop()
+            scope.cancel()
+            assertEquals(1, lock.acquireCalls)
+            assertEquals(1, lock.releaseCalls)
+        }
+
+    @Test(timeout = 60_000)
+    fun retrying_the_open_does_not_re_acquire_the_multicast_lock() =
+        runBlocking {
+            // Mutation: acquire the lock per attempt inside the retry loop —
+            // the C5 leak shape, one leaked lock per retry, all night.
+            val port = 10233
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val lock = FakeMulticastLockHandle()
+            val factory = CountingSocketFactory(port, failFirst = Int.MAX_VALUE)
+            val source =
+                NetworkThreatSource(
+                    scope = scope,
+                    port = port,
+                    retryBaseMs = 50,
+                    retryMaxMs = 100,
+                    multicastLockHandle = lock,
+                    openSocket = factory,
+                )
+            try {
+                assertEquals(0, lock.acquireCalls)
+                source.start()
+                assertTrue("precondition: several retries happened", waitUntil(8_000) { factory.attempts.get() >= 4 })
+                assertEquals("the retry loop must not re-acquire the multicast lock", 1, lock.acquireCalls)
+                source.stop()
+                assertEquals("stop() releases the one lock start() took", 1, lock.releaseCalls)
+            } finally {
+                scope.cancel()
+            }
+        }
+
+    // --- Watchdog check-then-clear TOCTOU: a recovery frame landing between
+    // the staleness check and the clear used to be wiped, flashing a real
+    // contact to ABSENT for one frame. Fixed by re-checking lastRxMs inside a
+    // StateFlow.update{} CAS rather than writing unconditionally. Defended by
+    // review plus the ordering test below (a genuinely racy reproduction over
+    // loopback would need a watchdog hook not worth adding to production for
+    // this); see the finding's HONEST NOTE. ---
+
+    @Test
+    fun liveness_is_stamped_before_contacts_are_published() =
+        runBlocking {
+            // Deterministic clock-snoop, not eventual-consistency polling: the
+            // old version of this test only polled threats/feedAlive after the
+            // fact, so it would still pass even with the two writes in the
+            // wrong order. This one observes the *exact* moment nowMs() is
+            // read for the stamp and checks the published state at that instant.
+            //
+            // No start() here, so the only nowMs() call anywhere in this path
+            // is ingestFrame's own stamp — nothing else on the clock seam to
+            // confuse the snoop.
+            val port = 10234
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            lateinit var sourceRef: NetworkThreatSource
+            var snapshotAtStamp: List<DriverThreat>? = null
+            val source =
+                NetworkThreatSource(
+                    scope = scope,
+                    port = port,
+                    nowMs = {
+                        snapshotAtStamp = sourceRef.threats.value
+                        0L
+                    },
+                )
+            sourceRef = source
+            try {
+                val frame = ThreatProtocol.format(listOf(DriverThreat(relAzDeg = 7f, size = 0.6f, id = 7)))
+                source.ingestFrame(frame)
+                assertEquals(1, source.threats.value.size)
+                assertTrue(source.feedAlive.value)
+                assertEquals(
+                    "lastRxMs must be stamped before contacts are published: the snapshot taken at " +
+                        "the stamp's own clock read must not yet see the parsed contact",
+                    emptyList<DriverThreat>(),
+                    snapshotAtStamp,
                 )
             } finally {
                 source.stop()
