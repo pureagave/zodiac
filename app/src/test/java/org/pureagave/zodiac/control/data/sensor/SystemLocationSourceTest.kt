@@ -306,9 +306,38 @@ class SystemLocationSourceTest {
             )
         }
 
+    @Test
+    fun stop_when_remove_updates_throws_still_reaches_disconnected() =
+        runTest {
+            val handle = RecordingHandle(grantPermission = true)
+            val source = SystemLocationSource(managerHandle = handle, scope = backgroundScope)
+
+            source.start()
+            handle.deliverFix(fix(1.0))
+            assertTrue(source.state.value is LocationSourceState.Active)
+
+            handle.throwOnRemove = IllegalStateException("listener gone")
+
+            // Must not propagate: a throwing platform teardown call is exactly
+            // the case that must still land on Disconnected, not crash the
+            // caller mid-stop().
+            source.stop()
+
+            assertSame(LocationSourceState.Disconnected, source.state.value)
+            assertEquals(1, handle.removeCount)
+
+            // listenerRegistered must have been cleared despite the throw, so
+            // a following start() re-registers rather than staying idempotent
+            // on a listener the platform already dropped.
+            handle.throwOnRemove = null
+            source.start()
+            assertEquals(2, handle.requestCount)
+        }
+
     private class RecordingHandle(
         private val grantPermission: Boolean,
         var throwOnRequest: RuntimeException? = null,
+        var throwOnRemove: RuntimeException? = null,
     ) : SystemLocationManagerHandle {
         var requestCount: Int = 0
         var removeCount: Int = 0
@@ -328,6 +357,7 @@ class SystemLocationSourceTest {
 
         override fun removeUpdates() {
             removeCount += 1
+            throwOnRemove?.let { throw it }
         }
 
         fun deliverFix(fix: GpsFix) {

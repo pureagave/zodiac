@@ -240,4 +240,31 @@ class FailoverLocationSourceTest {
             assertTrue(r.sys.stopped)
             assertFalse(r.failover.usingFallback.value)
         }
+
+    @Test
+    fun stopped_source_never_re_presents_a_frozen_fallback_as_net() =
+        runTest {
+            // FakeSource.stop() sets `stopped = true` but its flow keeps
+            // whatever value it last held — exactly what an unguarded
+            // concrete stop() (e.g. a throwing removeUpdates()) would look
+            // like from here. If FailoverLocationSource relied on primary/
+            // fallback reaching Disconnected on their own, the free-running
+            // combine ticker would re-arm on the very next tick after stop()
+            // and keep reporting the fallback's last fix as a live NET
+            // position.
+            val r = rig()
+            r.failover.start()
+            r.net.searching()
+            r.sys.active(2.0)
+            settle(DROP_MS + 1_000)
+            assertTrue(r.failover.usingFallback.value)
+
+            r.failover.stop()
+            // Advance well past stop(), through several more ticker beats,
+            // instead of asserting only at the instant of stop().
+            settle(DROP_MS + 2_000)
+
+            assertEquals(LocationSourceState.Disconnected, r.failover.state.value)
+            assertFalse(r.failover.usingFallback.value)
+        }
 }

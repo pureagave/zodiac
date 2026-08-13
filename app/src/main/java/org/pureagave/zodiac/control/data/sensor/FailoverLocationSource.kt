@@ -62,6 +62,21 @@ class FailoverLocationSource(
      */
     val usingFallback: StateFlow<Boolean> = _usingFallback.asStateFlow()
 
+    /**
+     * True between [start] and [stop]. The `stateIn(Eagerly)` combine below is
+     * a free-running ticker that keeps re-evaluating on its own schedule even
+     * after [stop] returns — it does not know the wrapper was told to stop
+     * unless something tells it. Without this gate, [stop] only clears
+     * [_usingFallback] and the policy *once*; the very next tick re-arms both
+     * from whatever [primary] and [fallback] still hold, which re-presents a
+     * frozen fallback fix as a live NET source. This flag, checked first
+     * inside the transform, is what actually stops it rather than relying on
+     * concrete sources to reach [LocationSourceState.Disconnected] in their
+     * own `stop()` — an invariant the [LocationSource] contract never states.
+     */
+    @Volatile
+    private var running = false
+
     private val ticker =
         flow {
             while (true) {
@@ -72,6 +87,10 @@ class FailoverLocationSource(
 
     override val state: StateFlow<LocationSourceState> =
         combine(primary.state, fallback.state, ticker) { primaryState, fallbackState, _ ->
+            if (!running) {
+                if (_usingFallback.value) _usingFallback.value = false
+                return@combine LocationSourceState.Disconnected
+            }
             val primaryHealthy = primaryState is LocationSourceState.Active
             val intent = policy.update(nowMs(), primaryHealthy)
             // Intent is one thing; a fallback that has no fix of its own is
@@ -96,6 +115,7 @@ class FailoverLocationSource(
         }.stateIn(scope, SharingStarted.Eagerly, LocationSourceState.Disconnected)
 
     override suspend fun start() {
+        running = true
         policy.reset()
         primary.start()
         // Kept warm deliberately: a backup that needs a cold GNSS acquisition
@@ -105,6 +125,10 @@ class FailoverLocationSource(
     }
 
     override suspend fun stop() {
+        // Flip first, before touching either source: any tick that lands
+        // mid-teardown must already see stopped, not whatever primary/fallback
+        // happen to hold between these two calls.
+        running = false
         primary.stop()
         if (fallbackArmed) fallback.stop()
         _usingFallback.value = false

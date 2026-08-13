@@ -12,6 +12,11 @@ import org.pureagave.zodiac.control.core.sensor.LocationSourceType
  *
  * Implementations are responsible for permission/handshake details inside
  * [start]; lifecycle errors surface as [LocationSourceState.Error].
+ *
+ * [stop] must leave [state] at [LocationSourceState.Disconnected], even if
+ * releasing the underlying hardware/platform resource throws. Wrappers such
+ * as [FailoverLocationSource] judge liveness from [state] alone, so a source
+ * that stays `Active` past `stop()` returning presents a frozen fix as live.
  */
 interface LocationSource {
     val type: LocationSourceType

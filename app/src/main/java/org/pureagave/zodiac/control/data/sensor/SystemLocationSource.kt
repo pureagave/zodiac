@@ -23,6 +23,7 @@ import org.pureagave.zodiac.control.core.sensor.GpsFix
 import org.pureagave.zodiac.control.core.sensor.LocationSourceError
 import org.pureagave.zodiac.control.core.sensor.LocationSourceState
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import timber.log.Timber
 
 /**
  * Thin wrapper over the parts of [LocationManager] this source needs.
@@ -208,12 +209,22 @@ class SystemLocationSource(
             }
     }
 
+    // Broad catch is deliberate, mirroring start(): a throwing removeUpdates()
+    // (platform listener already torn down, provider gone) must not strand
+    // this source Active with a frozen fix that FailoverLocationSource would
+    // keep presenting as a live NET position.
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun stop() {
         watchdog?.cancel()
         watchdog = null
         if (listenerRegistered) {
-            managerHandle.removeUpdates()
-            listenerRegistered = false
+            try {
+                managerHandle.removeUpdates()
+            } catch (ex: Exception) {
+                Timber.w(ex, "removeUpdates() threw during stop(); proceeding to Disconnected anyway")
+            } finally {
+                listenerRegistered = false
+            }
         }
         _state.value = LocationSourceState.Disconnected
     }
