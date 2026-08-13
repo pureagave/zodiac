@@ -48,12 +48,31 @@ reset is needed — it is not superstition, the `dpm` command refuses otherwise.
 
 5. Launch the app. It locks itself on resume.
 
+### Runtime permissions
+
+A device owner does **not** auto-grant runtime permissions — and once
+`engage()` disables the status bar and enters lock task, there is no way for a
+passenger (or an operator) to reach Settings to grant one that's missing. A
+dangerous permission not already held before the tablet was kiosked would
+otherwise be trapped, ungrantable, forever. `engage()` closes that trap by
+pre-granting the app's own requested set
+(`requiredCockpitPermissions`): `ACCESS_FINE_LOCATION` always, plus
+`BLUETOOTH_CONNECT` and `BLUETOOTH_SCAN` on API 31+ (the Samsungs). It grants
+nothing beyond what the app already declares in the manifest and already asks
+for at runtime.
+
 ### Verify
 
 ```sh
 adb shell dumpsys device_policy | grep -i "device owner"
 adb logcat -d | grep "kiosk:"          # "kiosk: locked to org.pureagave..."
+adb logcat -d | grep "kiosk: pre-granted"   # lists ACCESS_FINE_LOCATION (+ the two Bluetooth perms on a Samsung)
 ```
+
+⚠️ Confirm the location permission reads granted (Settings, or
+`dumpsys package org.pureagave.zodiac.control | grep ACCESS_FINE_LOCATION`)
+with **no dialog ever shown** — the pre-grant path is device-owner-only and
+cannot be exercised in CI.
 
 ## Getting back out
 

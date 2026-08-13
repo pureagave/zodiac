@@ -5,6 +5,8 @@ import android.app.admin.DevicePolicyManager
 import android.app.admin.SystemUpdatePolicy
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
+import org.pureagave.zodiac.control.core.permission.requiredCockpitPermissions
 import timber.log.Timber
 
 /**
@@ -39,7 +41,9 @@ class KioskController(context: Context) {
     /**
      * Apply the policies that only make sense on a vehicle-mounted tablet, then
      * enter lock task. Safe to call on every resume; every step is a no-op
-     * without device owner.
+     * without device owner. Also pre-grants the runtime permissions the
+     * cockpit uses, since lock task hides the dialog that would otherwise ask
+     * for them (see [preGrantUsedPermissions]).
      */
     fun engage(activity: Activity) {
         val manager = dpm
@@ -71,9 +75,45 @@ class KioskController(context: Context) {
             manager.setSystemUpdatePolicy(admin, SystemUpdatePolicy.createPostponeInstallPolicy())
         }.onFailure { Timber.w(it, "kiosk: policy setup failed") }
 
+        preGrantUsedPermissions(manager)
+
         runCatching { activity.startLockTask() }
             .onSuccess { Timber.i("kiosk: locked to %s", packageName) }
             .onFailure { Timber.w(it, "kiosk: startLockTask failed") }
+    }
+
+    /**
+     * Pre-grant the runtime permissions the cockpit actually asks for at
+     * launch ([requiredCockpitPermissions]).
+     *
+     * Why this exists: a device owner does **not** auto-grant runtime
+     * permissions. Combined with [setStatusBarDisabled] (no pull-down) and
+     * lock task suppressing the permission dialog, a dangerous permission
+     * (e.g. `ACCESS_FINE_LOCATION`, or the Bluetooth pair on API 31+) that
+     * wasn't already held before the tablet was kiosked becomes permanently
+     * ungrantable — there is no on-device route to Settings to fix it. This
+     * closes that trap by granting exactly the set the app already declares
+     * in the manifest and already requests at runtime; it introduces no new
+     * capability.
+     *
+     * Device-owner-only (like every other step in [engage]) and therefore
+     * **unexercisable in CI** — [DevicePolicyManager.setPermissionGrantState]
+     * only does anything real under an honored device-owner policy, which
+     * Robolectric doesn't provide. Must be verified on a provisioned tablet;
+     * see the "Runtime permissions" note in `docs/KIOSK.md`.
+     */
+    private fun preGrantUsedPermissions(manager: DevicePolicyManager) {
+        requiredCockpitPermissions(Build.VERSION.SDK_INT).forEach { permission ->
+            runCatching {
+                manager.setPermissionGrantState(
+                    admin,
+                    packageName,
+                    permission,
+                    DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
+                )
+            }.onSuccess { applied -> Timber.i("kiosk: pre-granted %s (applied=%b)", permission, applied) }
+                .onFailure { Timber.w(it, "kiosk: pre-grant of %s failed", permission) }
+        }
     }
 
     /** Leave lock task without un-provisioning — a temporary unlock for servicing. */
