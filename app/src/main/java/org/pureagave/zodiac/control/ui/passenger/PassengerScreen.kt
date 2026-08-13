@@ -134,7 +134,7 @@ fun passengerScreen(
     // Parked next to a piece is exactly when there's time to read it, so hold
     // the art card while the vehicle is stopped. Only art — holding the trip
     // counter or the sun clock at a standstill would just be a stuck screen.
-    val stopped = (state.egoFix?.speedKph ?: state.speedKph.toDouble()) < STOPPED_KPH
+    val stopped = vehicleStoppedForArtHold(state)
 
     // CardRotation.view() *mutates* — it advances the rotation. It must
     // therefore be called exactly once per tick, never from a composable body,
@@ -511,6 +511,18 @@ internal fun nextSunEvent(
 
 /** Metres as a passenger-facing distance: `47.3 KM`, or an em dash when unknown. */
 internal fun formatKm(meters: Double?): String = meters?.let { "%.1f KM".format(it / METERS_PER_KM) } ?: "—"
+
+/**
+ * Whether the vehicle is stopped, for the purpose of holding the ART card open.
+ *
+ * Reads [CockpitUiState.effectiveSpeedKph] — the single-owner speed the rest of
+ * the app already trusts — rather than `egoFix?.speedKph`. A GGA epoch carries
+ * no speed field at all (phones interleave GGA/RMC every epoch), so reading the
+ * fix directly goes null on alternate epochs and falls back to the debug
+ * `speedKph` chip, which is 0 on a real NET drive — flipping this flag true
+ * while the vehicle is actually moving.
+ */
+internal fun vehicleStoppedForArtHold(state: CockpitUiState): Boolean = state.effectiveSpeedKph < STOPPED_KPH
 
 private const val TICK_MS = 1_000L
 private const val PHASE_MS = 2_200
