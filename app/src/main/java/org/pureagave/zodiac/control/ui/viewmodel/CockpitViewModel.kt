@@ -417,15 +417,24 @@ class CockpitViewModel(
      * calling it again after a failure is exactly a retry.
      *
      * Guarded by [CockpitUiState.mapLoadRetrying] so a driver mashing the
-     * on-screen RETRY chip can't pile up concurrent parses; the flag is
-     * cleared by the `loadResult` collector above as soon as the next
-     * Loaded/Failed result lands.
+     * on-screen RETRY chip can't pile up concurrent parses. The flag is cleared
+     * when `load()` returns — **not** only by the `loadResult` collector above:
+     * a re-attempt that fails with the *same* message publishes a value-equal
+     * `Failed`, which the `StateFlow` conflates and never re-emits, so relying on
+     * the collector alone wedged the chip on "RETRYING…" forever and blocked
+     * every future retry (a blank map with no recovery but an app restart).
      */
     fun retryMapLoad() {
         if (_uiState.value.mapLoadRetrying) return
         Timber.w("map: retry requested (previous error: %s)", _uiState.value.mapLoadError)
         _uiState.update { it.copy(mapLoadRetrying = true) }
-        viewModelScope.launch { playaMapRepository.load() }
+        viewModelScope.launch {
+            playaMapRepository.load()
+            // load() has returned, so this attempt is finished whatever it
+            // published; reopen the guard here so a conflated identical-Failed
+            // can't leave it stuck true.
+            _uiState.update { it.copy(mapLoadRetrying = false) }
+        }
     }
 
     fun setHeading(headingDeg: Int) {

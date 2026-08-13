@@ -6,6 +6,31 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — fixed the two loose #9/#10 findings: map-load RETRY wedge (P1) + kiosk OTA-disable (P2)
+
+- **#9 map-touch P1 — the C10 RETRY chip wedged forever.** A re-attempt that failed
+  with the *same* message published a value-equal `Failed(message)`, which the
+  `StateFlow` conflates (no re-emit), so the `loadResult` collector that cleared
+  `mapLoadRetrying` never ran — the guard stayed shut and the RETRY chip sat on
+  "RETRYING…" over a blank map with no recovery but an app restart.
+  `CockpitViewModel.retryMapLoad` now clears the guard when `load()` returns, not
+  only via the collector. Regression test drives a fake repo that re-publishes the
+  identical `Failed`; mutation-proved (removing the clear reddens it). One existing
+  test that assumed the guard held until an emit was corrected to the new timing.
+- **#10 kiosk P2 — OTA-disable was a silent no-op.** `engage()` used
+  `setGlobalSetting("ota_disable_automatic_update")`, whose key isn't allow-listed
+  on API 34, so it threw and was swallowed — "no OS update mid-event" never
+  applied. Now `setSystemUpdatePolicy(createPostponeInstallPolicy())` (the
+  device-owner API; ~30-day postpone, ample for the event). Untestable in CI —
+  verify on the provisioned test tablet.
+
+app 997→**999**, gate green. Still open from #9/#10: the remaining **#9 P2**
+(lifting the first of three fingers jumps zoom +41% / spins 135°) and the #9/#10
+**P3s**; the full #9/#10 write-ups still to fold into `docs/AUDIT-2026-08-13.md`
+with the P3 triage.
+
+---
+
 ## 2026-08-13 — landed the P1/P2 audit fixes: 6-group plan→implement→verify pipeline, all PASS
 
 Ran a Workflow over the six module-groups of `docs/AUDIT-2026-08-13.md`'s P1/P2

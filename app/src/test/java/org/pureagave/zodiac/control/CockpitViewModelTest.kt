@@ -923,11 +923,12 @@ class CockpitViewModelTest {
 
                 vm.retryMapLoad()
                 advanceUntilIdle()
-                // The ControllablePlayaMapRepository's load() is a bare stub — it
-                // doesn't itself flip the flow — so retry's only observable
-                // effect at this point is that it actually called load().
+                // The ControllablePlayaMapRepository's load() is a bare stub that
+                // returns immediately, so retry's observable effect is the load()
+                // call — and the guard has already reopened, since it now clears
+                // when load() returns (not only on a flow emission).
                 assertEquals(baseline + 1, mapRepo.loadCallCount)
-                assertTrue(vm.uiState.value.mapLoadRetrying)
+                assertFalse(vm.uiState.value.mapLoadRetrying)
 
                 // The repository's load() (real implementation) would now
                 // publish the outcome on loadResult; simulate it succeeding.
@@ -937,6 +938,40 @@ class CockpitViewModelTest {
                 assertNull(vm.uiState.value.mapLoadError)
                 assertNotNull(vm.uiState.value.playaMap)
                 assertFalse(vm.uiState.value.mapLoadRetrying)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
+    fun retryMapLoad_clears_the_guard_even_when_the_reattempt_fails_identically() =
+        runTest {
+            val mapRepo = ControllablePlayaMapRepository()
+            val store = ViewModelStore()
+            try {
+                // load() re-publishes the SAME Failed(message) each call, exactly
+                // like the real repo on a deterministic bad asset.
+                mapRepo.failOnLoad = "malformed street_lines.geojson"
+                val vm = mapLoadVm(this.backgroundScope, store, mapRepo)
+                advanceUntilIdle()
+                assertNotNull(vm.uiState.value.mapLoadError)
+                assertFalse(vm.uiState.value.mapLoadRetrying)
+
+                vm.retryMapLoad()
+                advanceUntilIdle()
+                // The identical Failed is conflated (no re-emit), so the
+                // loadResult collector never runs; the guard must be reopened by
+                // retryMapLoad's own coroutine or the RETRY chip wedges forever.
+                assertFalse(
+                    "retry guard must clear after a re-attempt that fails identically",
+                    vm.uiState.value.mapLoadRetrying,
+                )
+
+                // And a subsequent retry is therefore not blocked.
+                val n = mapRepo.loadCallCount
+                vm.retryMapLoad()
+                advanceUntilIdle()
+                assertEquals("the reopened guard admits the next retry", n + 1, mapRepo.loadCallCount)
             } finally {
                 store.clear()
             }
@@ -1884,8 +1919,16 @@ private class ControllablePlayaMapRepository : PlayaMapRepository {
      */
     var loadGate: CompletableDeferred<Unit>? = null
 
+    /**
+     * When set, every [load] re-publishes this same `Failed(message)` — modelling
+     * the real repository re-failing identically on a deterministic bad asset,
+     * which the `StateFlow` conflates (value-equal, no re-emit).
+     */
+    var failOnLoad: String? = null
+
     override suspend fun load() {
         loadCallCount++
+        failOnLoad?.let { flow.value = MapLoadResult.Failed(it) }
         loadGate?.await()
     }
 

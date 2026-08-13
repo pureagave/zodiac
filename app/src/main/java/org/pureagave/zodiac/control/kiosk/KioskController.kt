@@ -2,9 +2,9 @@ package org.pureagave.zodiac.control.kiosk
 
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
+import android.app.admin.SystemUpdatePolicy
 import android.content.ComponentName
 import android.content.Context
-import android.os.Build
 import timber.log.Timber
 
 /**
@@ -63,10 +63,12 @@ class KioskController(context: Context) {
             // passenger sees, and it is an advert. Remove it.
             manager.setKeyguardDisabled(admin, true)
             manager.setStatusBarDisabled(admin, true)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Never let the tablet reboot into an OS update mid-event.
-                manager.setGlobalSetting(admin, "ota_disable_automatic_update", "1")
-            }
+            // Never let the tablet reboot into an OS update mid-event. The
+            // device-owner API — not setGlobalSetting("ota_disable_automatic_update"),
+            // whose key is not allow-listed on API 34, so it threw and was
+            // silently swallowed, leaving the guarantee unapplied. Postpone is the
+            // strongest sanctioned option (a ~30-day cap, ample for a week-long event).
+            manager.setSystemUpdatePolicy(admin, SystemUpdatePolicy.createPostponeInstallPolicy())
         }.onFailure { Timber.w(it, "kiosk: policy setup failed") }
 
         runCatching { activity.startLockTask() }
