@@ -73,7 +73,16 @@ class LocationFailoverPolicy(
         /**
          * Extra grace beyond `NetworkLocationSource.STALE_MS` (5 s) before
          * abandoning the beacon, so a single dropped multicast burst doesn't
-         * cost a source swap. Total time blind ≈ 8 s.
+         * cost a source swap.
+         *
+         * Worst-case time blind before failover ≈ 10.5 s, not the naive 5 + 3.
+         * NET does not go Searching the instant its fix turns 5 s old: its
+         * watchdog polls every `STALE_MS / 2` (2.5 s), so a fix can sit up to
+         * STALE_MS + one poll = 7.5 s stale before NET demotes off it. Only
+         * then does this policy begin its DROP_AFTER_MS (3 s) countdown, so
+         * 7.5 + 3 ≈ 10.5 s. `FailoverLocationSource`'s 1 s tick can add up to a
+         * further second; best case ≈ 8 s, when a poll catches staleness right
+         * at the 5 s boundary.
          */
         const val DROP_AFTER_MS: Long = 3_000L
 
