@@ -6,6 +6,42 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — Fable+Opus fan-out bug hunt (8 agents, 8 subsystems) → full catalogue at `docs/AUDIT-2026-08-13.md`
+
+Eight read-only worktree agents (4 Fable on areas 1–4, 4 high-reasoning Opus on
+5–8), each hunting one high-risk subsystem from the day's Fable survey. **~40
+findings: 8 P1 (all CONFIRMED), ~12 P2, ~20 P3**, every P1 demonstrated with a
+throwaway experiment. Full catalogue (severity, file:line, failure scenario,
+evidence, fix direction, plus per-area "checked-and-sound" and refuted worries):
+**[`docs/AUDIT-2026-08-13.md`](docs/AUDIT-2026-08-13.md)**. Nothing fixed yet —
+this is a triage catalogue.
+
+**The three LIVE-now P1s (fix-first):**
+- Beacon `start()` aborts permanently on an unguarded throw (`dhcpInfo` /
+  `AudioRecord.startRecording`) — no channels, notification still says
+  "Broadcasting", STOP button reads START. And the deadman watchdog itself has no
+  exception guard (silent permanent death, incl. socket never created).
+- `NetworkThreatSource` is a one-shot listener — the night-vision HUD dies for the
+  night after a router power-cycle; got none of NET's 2026-08-10 hardening.
+
+**LATENT P1s (fix before enabling the subsystem):** collision flag goes dark at
+the closest range (size saturates vs strict "closing"); the single-frame track
+reset makes alternating detection never flag (fix is a pure-logic prune grace, no
+hardware); a wedged `olad` throttles the whole ZTHREAT HUD to ~1 Hz; DMX BLACKOUT
+lies on a non-default universe (parks universe 0, panel grey over a live beam);
+two `--dmx ola` writers flicker instead of kill (zero code interlock).
+
+**4 tests that cannot fail** — the flagship astern-seam tracker test (contacts
+outside the reach arc); a comment claiming a `LeptonUwFovReferenceTest` that
+doesn't exist; `commandError`'s green test masking a dead field; the failover
+`stop_stops_both` test one `settle()` short of a real bug.
+
+**Refuted (tried hard, sound):** the A1 brake-miss shape (combine wiring correct
+and pinned); the failover timing machine (no race); fleet-bus constants agree
+across all three languages and the ZTHREAT corpus covers what matters.
+
+---
+
 ## 2026-08-13 — overnight audit of the last two days' work (4 parallel worktree agents); 2 real bugs fixed, +38 tests
 
 Ran four audit agents in isolated git worktrees (non-overlapping scopes, merged

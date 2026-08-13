@@ -2,6 +2,11 @@
 
 What's worth doing next. Critical and High audit items are all done — see `done.md`.
 
+> **🆕 2026-08-13 bug-hunt catalogue → [`docs/AUDIT-2026-08-13.md`](../docs/AUDIT-2026-08-13.md).**
+> 8-agent Fable+Opus fan-out, ~40 findings (8 CONFIRMED P1). Not yet triaged into
+> tasks below. Fix-first: the 3 LIVE-now P1s (beacon `start()`/watchdog,
+> `NetworkThreatSource` rebuild). See SYNC top for the summary.
+
 > **Handoff, 2026-08-08 (evening).** The three sections below are the live
 > picture. Everything under them is older backlog. Read the top of `SYNC.md`
 > first — it carries the *why*.
