@@ -2,6 +2,7 @@ package org.pureagave.zodiac.control.core.ops
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
@@ -45,8 +46,46 @@ class PlayaPoiTest {
         // `frontage`, "4:30 & D" the clock. Both must land on the same corner as
         // the canonical (clock, letter) call — this is the bug that silently
         // dropped 672 of 1190 camps when frontage was assumed to be the clock.
+        // The `assertNotNull` matters: without it a mutation dropping *both*
+        // orders would leave `assertEquals(null, null)` passing vacuously.
+        assertNotNull("letter-first (the dropped case) must place", campPoint("E", "2:00"))
+        assertNotNull("letter-first (the dropped case) must place", campPoint("G", "9:15"))
         assertEquals(campPoint("2:00", "E"), campPoint("E", "2:00"))
         assertEquals(campPoint("9:15", "G"), campPoint("G", "9:15"))
+    }
+
+    @Test
+    fun every_ring_letter_places_in_both_field_orders_on_its_own_ring() {
+        // The 56%-drop bug was order-specific: it placed clock-first camps and
+        // silently dropped every letter-first one. The three camps the feed
+        // sample happened to hit (E, G, D) are not the whole city — sweep all
+        // twelve rings so a mutation that consults only one field order, or
+        // drops any ring from the table, goes red here rather than in the field.
+        StreetRingRadiiM.forEach { (letter, radius) ->
+            val clockFirst = campPoint("3:00", letter)
+            val letterFirst = campPoint(letter, "3:00")
+            assertNotNull("clock-first must place on $letter", clockFirst)
+            assertNotNull("letter-first must place on $letter (the dropped case)", letterFirst)
+            assertEquals("field order must not move the $letter corner", clockFirst, letterFirst)
+            assertEquals(
+                "$letter must land on its own ring radius",
+                radius,
+                hypot(letterFirst!!.eastM, letterFirst.northM),
+                1e-6,
+            )
+        }
+    }
+
+    @Test
+    fun esplanade_abbreviation_tolerates_case_and_whitespace_in_either_field() {
+        // `ESP` is the GIS abbreviation; the feed can hand it back lower-cased,
+        // padded, and in either field. All must resolve to the Esplanade ring —
+        // catches the loss of either the `.trim()` or the `.uppercase()` on the
+        // ring-letter normalisation, each of which would silently drop the camp.
+        val canonical = campPoint("3:00", "Esplanade")!!
+        assertEquals(canonical, campPoint("3:00", " esp "))
+        assertEquals(canonical, campPoint(" ESP ", "3:00"))
+        assertEquals(canonical, campPoint("esp", "3:00"))
     }
 
     @Test

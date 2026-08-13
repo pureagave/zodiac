@@ -5,6 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.pureagave.zodiac.control.core.geo.GoldenSpike
+import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.ops.PoiKind
 
 /**
@@ -58,6 +60,33 @@ class BmApiClientTest {
             )!!
         assertEquals("Ghost Piece", p.name)
         assertNull("implausible coordinates must not place a marker", p.point)
+    }
+
+    @Test
+    fun art_just_inside_the_five_km_plausibility_gate_is_placed() {
+        // The existing zeroed/swapped tests land thousands of km out, so they'd
+        // still pass if the 5 km gate were widened to, say, 5000 km. These two
+        // pin the actual threshold: 4990 m in must place, 5010 m out must not.
+        val p = client.parseArt(artDueNorth(4_990.0))!!
+        assertNotNull("~4990 m out is inside the 5 km gate and must place", p.point)
+    }
+
+    @Test
+    fun art_just_outside_the_five_km_plausibility_gate_is_rejected() {
+        val p = client.parseArt(artDueNorth(5_010.0))!!
+        assertNull("~5010 m out is past the 5 km gate and must not place", p.point)
+    }
+
+    /**
+     * Art record whose GPS lands exactly [meters] due north of the active Golden
+     * Spike. Longitude equals the origin's, so the east offset is zero and the
+     * projected radius *is* [meters] — computed here from the Earth radius the
+     * projection uses, independently of the gate under test.
+     */
+    private fun artDueNorth(meters: Double): JSONObject {
+        val lat = GoldenSpike.ACTIVE.lat + Math.toDegrees(meters / PlayaProjection.EARTH_RADIUS_M)
+        val lon = GoldenSpike.ACTIVE.lon
+        return JSONObject("""{"uid":"b","name":"Boundary","location":{"gps_latitude":$lat,"gps_longitude":$lon}}""")
     }
 
     @Test
