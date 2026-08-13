@@ -134,6 +134,52 @@ class FailureTest(unittest.TestCase):
         self.assertGreater(r.errors, 0)
 
 
+class KillTargetsTheConfiguredUniverseTest(unittest.TestCase):
+    """BLACKOUT must park the universe the sink is actually lighting, not
+    always universe 0 @ localhost -- see zvision/dmxpark.park and the
+    --dmx-universe/--dmx-url flags this runner is supposed to forward."""
+
+    def test_deckrunner_default_killer_parks_the_configured_universe(self):
+        import zdeck.app as app_module
+
+        captured = {}
+
+        def fake_park(**kwargs):
+            captured.update(kwargs)
+            return True
+
+        original = app_module.dmx_park
+        app_module.dmx_park = fake_park
+        try:
+            runner = DeckRunner(FakeSurface(), FakeDmxSink(), killer=None,
+                                 universe=7, base_url="http://10.0.0.9:9090")
+            runner.kill()
+        finally:
+            app_module.dmx_park = original
+        self.assertEqual(7, captured.get("universe"))
+        self.assertEqual("http://10.0.0.9:9090", captured.get("base_url"))
+
+    def test_run_loop_forwards_universe_and_base_url_to_the_default_killer(self):
+        import zdeck.app as app_module
+
+        captured = {}
+
+        def fake_park(**kwargs):
+            captured.update(kwargs)
+            return True
+
+        original = app_module.dmx_park
+        app_module.dmx_park = fake_park
+        try:
+            run_loop(lambda: FakeSurface(), FakeDmxSink(), lambda: True,
+                     once=True, killer=None, universe=5, base_url="http://h:1",
+                     sleep=lambda _s: None)
+        finally:
+            app_module.dmx_park = original
+        self.assertEqual(5, captured.get("universe"))
+        self.assertEqual("http://h:1", captured.get("base_url"))
+
+
 class ArgsTest(unittest.TestCase):
     def test_dmx_defaults_to_ola_because_the_deck_is_useless_without_light(self):
         self.assertEqual("ola", _parse([]).dmx)

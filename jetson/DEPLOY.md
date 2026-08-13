@@ -458,6 +458,16 @@ ZVISION_ARGS=--source thermal --device /dev/video0 --hz 10 --dmx ola
 ```
 `--dmx-no-sound` disables the idle sound show if you only want threat-following.
 
+> **Running on a non-default universe (`--dmx-universe`) or a non-loopback
+> `--dmx-url`?** Put those flags in `ZVISION_ARGS` (and `ZDECK_ARGS` in
+> `/etc/default/zodiac-deck` for the deck) rather than only setting them ad
+> hoc — the crash fail-safe (`ExecStopPost`, see `zvision.service` /
+> `zodiac-deck.service`) reads the *same* env var to decide which universe to
+> zero on a crash or `SIGKILL`. A universe declared only on a hand-typed
+> command line is invisible to it, and it falls back to parking universe 0 @
+> `127.0.0.1:9090` — today's default, harmless if that's what you're running,
+> silently wrong otherwise.
+
 ---
 
 ## 7b. The thermal camera — what the real board actually does

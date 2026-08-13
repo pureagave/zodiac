@@ -32,13 +32,20 @@ the thing that killed zvision was an import or a driver.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
+import os
+import shlex
 import sys
 import time
 import urllib.parse
 import urllib.request
+from typing import Optional, Tuple
 
 DMX_UNIVERSE_SIZE = 512
 DEFAULT_URL = "http://127.0.0.1:9090"
+#: The DMX kinds a service's own --dmx flag can take (mirrors zvision/zdeck).
+_DMX_KINDS = ("none", "fake", "ola")
 
 
 def park(
@@ -78,6 +85,45 @@ def park(
     return False
 
 
+def _parse_from_args_env(raw: str, default_dmx: str) -> Optional[Tuple[str, int, str]]:
+    """Pull --dmx / --dmx-universe / --dmx-url out of a service's own argument
+    string (the same ``ZVISION_ARGS`` / ``ZDECK_ARGS`` value the unit's
+    ``EnvironmentFile`` already exports to ``ExecStopPost``), so the crash
+    fail-safe parks the universe the service actually lit instead of always
+    universe 0 @ localhost.
+
+    Returns ``(effective_dmx, universe, base_url)``, or ``None`` if ``raw``
+    can't be parsed as a shell-style argument string -- the caller falls back
+    to today's exact default behaviour rather than guessing.
+
+    ``default_dmx`` stands in for whatever the *service's own* argparse
+    default is when ``raw`` doesn't mention ``--dmx`` at all (zvision
+    defaults to "none", zdeck to "ola" -- they differ, so this can't be
+    hard-coded here).
+    """
+    try:
+        tokens = shlex.split(raw)
+    except ValueError:
+        return None
+    mini = argparse.ArgumentParser(add_help=False)
+    mini.add_argument("--dmx", choices=_DMX_KINDS, default=None)
+    mini.add_argument("--dmx-universe", type=int, default=None)
+    mini.add_argument("--dmx-url", default=None)
+    try:
+        # argparse writes usage/error text to stderr and calls sys.exit() on a
+        # bad token (e.g. a non-integer --dmx-universe); swallow both rather
+        # than let a malformed env var either crash the fail-safe or spam the
+        # crash-teardown log with an argparse usage banner.
+        with contextlib.redirect_stderr(io.StringIO()):
+            parsed, _unknown = mini.parse_known_args(tokens)
+    except SystemExit:
+        return None
+    effective_dmx = parsed.dmx if parsed.dmx is not None else default_dmx
+    universe = parsed.dmx_universe if parsed.dmx_universe is not None else 0
+    base_url = parsed.dmx_url if parsed.dmx_url is not None else DEFAULT_URL
+    return effective_dmx, universe, base_url
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         prog="python3 -m zvision.dmxpark",
@@ -88,8 +134,46 @@ def main(argv=None) -> int:
     p.add_argument("--timeout", type=float, default=1.0)
     p.add_argument("--retries", type=int, default=3)
     p.add_argument("--quiet", action="store_true")
+    p.add_argument(
+        "--from-args-env", default=None, metavar="NAME",
+        help="derive --universe/--url from the service's own argument string in "
+        "this env var (e.g. ZVISION_ARGS/ZDECK_ARGS, already exported by the "
+        "unit's EnvironmentFile to ExecStopPost too). An absent, empty or "
+        "unparseable var falls back to --universe/--url above -- today's "
+        "exact behaviour.",
+    )
+    p.add_argument(
+        "--default-dmx", choices=_DMX_KINDS, default="none",
+        help="assumed --dmx when the --from-args-env string doesn't mention "
+        "--dmx at all; match the service's own argparse default (zvision: "
+        "none, zdeck: ola)",
+    )
     args = p.parse_args(argv)
-    ok = park(args.universe, args.url, args.timeout, args.retries)
+
+    universe, base_url = args.universe, args.url
+    if args.from_args_env:
+        raw = os.environ.get(args.from_args_env, "")
+        parsed = _parse_from_args_env(raw, args.default_dmx) if raw.strip() else None
+        if parsed is None:
+            # Unset, empty or unparseable: don't guess -- park universe 0 @
+            # localhost, exactly as this tool always has.
+            universe, base_url = 0, DEFAULT_URL
+        else:
+            effective_dmx, universe, base_url = parsed
+            if effective_dmx != "ola":
+                # This service isn't the one writing the universe (see the
+                # single-writer split in DECK.md §3) -- parking here would
+                # blackout the *other* writer's light on every routine
+                # restart of this one.
+                if not args.quiet:
+                    print(
+                        f"zvision: DMX park skipped ({args.from_args_env} says "
+                        f"--dmx {effective_dmx}, not ola)",
+                        flush=True,
+                    )
+                return 0
+
+    ok = park(universe, base_url, args.timeout, args.retries)
     if ok and not args.quiet:
         print("zvision: DMX universe zeroed", flush=True)
     return 0 if ok else 1

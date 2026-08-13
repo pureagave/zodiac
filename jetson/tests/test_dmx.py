@@ -3,10 +3,11 @@ import http.server
 import io
 import socketserver
 import threading
+import time
 import unittest
 import urllib.parse
 
-from zvision.dmx import DMX_UNIVERSE_SIZE, FakeDmxSink, OlaDmxSink, build_sink
+from zvision.dmx import DMX_UNIVERSE_SIZE, FakeDmxSink, OlaDmxSink, ThreadedDmxSink, build_sink
 
 
 class _QuickBindHTTPServer(http.server.HTTPServer):
@@ -182,6 +183,125 @@ class OlaDmxSinkTest(unittest.TestCase):
         self.assertIsNotNone(sink._last_error)
         # The frame is still merged locally even though the transmit failed.
         self.assertEqual(255, sink.frame[0])
+
+    def test_the_outage_message_does_not_claim_the_light_is_dark(self):
+        # In the ThreadedDmxSink era the last thing olad received before it
+        # wedged can still be lit -- the head freezes in the fixture's frame
+        # rather than going dark. The old wording asserted darkness; it wasn't
+        # true and it isn't now.
+        sink = OlaDmxSink(base_url="http://127.0.0.1:0")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            sink.send({1: 255})
+        text = err.getvalue()
+        self.assertNotIn("light is dark", text)
+        self.assertIn("last frame", text)
+        self.assertIn("DMX", text)  # keeps the existing count-based assertions valid
+
+
+class ThreadedDmxSinkTest(unittest.TestCase):
+    """The load-bearing fix: decouple the hot detect->broadcast loop from a
+    slow/wedged olad. Every assertion here is event-gated, not sleep-as-sync,
+    except the deliberately-bounded slow-inner timing check below."""
+
+    def test_send_does_not_block_on_a_slow_inner(self):
+        # A synchronous fallback (send() calling inner.send() directly) would
+        # make this loop take num_sends * block_for; the threaded version
+        # should return almost immediately regardless of how slow inner is.
+        block_for = 0.3
+        calls = []
+
+        class _SlowSink:
+            def send(self, channels):
+                calls.append(dict(channels))
+                time.sleep(block_for)
+
+            def close(self):
+                pass
+
+        sink = ThreadedDmxSink(_SlowSink())
+        try:
+            start = time.monotonic()
+            for i in range(5):
+                sink.send({1: i})
+            elapsed = time.monotonic() - start
+            self.assertLess(elapsed, block_for, "send() blocked on a slow inner")
+        finally:
+            sink.close()
+
+    def test_bursts_coalesce_to_the_newest_frame(self):
+        # Frame A is picked up by the worker and held there; B and C are
+        # queued while it's busy, so they must collapse to one slot -- the
+        # worker should see A, then C, and never B.
+        started = threading.Event()
+        release = threading.Event()
+        received = []
+
+        class _GatedSink:
+            def __init__(self):
+                self.calls = 0
+
+            def send(self, channels):
+                self.calls += 1
+                received.append(dict(channels))
+                if self.calls == 1:
+                    started.set()
+                    release.wait(timeout=2.0)
+
+            def close(self):
+                pass
+
+        sink = ThreadedDmxSink(_GatedSink())
+        sink.send({1: 1})  # A: worker takes this and blocks in _GatedSink.send
+        self.assertTrue(started.wait(timeout=2.0), "worker never started on frame A")
+        sink.send({1: 2})  # B: queued behind the blocked worker
+        sink.send({1: 3})  # C: coalesces with B in the one-slot mailbox
+        release.set()  # let the worker finish A, then drain the mailbox (-> C)
+        sink.close()
+        self.assertEqual([{1: 1}, {1: 3}], received, "B should have been coalesced away")
+        self.assertGreaterEqual(sink.dropped, 1)
+
+    def test_close_flushes_a_pending_frame_before_returning(self):
+        # This is the exit-park path: app.py calls send(park_frame) then
+        # close() back-to-back, and close() must not return until that frame
+        # has actually reached inner.
+        inner = FakeDmxSink()
+        sink = ThreadedDmxSink(inner)
+        sink.send({1: 200})
+        sink.close()
+        self.assertEqual(200, inner.frame[0])
+        self.assertEqual(1, inner.sends)
+
+    def test_close_also_closes_the_inner_sink(self):
+        class _TrackingSink(FakeDmxSink):
+            def __init__(self):
+                super().__init__()
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        inner = _TrackingSink()
+        ThreadedDmxSink(inner).close()
+        self.assertTrue(inner.closed)
+
+    def test_frame_and_sends_proxy_to_the_inner(self):
+        inner = FakeDmxSink()
+        sink = ThreadedDmxSink(inner)
+        sink.send({1: 77})
+        sink.close()
+        self.assertIs(sink.frame, inner.frame)
+        self.assertEqual(inner.sends, sink.sends)
+
+    def test_errors_proxies_to_the_inner(self):
+        # .errors only exists on the real transport (OlaDmxSink); production
+        # only wraps that one (see app.py), so exercise it here.
+        inner = OlaDmxSink(base_url="http://127.0.0.1:0")  # nothing listens
+        sink = ThreadedDmxSink(inner)
+        with contextlib.redirect_stderr(io.StringIO()):
+            sink.send({1: 1})
+            sink.close()
+        self.assertEqual(inner.errors, sink.errors)
+        self.assertGreater(sink.errors, 0)
 
 
 class BuildSinkTest(unittest.TestCase):

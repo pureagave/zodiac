@@ -89,6 +89,12 @@ the port only exists once it enumerates):
   ola_set_dmx -u ${UNIVERSE} -d 128,0,128,0,0,0,0,255  # pan/tilt + ch8 dimmer — head moves AND lights
   python3 -m zvision --source fake --dmx ola    # live: aims at the fake contacts
 
+If UNIVERSE is not 0, put --dmx-universe ${UNIVERSE} (and --dmx-url if olad
+isn't on 127.0.0.1:9090) inside ZVISION_ARGS/ZDECK_ARGS in
+/etc/default/zvision / /etc/default/zodiac-deck, not just on a hand-typed
+command line — the crash fail-safe (ExecStopPost=... zvision.dmxpark) reads
+those same env vars to know which universe to zero on a crash/SIGKILL.
+
 Verify olad actually opened it — this line is the one that matters:
   journalctl -t olad | grep -i ftdi
   ... "Found FTDI device. Vendor: 'FTDI', Name: 'FT232R USB UART'"

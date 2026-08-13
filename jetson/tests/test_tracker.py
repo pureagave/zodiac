@@ -581,7 +581,13 @@ class SternSeamTest(unittest.TestCase):
         # slew limiter caps every individual step, so a single-step assertion
         # passes even while the head is three seconds into sweeping the wrong
         # way round the vehicle. Measure the whole journey.
-        cfg = TrackerConfig(pan_center_deg=270.0, pan_slew_dps=120.0)
+        #
+        # reach_half_deg=180 (wide open): at the default 90 the +/-179 contacts
+        # below are outside reachable() and never get picked, so pan never
+        # moves and this test passes no matter what the seam math does. Widen
+        # reach here (fixture only, not a production default) so the astern
+        # contacts are actually tracked and the seam-crossing math is exercised.
+        cfg = TrackerConfig(pan_center_deg=270.0, pan_slew_dps=120.0, reach_half_deg=180.0)
         t = Tracker(cfg)
         for _ in range(200):  # settle onto the contact just before the seam
             f = t.update([DriverThreat(rel_az_deg=179.0, size=0.6, id=1)], 0.1)

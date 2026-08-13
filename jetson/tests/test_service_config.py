@@ -12,6 +12,7 @@ import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _UNIT = os.path.join(_HERE, "..", "systemd", "zvision.service")
+_DECK_UNIT = os.path.join(_HERE, "..", "systemd", "zodiac-deck.service")
 _INSTALL = os.path.join(_HERE, "..", "scripts", "install.sh")
 
 
@@ -86,6 +87,36 @@ class ServiceUnitTest(unittest.TestCase):
         # drifts from where install.sh/DEPLOY.md put the code, the service
         # runs a stale or missing copy.
         self.assertEqual(["/opt/zodiac/jetson"], self._values("Service", "WorkingDirectory"))
+
+    def test_the_crash_failsafe_derives_its_universe_from_zvision_args(self):
+        # A UNIVERSE=1 deploy would otherwise have this fail-safe zero an
+        # empty universe 0 while universe 1 stays hot -- see dmxpark.py's
+        # --from-args-env. --default-dmx none matches this CLI's own
+        # argparse default, so the park is skipped when ZVISION_ARGS doesn't
+        # ask for --dmx ola (the split single-writer layout, DECK.md §3).
+        execs = self._values("Service", "ExecStopPost")
+        self.assertEqual(1, len(execs))
+        self.assertIn("zvision.dmxpark", execs[0])
+        self.assertIn("--from-args-env ZVISION_ARGS", execs[0])
+        self.assertIn("--default-dmx none", execs[0])
+
+
+class DeckServiceUnitTest(unittest.TestCase):
+    def setUp(self):
+        self.sections = _parse_unit(_DECK_UNIT)
+
+    def _values(self, section, key):
+        return [v for k, v in self.sections.get(section, []) if k == key]
+
+    def test_the_crash_failsafe_derives_its_universe_from_zdeck_args(self):
+        # --default-dmx ola matches zdeck's own --dmx default (app.py), so
+        # absent an explicit --dmx in ZDECK_ARGS the deck IS treated as the
+        # universe's owner and still parks on a crash/kill.
+        execs = self._values("Service", "ExecStopPost")
+        self.assertEqual(1, len(execs))
+        self.assertIn("zvision.dmxpark", execs[0])
+        self.assertIn("--from-args-env ZDECK_ARGS", execs[0])
+        self.assertIn("--default-dmx ola", execs[0])
 
 
 class InstallerTest(unittest.TestCase):

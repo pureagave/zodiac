@@ -30,7 +30,15 @@ ExecStart=/usr/bin/python3 -m zvision $ZVISION_ARGS
 # full-bright beam frozen in the fixture's frame while the vehicle turns. The
 # head's own BLnd=blac cannot help: from its side the signal never stopped.
 # Leading '-' so a dead olad cannot mask the real reason the service stopped.
-ExecStopPost=-/usr/bin/python3 -m zvision.dmxpark --quiet
+#
+# --from-args-env reads $ZVISION_ARGS (already exported by EnvironmentFile
+# above, to every Exec* including this one) so a UNIVERSE=1 deploy parks
+# universe 1, not always 0 @ localhost. --default-dmx none: if ZVISION_ARGS
+# doesn't mention --dmx at all, that's this CLI's own default (--dmx none),
+# so this service doesn't own any olad universe and the park is skipped
+# entirely -- an ordinary `systemctl restart zvision` must not blackout the
+# deck-owned universe in the split single-writer layout (see DECK.md §3).
+ExecStopPost=-/usr/bin/python3 -m zvision.dmxpark --quiet --from-args-env ZVISION_ARGS --default-dmx none
 Restart=always
 RestartSec=2
 

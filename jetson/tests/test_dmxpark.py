@@ -1,6 +1,7 @@
 """The crash fail-safe. This is the last code that runs before a hot universe
 would be left on the wire, so its failure modes matter more than its happy path."""
 
+import os
 import unittest
 from unittest import mock
 
@@ -83,6 +84,79 @@ class ParkCliTest(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", _Captured(fail_times=99)), \
                 mock.patch("sys.stderr"):
             self.assertEqual(1, main(["--quiet", "--retries", "1"]))
+
+
+class FromArgsEnvTest(unittest.TestCase):
+    """The crash fail-safe deriving its target from the service's own args
+    string, so a UNIVERSE=1 deploy doesn't get zeroed on universe 0 while
+    universe 1 stays hot. Every test clears the env var it sets."""
+
+    ENV_VAR = "TEST_ZVISION_ARGS"
+
+    def tearDown(self):
+        os.environ.pop(self.ENV_VAR, None)
+
+    def test_it_parks_the_universe_declared_in_the_args_string(self):
+        os.environ[self.ENV_VAR] = (
+            "--source thermal --dmx ola --dmx-universe 1 "
+            "--dmx-url http://10.0.0.9:9090"
+        )
+        cap = _Captured()
+        with mock.patch("urllib.request.urlopen", cap):
+            rc = main(["--quiet", "--from-args-env", self.ENV_VAR, "--default-dmx", "none"])
+        self.assertEqual(0, rc)
+        self.assertEqual(1, len(cap.calls))
+        url, body, _ = cap.calls[0]
+        self.assertEqual("http://10.0.0.9:9090/set_dmx", url)
+        self.assertEqual("1", _fields(body)["u"])
+
+    def test_an_unset_var_falls_back_to_universe_zero_localhost(self):
+        # No-regression guard: today's exact default behaviour.
+        os.environ.pop(self.ENV_VAR, None)
+        cap = _Captured()
+        with mock.patch("urllib.request.urlopen", cap):
+            main(["--quiet", "--from-args-env", self.ENV_VAR, "--default-dmx", "ola"])
+        url, body, _ = cap.calls[0]
+        self.assertEqual("http://127.0.0.1:9090/set_dmx", url)
+        self.assertEqual("0", _fields(body)["u"])
+
+    def test_an_empty_var_falls_back_to_universe_zero_localhost(self):
+        os.environ[self.ENV_VAR] = ""
+        cap = _Captured()
+        with mock.patch("urllib.request.urlopen", cap):
+            main(["--quiet", "--from-args-env", self.ENV_VAR, "--default-dmx", "ola"])
+        url, body, _ = cap.calls[0]
+        self.assertEqual("http://127.0.0.1:9090/set_dmx", url)
+        self.assertEqual("0", _fields(body)["u"])
+
+    def test_an_unparseable_var_falls_back_to_universe_zero_localhost(self):
+        os.environ[self.ENV_VAR] = "--dmx-universe notanint"
+        cap = _Captured()
+        with mock.patch("urllib.request.urlopen", cap):
+            main(["--quiet", "--from-args-env", self.ENV_VAR, "--default-dmx", "ola"])
+        url, body, _ = cap.calls[0]
+        self.assertEqual("http://127.0.0.1:9090/set_dmx", url)
+        self.assertEqual("0", _fields(body)["u"])
+
+    def test_a_non_ola_service_skips_the_park_entirely(self):
+        # zvision --dmx none does not own the deck's universe -- its
+        # ExecStopPost must not touch it (see DECK.md single-writer split).
+        os.environ[self.ENV_VAR] = "--source thermal --hz 10"
+        cap = _Captured()
+        with mock.patch("urllib.request.urlopen", cap):
+            rc = main(["--quiet", "--from-args-env", self.ENV_VAR, "--default-dmx", "none"])
+        self.assertEqual(0, rc)
+        self.assertEqual(0, len(cap.calls), "a non-owning service must not park")
+
+    def test_an_ola_service_still_parks_when_dmx_is_explicit(self):
+        # Ties the skip to being conditional, not blanket: the same env var
+        # shape WITH --dmx ola present must still post.
+        os.environ[self.ENV_VAR] = "--source thermal --dmx ola"
+        cap = _Captured()
+        with mock.patch("urllib.request.urlopen", cap):
+            rc = main(["--quiet", "--from-args-env", self.ENV_VAR, "--default-dmx", "none"])
+        self.assertEqual(0, rc)
+        self.assertEqual(1, len(cap.calls))
 
 
 if __name__ == "__main__":

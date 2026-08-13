@@ -89,6 +89,16 @@ having the key at all, because the operator would believe the light was off.
 **Do not enable `--dmx ola` on zvision and this service at the same time**
 until an authority mechanism exists. Tracked in `tasks/open.md`.
 
+The crash fail-safe (`ExecStopPost=... zvision.dmxpark`) on both units now
+reads its own service's `ZVISION_ARGS`/`ZDECK_ARGS` (via `--from-args-env`) to
+find the universe/URL it should zero, and — for `zvision.service` specifically
+— **skips the park entirely** when `ZVISION_ARGS` doesn't ask for `--dmx ola`
+(its own CLI default). That means a routine `systemctl restart zvision` in the
+documented split layout (zvision `--dmx none`, deck `--dmx ola`) no longer
+blacks out the deck-owned universe. It does **not** fix the two-writer case
+above: if both are set to `--dmx ola`, both still write, and only a live
+authority latch (not yet built) would stop the flicker.
+
 ---
 
 ## 4. Design notes

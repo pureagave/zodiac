@@ -339,7 +339,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     dmx_sink = None
     zaud = None
     if args.dmx != "none":
-        from .dmx import build_sink
+        from .dmx import ThreadedDmxSink, build_sink
         from .tracker import Tracker, config_for_channel_mode
 
         tracker = Tracker(
@@ -350,6 +350,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         )
         dmx_sink = build_sink(args.dmx, universe=args.dmx_universe, base_url=args.dmx_url)
+        if args.dmx == "ola":
+            # Only the real transport needs decoupling from the hot loop; the
+            # fake sink is already synchronous and in-memory, and wrapping it
+            # would perturb tests that read sink.frame directly.
+            dmx_sink = ThreadedDmxSink(dmx_sink)
         if not args.dmx_no_sound:
             from .audio_bus import ZaudListener
 

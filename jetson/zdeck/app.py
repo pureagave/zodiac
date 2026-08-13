@@ -120,7 +120,8 @@ class DeckRunner:
 
 def run_loop(surface_factory: Callable[[], DeckSurface], sink, running,
              reconnect_secs: float = 3.0, brightness: int = 20,
-             once: bool = False, killer=None, sleep=time.sleep) -> int:
+             once: bool = False, killer=None, sleep=time.sleep,
+             universe: int = 0, base_url: str = "http://127.0.0.1:9090") -> int:
     """Own a deck for as long as there is one, then wait for the next.
 
     Extracted from ``main`` so the paths that actually happen on a vehicle —
@@ -132,7 +133,8 @@ def run_loop(surface_factory: Callable[[], DeckSurface], sink, running,
         while running():
             surface = surface_factory()
             try:
-                runner = DeckRunner(surface, sink, brightness=brightness, killer=killer)
+                runner = DeckRunner(surface, sink, brightness=brightness, killer=killer,
+                                     universe=universe, base_url=base_url)
                 runner.start()
                 print(f"zdeck: deck online, {KEY_COUNT} keys", flush=True)
             # No deck is the normal state on a vehicle, not a failure: wait and
@@ -202,6 +204,7 @@ def main(argv=None) -> int:
             once=args.once,
             killer=(None if args.dmx == "ola"
                     else (lambda: True)),  # no olad to park against on fake/none
+            universe=args.dmx_universe, base_url=args.dmx_url,
         )
     finally:
         try:

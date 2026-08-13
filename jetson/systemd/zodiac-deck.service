@@ -19,7 +19,11 @@ WorkingDirectory=/opt/zodiac/jetson
 ExecStart=/opt/zodiac-deck/venv/bin/python -m zdeck $ZDECK_ARGS
 EnvironmentFile=-/etc/default/zodiac-deck
 # Same fail-safe as zvision: never leave the head hot on an abnormal exit.
-ExecStopPost=-/usr/bin/python3 -m zvision.dmxpark --quiet
+# --from-args-env reads $ZDECK_ARGS (exported by EnvironmentFile above) so a
+# UNIVERSE=1 deploy parks the universe the deck is actually driving.
+# --default-dmx ola: this CLI's own --dmx default (see zdeck/app.py) --
+# absent an explicit --dmx in ZDECK_ARGS, the deck IS the universe's owner.
+ExecStopPost=-/usr/bin/python3 -m zvision.dmxpark --quiet --from-args-env ZDECK_ARGS --default-dmx ola
 Restart=always
 RestartSec=3
 # The deck is reached through libusb/hidraw, both granted to plugdev by
