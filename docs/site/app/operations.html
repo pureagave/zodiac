@@ -178,11 +178,14 @@ itself on resume and no-ops when it has not been provisioned.
 <h2 id="dead">Dead state</h2>
 
 <div class="note absent">
-  <span class="label">Set but rendered nowhere</span>
-  <p><code>locationFallbackActive</code> and <code>commandError</code> are both written by the
-  ViewModel and displayed by nothing. They look wired and are not. Either wire them up or delete
-  them &mdash; recorded as open, and exactly the shape of the <code>mapLoadError</code> bug that
-  gave a blank viewport with no message when the GIS schema changed silently.</p>
+  <span class="label">Deleted 2026-08-13</span>
+  <p><code>locationFallbackActive</code> and <code>commandError</code> used to be written by the
+  ViewModel and displayed by nothing &mdash; they looked wired and were not, exactly the shape of
+  the <code>mapLoadError</code> bug that gave a blank viewport with no message when the GIS schema
+  changed silently. Rob's call was final on both: no "on backup GPS" badge (recorded 2026-08-06 in
+  <code>SYNC.md</code>), and every vehicle transport is fake so a real send failure cannot occur
+  in production. Both fields and their sole writers were removed rather than wired up; a failed
+  send is now logged via Timber instead of surfaced in UI state.</p>
 </div>
 
 <h2 id="tracklog">The breadcrumb, and its missing client</h2>

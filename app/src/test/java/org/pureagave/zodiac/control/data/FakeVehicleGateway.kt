@@ -11,14 +11,6 @@ import org.pureagave.zodiac.control.core.model.VehicleCommand
 class FakeVehicleGateway : VehicleConnectionGateway {
     private val sentCommands = mutableListOf<VehicleCommand>()
 
-    /**
-     * Opt-in failure injection (default off so existing tests are unaffected):
-     * when true, [send] throws instead of recording the command, exercising the
-     * ViewModel's command-error surfacing path. Flip back to false to restore
-     * the normal recording behaviour mid-test.
-     */
-    var failSend: Boolean = false
-
     private val _selectedTransport = MutableStateFlow(TransportType.BLE)
     override val selectedTransport: StateFlow<TransportType> = _selectedTransport.asStateFlow()
 
@@ -57,7 +49,6 @@ class FakeVehicleGateway : VehicleConnectionGateway {
     }
 
     override suspend fun send(command: VehicleCommand) {
-        if (failSend) error("fake send failure")
         sentCommands += command
     }
 

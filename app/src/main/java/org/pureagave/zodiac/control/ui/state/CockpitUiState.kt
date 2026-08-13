@@ -148,13 +148,6 @@ data class CockpitUiState(
      */
     val checkRear: Boolean = false,
     /**
-     * Short message describing the most recent failed vehicle command send
-     * (SetHeading / SetSpeed), or null when the last send succeeded. Surfaced
-     * here so a dropped command on a vehicle control surface is observable
-     * instead of being silently swallowed by the fire-and-forget launch.
-     */
-    val commandError: String? = null,
-    /**
      * Ambient light (lux) from the Sensor Hub's `$ZENV`, or null when no beacon
      * is feeding it. Drives the auto-dim ([luxToBrightness] → window brightness);
      * null leaves the tablet on its own system brightness.
@@ -169,12 +162,6 @@ data class CockpitUiState(
      * alert banner is showing, then cleared on a timer by the ViewModel.
      */
     val shockAlertG: Double? = null,
-    /**
-     * True when the beacon has gone quiet and this tablet has fallen back to its
-     * own GNSS. Shown, never silent — a driver steering off the backup source
-     * needs to know that's what they're looking at.
-     */
-    val locationFallbackActive: Boolean = false,
     /**
      * Whether *this device* may set + broadcast the shared nav target
      * (`$ZNAV`) — true on the S9+ and A54, false on the two Fires. Automatic:

@@ -6,6 +6,38 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — deleted two dead UI-state fields: `locationFallbackActive`, `commandError`
+
+Area 6 (P3s) of the #9/#10 audit. Both fields were written by
+`CockpitViewModel` and rendered by nothing — the same shape as the
+`mapLoadError` bug that once gave a blank viewport with no message.
+
+- **`locationFallbackActive`** mirrored `RoutedLocationSource.usingFallback`
+  into UI state. Rob's call on a backup-GPS badge was already final
+  (2026-08-06, above: "no badge... we just want things to keep working"), so
+  there was never going to be a reader. Deleted the field and its sole
+  collector in `CockpitViewModel`. **`usingFallback` itself is untouched** —
+  it's `FailoverLocationSource`'s real failover signal, still pinned by
+  `FailoverLocationSourceTest`, and stays exposed as the legitimate
+  "which source am I really on" query surface.
+- **`commandError`** surfaced a failed `SetHeading`/`SetSpeed` send. Every
+  vehicle transport is fake (`FakeTransportAdapter`/`FakeTelemetryRepository`
+  are the only implementations; real vehicle data never traverses the
+  gateway), so a real send failure cannot happen in production and no real
+  transport is planned — a badge for it would be permanently dead. Deleted the
+  field and both state writes in `sendCommand`; kept the `runCatching` guard
+  (a cheap IO-boundary safety net, same category as this codebase's other
+  `@Suppress`ed hardware/IO catches) but now logs a drop via `Timber.w`
+  instead of writing UI state. Deleted the test that only asserted the field
+  (`sendFailure_setsCommandError_thenSuccessClearsIt`) and the
+  `FakeVehicleGateway.failSend` injection hook it was the sole consumer of.
+
+No behavior change: neither field had a reader, and `usingFallback` is
+`SharingStarted.Eagerly`, so dropping its sole collector doesn't touch that
+source's lifecycle. app test count −1 (the masking test), gate green.
+
+---
+
 ## 2026-08-13 — fixed the two loose #9/#10 findings: map-load RETRY wedge (P1) + kiosk OTA-disable (P2)
 
 - **#9 map-touch P1 — the C10 RETRY chip wedged forever.** A re-attempt that failed

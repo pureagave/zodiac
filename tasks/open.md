@@ -217,9 +217,11 @@ API contract, not real OS scheduling.
 - [x] **DONE 2026-08-10** — BLE and USB `LocationSource.start()` re-entry
       re-entry** — the same shape as the NET bug fixed in C5, lower priority only
       because neither is the persisted default.
-- [ ] **`locationFallbackActive` and `commandError` are dead state** — both set
-      by the ViewModel, both rendered nowhere. Exactly the C10 shape. Either wire
-      them up or delete them; today they look wired and are not.
+- [x] DONE 2026-08-13 — deleted both. **`locationFallbackActive` and
+      `commandError` were dead state** — both set by the ViewModel, both
+      rendered nowhere. Exactly the C10 shape. Rob's calls were both final (no
+      backup-GPS badge, no transport that can really fail), so deleted rather
+      than wired up.
 - [x] **DONE 2026-08-10 — reverted to 22** (`TooManyFunctions` had been bumped 24 → 25) for `retryMapLoad`.
       This is against the project's own rule ("split the file, don't bump the
       number" — an instinct that has caught real organisation problems three

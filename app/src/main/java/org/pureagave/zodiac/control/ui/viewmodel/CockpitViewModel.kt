@@ -218,11 +218,6 @@ class CockpitViewModel(
                     if (result is MapLoadResult.Loaded) navigation.onMapLoaded(result.map)
                 }
             }
-            launch {
-                locationSource.usingFallback.collect { onBackup ->
-                    _uiState.update { it.copy(locationFallbackActive = onBackup) }
-                }
-            }
             viewModelScope.launch {
                 locationSource.selected.collect { type ->
                     _uiState.update { it.copy(selectedLocationSource = type) }
@@ -466,19 +461,17 @@ class CockpitViewModel(
     }
 
     /**
-     * Dispatches a vehicle command, surfacing any transport failure as
-     * [CockpitUiState.commandError] rather than silently dropping it; a
-     * successful send clears a prior error. [runCatching] keeps a flaky
-     * gateway from crashing the cockpit (and, unlike `catch (Exception)`,
-     * doesn't need a generic-catch suppression).
+     * Fire-and-forget dispatch of a vehicle command. Every transport is fake
+     * (see CLAUDE.md — real vehicle data never traverses the gateway), so a
+     * send does not fail in production; [runCatching] is a cheap IO-boundary
+     * guard against a hypothetical throw, logged rather than surfaced in UI
+     * state so a dropped command is at least observable in the on-device log
+     * viewer (the Fire's only readout).
      */
     private fun sendCommand(command: VehicleCommand) {
         viewModelScope.launch {
             runCatching { vehicleGateway.send(command) }
-                .onSuccess { _uiState.update { it.copy(commandError = null) } }
-                .onFailure { e ->
-                    _uiState.update { it.copy(commandError = "Command send failed: ${e.message}") }
-                }
+                .onFailure { e -> Timber.w(e, "vehicle command send failed: %s", command) }
         }
     }
 

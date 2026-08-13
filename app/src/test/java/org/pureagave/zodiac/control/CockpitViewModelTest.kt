@@ -404,42 +404,6 @@ class CockpitViewModelTest {
         }
 
     @Test
-    fun sendFailure_setsCommandError_thenSuccessClearsIt() =
-        runTest {
-            val gateway = FakeVehicleGateway()
-            val store = ViewModelStore()
-            try {
-                val factory =
-                    CockpitViewModelFactory(
-                        telemetryRepository = StaticTelemetryRepo(),
-                        vehicleGateway = gateway,
-                        playaMapRepository = NoOpPlayaMapRepository,
-                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
-                        preferences = NoOpCockpitPreferences(),
-                        fakeLocationSource =
-                            org.pureagave.zodiac.control.data.sensor.FakeLocationSource(
-                                scope = this.backgroundScope,
-                            ),
-                    )
-                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
-
-                // A throwing send surfaces as a non-null commandError.
-                gateway.failSend = true
-                vm.setHeading(90)
-                advanceUntilIdle()
-                assertNotNull(vm.uiState.value.commandError)
-
-                // A subsequent successful send clears the prior error.
-                gateway.failSend = false
-                vm.setHeading(90)
-                advanceUntilIdle()
-                assertNull(vm.uiState.value.commandError)
-            } finally {
-                store.clear()
-            }
-        }
-
-    @Test
     fun cycleConcept_advancesThroughAllFourAndPersistsEach() =
         runTest {
             val prefs = RecordingCockpitPreferences()
