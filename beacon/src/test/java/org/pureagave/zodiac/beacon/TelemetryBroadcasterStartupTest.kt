@@ -5,9 +5,11 @@ import android.location.LocationListener
 import android.location.OnNmeaMessageListener
 import android.net.DhcpInfo
 import android.net.wifi.WifiManager
+import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -109,6 +111,35 @@ class TelemetryBroadcasterStartupTest {
         TelemetryBroadcaster.start(context, micEnabled = false)
 
         assertEquals("wire() must run exactly once across both start() calls", 1, wireCalls)
+    }
+
+    @Test
+    fun maintain_transport_bails_once_stop_has_run() {
+        // AUDIT area 4: maintainTransport() has no suspension point, so a
+        // watchdog pass already in flight when stop() runs completes anyway --
+        // and used to unconditionally reopen a transmit socket, resurrecting
+        // one stop() had just closed. The scope?.isActive guard is what makes
+        // that bail observable.
+        //
+        // Mutation target: delete `if (scope?.isActive != true) return false`
+        // from maintainTransport() -- after stop(), scope is null, the guard
+        // is gone, maintainTransport() proceeds, sees socket == null, opens a
+        // fresh MulticastSocket (the resurrection) and returns true; this
+        // assertFalse goes red.
+        gpsHandleOverride = noOpWiredGpsHandle
+        TelemetryBroadcaster.start(context, micEnabled = false)
+
+        assertTrue(
+            "maintainTransport must run a real pass while the service is active",
+            TelemetryBroadcaster.maintainTransport(SystemClock.elapsedRealtime()),
+        )
+
+        TelemetryBroadcaster.stop()
+
+        assertFalse(
+            "maintainTransport must bail (and not resurrect a socket) once stop() has run",
+            TelemetryBroadcaster.maintainTransport(SystemClock.elapsedRealtime()),
+        )
     }
 }
 

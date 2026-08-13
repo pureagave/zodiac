@@ -41,6 +41,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.MulticastSocket
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -80,6 +81,72 @@ internal fun hdtSentenceOrNull(headingDeg: Double?): String? = headingDeg?.let {
 
 /** The $ZENV sentence, or null when no lux reading has ever arrived. */
 internal fun zenvSentenceOrNull(lux: Double?): String? = lux?.let { Nmea.zenv(it) }
+
+/**
+ * Opens the beacon's UDP transmit socket. Top-level, not a member of
+ * [TelemetryBroadcaster] — it has exactly one call site (`maintainTransport`)
+ * and pulling it out keeps that function's `ReturnCount` down without adding
+ * to the object's `TooManyFunctions` budget (same treatment as
+ * [sendToTargets] / [broadcastFooter] below).
+ */
+private fun openTransmitSocket(
+    ttl: Int,
+    tag: String,
+): DatagramSocket? =
+    runCatching {
+        MulticastSocket().apply {
+            timeToLive = ttl
+            broadcast = true
+        }
+    }.onFailure {
+        Log.w(tag, "beacon: socket not ready yet (${it.javaClass.simpleName}: ${it.message})")
+    }.getOrNull()
+
+/**
+ * Sends [bytes] to every address in [dsts] via [sink] — each target
+ * independently, so a failing multicast send must not block the broadcast
+ * fallback (or vice versa) — tallying a single success into [sentences] and
+ * every per-target failure into [sendFailures]. `AtomicLong`, not a `@Volatile
+ * var`, because [TelemetryBroadcaster.send] launches one coroutine per
+ * sentence: a plain `Long++` loses updates under concurrent writers.
+ *
+ * Top-level, not a `TelemetryBroadcaster` member, for the same
+ * `TooManyFunctions` reason as [openTransmitSocket] — and it doubles as a
+ * deterministic, singleton-free unit under test (see `SendCountingTest`).
+ */
+internal fun sendToTargets(
+    bytes: ByteArray,
+    dsts: List<InetAddress>,
+    sentences: AtomicLong,
+    sendFailures: AtomicLong,
+    sink: (DatagramPacket) -> Unit,
+) {
+    var anySent = false
+    dsts.forEach { dst ->
+        runCatching {
+            sink(DatagramPacket(bytes, bytes.size, dst, TelemetryBroadcaster.PORT))
+            anySent = true
+        }.onFailure { sendFailures.incrementAndGet() }
+    }
+    if (anySent) sentences.incrementAndGet()
+}
+
+/**
+ * The "→ group:port · sent N[ · send errs M]" footer for the on-device status
+ * readout. Top-level, beside [sendToTargets] / [openTransmitSocket], so it
+ * doesn't count against the object's `TooManyFunctions` budget. The "send
+ * errs" clause only appears once there have been any, so a healthy fleet's
+ * readout doesn't grow a permanent zero.
+ */
+internal fun broadcastFooter(
+    group: String,
+    port: Int,
+    sent: Long,
+    failed: Long,
+): String {
+    val base = "→ $group:$port   ·   sent $sent"
+    return if (failed > 0) "$base   ·   send errs $failed" else base
+}
 
 private class AndroidBeaconGpsHandle(
     private val context: Context,
@@ -170,9 +237,10 @@ private class AndroidMicSource(private val record: AudioRecord) : MicSource {
 /**
  * The Zodiac Beacon engine: reads the phone's GNSS (raw NMEA) and magnetometer
  * heading and sends them over UDP to the vehicle LAN — to the fixed fleet
- * multicast group (239.7.7.10:10110, DHCP-independent) with a /24 subnet-directed
- * broadcast fallback for APs that drop multicast — so every tablet's
- * `NetworkLocationSource` picks them up. GNSS
+ * multicast group (239.7.7.10:10110, DHCP-independent) with a subnet-directed
+ * broadcast fallback (derived from the DHCP netmask, /24 assumed when the
+ * device reports none or garbage) for APs that drop multicast — so every
+ * tablet's `NetworkLocationSource` picks them up. GNSS
  * sentences are forwarded verbatim; a true-heading `HDT` is synthesized from the
  * compass at a steady rate so heading updates even when the vehicle is stopped
  * (where GPS course is meaningless).
@@ -210,6 +278,12 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val HEALTH_EVERY_TICKS = 20
     private const val STATUS_EVERY_TICKS = 4 // rebuild the on-device readout ~1 Hz
 
+    // A chosen policy value, not a measurement: comfortably longer than the
+    // ~1 Hz GGA cadence and the ~5 s $ZBCN heartbeat cadence, so a wedged/
+    // antenna-pulled chip goes stale within about two heartbeats rather than
+    // reporting a phantom "healthy fix" forever.
+    private const val FIX_STALE_MS = 10_000L
+
     private const val BATTERY_SCALE_PCT = 100
     private const val MS_PER_SEC = 1000L
     private const val NANOS_PER_MS = 1_000_000L
@@ -240,8 +314,21 @@ object TelemetryBroadcaster : SensorEventListener {
     val isRunning: StateFlow<Boolean> = _running.asStateFlow()
 
     private var scope: CoroutineScope? = null
-    private var socket: DatagramSocket? = null
-    private var targets: List<InetAddress> = emptyList()
+
+    // send() launches one coroutine per sentence on Dispatchers.IO, which lets
+    // a tick's burst of sends (HDT/ZTLM/ZENV/ZODO/ZBCN) reorder on the wire.
+    // limitedParallelism(1) keeps every send on the pool but serializes them
+    // FIFO, restoring submission order without blocking (UDP send() doesn't).
+    private val sendDispatcher = Dispatchers.IO.limitedParallelism(1)
+
+    // @Volatile: read from send()/statusText() (any coroutine on the IO
+    // dispatcher) and written from maintainTransport() (the watchdog
+    // coroutine) and stop() (whichever thread calls it) — without it, JMM
+    // gives no guarantee a reader ever observes a write from a different
+    // thread.
+    @Volatile private var socket: DatagramSocket? = null
+
+    @Volatile private var targets: List<InetAddress> = emptyList()
 
     // The subnet-directed broadcast address is derived from the DHCP lease, so it
     // is only knowable once WiFi is actually up. On the vehicle the phone and the
@@ -252,7 +339,9 @@ object TelemetryBroadcaster : SensorEventListener {
     // beacon on a multicast-only path for the rest of the boot, silently, on a
     // phone nobody can reach. So re-resolve periodically and adopt any change.
     private var wifiManager: WifiManager? = null
-    private var targetsResolvedAtMs: Long? = null
+
+    @Volatile private var targetsResolvedAtMs: Long? = null
+
     private var sensorManager: SensorManager? = null
     private var nmeaListener: OnNmeaMessageListener? = null
     private var locationListener: LocationListener? = null
@@ -274,11 +363,22 @@ object TelemetryBroadcaster : SensorEventListener {
 
     @Volatile private var satellites: Int = 0
 
+    // Stamped by updateFixHealth() whenever a GGA actually carries a
+    // fix-quality/satellite reading; 0L means "no GGA has ever arrived".
+    // Lets reportedFixHealth() tell a genuinely stale fix apart from a
+    // healthy one, instead of the last-seen values persisting on the wire
+    // forever after the GNSS chip goes silent.
+    @Volatile private var lastGgaAtMs: Long = 0L
+
     @Volatile private var tripMeters: Double = 0.0
 
     @Volatile private var totalMeters: Double = 0.0
 
-    @Volatile private var sentences: Long = 0
+    // AtomicLong, not @Volatile var: send() launches one coroutine per
+    // sentence, so a plain `Long++` loses updates under concurrent writers.
+    // See sendToTargets().
+    private val sentences = AtomicLong(0)
+    private val sendFailures = AtomicLong(0)
 
     @Volatile private var lastShockG: Double = 0.0
 
@@ -340,6 +440,12 @@ object TelemetryBroadcaster : SensorEventListener {
         watchdogErrors = 0L
         lastWatchdogError = null
         gpsWired = false
+        lastGgaAtMs = 0L
+        // Share the uptime epoch startElapsedMs just reset above -- a restart
+        // should not carry a stale send/failure count from a previous run into
+        // the fresh readout.
+        sentences.set(0)
+        sendFailures.set(0)
         val store = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = store
         val seededTotal = store.getFloat(PREF_TOTAL_METERS, 0f).toDouble()
@@ -347,15 +453,18 @@ object TelemetryBroadcaster : SensorEventListener {
         odometer = odo
         totalMeters = seededTotal
         shockDetector = ShockDetector()
-        // Primary: the fixed fleet multicast group. Fallback: the /24
-        // subnet-directed broadcast (reliably delivered by consumer APs, unlike
-        // the limited 255.255.255.255). Belt-and-suspenders → the fleet gets the
+        // Primary: the fixed fleet multicast group. Fallback: the subnet-
+        // directed broadcast (reliably delivered by consumer APs, unlike the
+        // limited 255.255.255.255). Belt-and-suspenders → the fleet gets the
         // telemetry whether or not the AP forwards multicast.
         wifiManager = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
         targetsResolvedAtMs = null
-        maintainTransport(SystemClock.elapsedRealtime())
+        // scope must exist before maintainTransport() runs: it now bails
+        // (returns false, opens nothing) unless scope?.isActive is true, so it
+        // has to be assigned first, not after.
         val running = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = running
+        maintainTransport(SystemClock.elapsedRealtime())
 
         val onLoc =
             LocationListener { loc ->
@@ -432,7 +541,15 @@ object TelemetryBroadcaster : SensorEventListener {
                     if (tick % ENV_EVERY_TICKS == 0L) zenvSentenceOrNull(luxValue)?.let { send(it) }
                     if (tick % ODO_EVERY_TICKS == 0L) send(Nmea.zodo(tripMeters, totalMeters))
                     if (tick % HEALTH_EVERY_TICKS == 0L) {
-                        send(Nmea.zbcn(batteryPct(), fixQuality, satellites, uptimeSec()))
+                        val fix =
+                            BeaconNet.reportedFixHealth(
+                                SystemClock.elapsedRealtime(),
+                                lastGgaAtMs,
+                                fixQuality,
+                                satellites,
+                                FIX_STALE_MS,
+                            )
+                        send(Nmea.zbcn(batteryPct(), fix.fixQuality, fix.satellites, uptimeSec()))
                         persistTotal()
                     }
                     if (tick % STATUS_EVERY_TICKS == 0L) _status.value = statusText()
@@ -513,10 +630,14 @@ object TelemetryBroadcaster : SensorEventListener {
      * one line per channel family: position (GNSS), heading/tilt/speed (HDT/ZTLM),
      * ambient light (ZENV), last shock (ZSHK), health (ZBCN), odometer (ZODO), and
      * the mic level (ZAUD). Refreshed ~1 Hz from the broadcast loop.
+     *
+     * `internal`, not `private`, so `TelemetryBroadcasterFixHealthTest` can call
+     * it directly rather than draining the tick loop under Robolectric.
      */
-    private fun statusText(): String {
+    internal fun statusText(): String {
         val loc = lastLocation
         val up = uptimeSec()
+        val fix = BeaconNet.reportedFixHealth(SystemClock.elapsedRealtime(), lastGgaAtMs, fixQuality, satellites, FIX_STALE_MS)
         val mic = if (audioActive) "rms %.2f%s".format(audioRms, if (audioBeat) "  ♪BEAT" else "") else "off (grant mic → \$ZAUD)"
         val body =
             buildString {
@@ -531,8 +652,9 @@ object TelemetryBroadcaster : SensorEventListener {
                 append("\nHDG    $hdgText   TILT p${pitchDeg.toInt()} r${rollDeg.toInt()}   SPD ${speedKph().toInt()} kph")
                 val lightText = luxValue?.let { "${it.toInt()} lx" } ?: "-- lx (no sensor)"
                 append("\nLIGHT  $lightText    SHOCK %.1f g peak".format(lastShockG))
+                val staleSuffix = fix.staleMs?.let { " (stale ${it / MS_PER_SEC}s)" } ?: ""
                 append(
-                    "\nHEALTH ${batteryPct()}%%  fix q$fixQuality/$satellites sat  up %02d:%02d:%02d".format(
+                    "\nHEALTH ${batteryPct()}%%  fix q${fix.fixQuality}/${fix.satellites} sat$staleSuffix  up %02d:%02d:%02d".format(
                         up / 3600,
                         (up % 3600) / 60,
                         up % 60,
@@ -540,7 +662,7 @@ object TelemetryBroadcaster : SensorEventListener {
                 )
                 append("\nODO    %.2f km trip / %.1f km total".format(tripMeters / 1000.0, totalMeters / 1000.0))
                 append("\nMIC    $mic")
-                append("\n→ $GROUP:$PORT   ·   sent $sentences")
+                append("\n${broadcastFooter(GROUP, PORT, sentences.get(), sendFailures.get())}")
             }
         lastGoodStatus = body
         val health = tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)
@@ -548,11 +670,22 @@ object TelemetryBroadcaster : SensorEventListener {
     }
 
     /**
-     * Re-derive the broadcast targets if they are stale. Cheap (a DHCP-info read),
-     * and it is what lets a beacon that booted before its router heal itself
-     * instead of spending the whole boot broadcasting into the void.
+     * Re-derive the broadcast targets if they are stale, and (re)open the
+     * transmit socket if it isn't up yet. Cheap (a DHCP-info read), and it is
+     * what lets a beacon that booted before its router heal itself instead of
+     * spending the whole boot broadcasting into the void.
+     *
+     * Returns whether it actually ran a pass — `false` means "the service
+     * isn't active, bail" (see the `scope?.isActive` guard below). Callers
+     * currently ignore the value; it exists so the bail itself is directly
+     * testable, since the alternative — nothing observable happening — is
+     * exactly what let a synchronous pass resurrect a socket after [stop] had
+     * already cleared it (this function has no suspension point, so an
+     * in-flight watchdog pass runs to completion even after `scope.cancel()`).
+     * `internal`, not `private`, for that same test.
      */
-    private fun maintainTransport(nowMs: Long) {
+    internal fun maintainTransport(nowMs: Long): Boolean {
+        if (scope?.isActive != true) return false
         // The socket is created here rather than once in start() because start()
         // runs at boot, before the vehicle's router is necessarily up, and any
         // throw in start() used to leave the service alive with its wake lock
@@ -562,15 +695,7 @@ object TelemetryBroadcaster : SensorEventListener {
         // 2 — runs this through TickLoop, so a throw anywhere in this pass is
         // caught and counted instead of ending the retry for good.
         if (socket == null) {
-            socket =
-                runCatching {
-                    MulticastSocket().apply {
-                        timeToLive = TTL
-                        broadcast = true
-                    }
-                }.onFailure {
-                    Log.w(TAG, "beacon: socket not ready yet (${it.javaClass.simpleName}: ${it.message})")
-                }.getOrNull()
+            socket = openTransmitSocket(TTL, TAG)
             if (socket != null) Log.i(TAG, "beacon: transmit socket open")
         }
 
@@ -579,38 +704,34 @@ object TelemetryBroadcaster : SensorEventListener {
         // elapsedRealtime() counts from BOOT, so a service starting seconds after
         // boot — exactly the vehicle case — would otherwise fail the interval test
         // against a zero baseline and start with no targets at all.
-        if (last != null && nowMs - last < TARGET_REFRESH_MS) return
-        targetsResolvedAtMs = nowMs
-        // Guarded (AUDIT area 4 finding 1): a throw here used to escape
-        // maintainTransport() -> start()'s synchronous tail before `_running`
-        // was set, leaving a zombie service (wake lock held, notification
-        // lying "Broadcasting", isRunning false so STOP can't even reach it).
-        // ip=0 on failure flows through the existing broadcastTargets()
-        // fallback to the limited broadcast — degraded, not silently dead.
-        @Suppress("DEPRECATION")
-        val ip = runCatching { wifiManager?.dhcpInfo?.ipAddress }.getOrNull() ?: 0
-        val fresh = runCatching { BeaconNet.broadcastTargets(GROUP, ip, LIMITED_BROADCAST) }.getOrNull() ?: return
-        if (fresh != targets) {
-            Log.i(TAG, "beacon: targets -> ${fresh.joinToString { it.hostAddress ?: "?" }}")
-            targets = fresh
+        if (last == null || nowMs - last >= TARGET_REFRESH_MS) {
+            targetsResolvedAtMs = nowMs
+            // Guarded (AUDIT area 4 finding 1): a throw here used to escape
+            // maintainTransport() -> start()'s synchronous tail before `_running`
+            // was set, leaving a zombie service (wake lock held, notification
+            // lying "Broadcasting", isRunning false so STOP can't even reach it).
+            // ip=0/netmask=0 on failure flows through the existing
+            // broadcastTargets() fallback to the limited broadcast — degraded,
+            // not silently dead.
+            @Suppress("DEPRECATION")
+            val dhcp = runCatching { wifiManager?.dhcpInfo }.getOrNull()
+            val ip = dhcp?.ipAddress ?: 0
+            val netmask = dhcp?.netmask ?: 0
+            val fresh = runCatching { BeaconNet.broadcastTargets(GROUP, ip, netmask, LIMITED_BROADCAST) }.getOrNull()
+            if (fresh != null && fresh != targets) {
+                Log.i(TAG, "beacon: targets -> ${fresh.joinToString { it.hostAddress ?: "?" }}")
+                targets = fresh
+            }
         }
+        return true
     }
 
     private fun send(line: String) {
         val sock = socket ?: return
-        if (targets.isEmpty()) return
-        scope?.launch {
-            val bytes = line.toByteArray(Charsets.US_ASCII)
-            var anySent = false
-            // Each target independently — a failing multicast send must not block
-            // the broadcast fallback (or vice versa).
-            targets.forEach { dst ->
-                runCatching {
-                    sock.send(DatagramPacket(bytes, bytes.size, dst, PORT))
-                    anySent = true
-                }
-            }
-            if (anySent) sentences++
+        val dsts = targets
+        if (dsts.isEmpty()) return
+        scope?.launch(sendDispatcher) {
+            sendToTargets(line.toByteArray(Charsets.US_ASCII), dsts, sentences, sendFailures) { sock.send(it) }
         }
     }
 
@@ -770,11 +891,19 @@ object TelemetryBroadcaster : SensorEventListener {
         prefs?.edit()?.putFloat(PREF_TOTAL_METERS, totalMeters.toFloat())?.apply()
     }
 
-    /** Pull fix-quality + satellite count out of a passing GGA for the heartbeat. */
+    /**
+     * Pull fix-quality + satellite count out of a passing GGA for the
+     * heartbeat, and stamp [lastGgaAtMs] so [BeaconNet.reportedFixHealth] can
+     * tell a genuinely stale fix from a healthy one. A GGA with neither field (a
+     * non-GGA sentence, or a truncated GGA) leaves both untouched and does not
+     * stamp the freshness clock — it did not actually report anything.
+     */
     private fun updateFixHealth(nmea: String) {
         val health = BeaconNet.parseFixHealth(nmea)
+        if (health.fixQuality == null && health.satellites == null) return
         health.fixQuality?.let { fixQuality = it }
         health.satellites?.let { satellites = it }
+        lastGgaAtMs = SystemClock.elapsedRealtime()
     }
 
     override fun onAccuracyChanged(
@@ -782,9 +911,9 @@ object TelemetryBroadcaster : SensorEventListener {
         accuracy: Int,
     ) = Unit
 
-    /**
-     * The /24 subnet-directed broadcast for the phone's current WiFi address
-     * (e.g. 192.168.0.234 → 192.168.0.255). Android reports `ipAddress`
-     * little-endian, so the low three octets are the address's first three.
-     */
+    // The subnet-directed broadcast for the phone's current WiFi address is
+    // derived in BeaconNet.directedBroadcastHost from the DHCP netmask
+    // (e.g. 192.168.0.234 / 255.255.255.0 -> 192.168.0.255), falling back to
+    // the historical /24 assumption when the device reports no netmask or a
+    // non-contiguous (garbage) one.
 }

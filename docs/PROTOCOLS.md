@@ -21,9 +21,11 @@ Multicast TTL is **1** — nothing leaves the vehicle's subnet. `239.0.0.0/8` is
 administratively scoped.
 
 **Every sender transmits each datagram twice**: once to the multicast group and
-once to the /24 subnet-directed broadcast (falling back to `255.255.255.255` if
-the local IP cannot be determined). Some access points silently drop multicast,
-and a fleet that goes blind because of an AP setting is not acceptable.
+once to a subnet-directed broadcast derived from the DHCP netmask (falling back
+to the historical /24 assumption when the device reports no netmask or a
+non-contiguous/garbage one, and further to `255.255.255.255` if the local IP
+cannot be determined at all). Some access points silently drop multicast, and a
+fleet that goes blind because of an AP setting is not acceptable.
 
 **Every receiver binds the wildcard address** on the port *and* joins the group,
 so it gets whichever copy arrives. The consequence is duplicate delivery — which
@@ -258,8 +260,12 @@ $ZBCN,<batteryPct>,<fixQuality>,<satellites>,<uptimeSec>*CC
 Example: `$ZBCN,87,1,9,3600*17`
 
 Emitted every 20th tick (~5 s); the same tick persists the lifetime odometer.
-Fields 2 and 3 are sniffed from passing GGA sentences; if none has arrived, the
-previous values persist rather than resetting.
+Fields 2 and 3 are sniffed from passing GGA sentences. If the most recent GGA
+is more than 10 s old (a chosen policy value — comfortably longer than both the
+~1 Hz GGA cadence and this heartbeat's own ~5 s cadence), the beacon reports
+`0`/`0` instead of the stale last-seen values — a GNSS chip that has gone
+silent must read as "no fix", not as a phantom-healthy one that never resets.
+Before the first GGA ever arrives, fields 2 and 3 are simply `0`/`0`.
 
 The tablet's ops footer flags battery ≤ 20 % and either `fixQuality ≤ 0` or
 `satellites < 5` in red.
