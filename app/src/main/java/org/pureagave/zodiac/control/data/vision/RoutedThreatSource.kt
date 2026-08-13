@@ -21,10 +21,11 @@ import timber.log.Timber
  * HUD stays alive on the bench (no feed → demo) yet tells the truth on the road
  * (live all-clear → empty), switching to real detections automatically.
  *
- * [demoEnabled] gates the fallback: true (default) keeps the bench demo when no
- * feed is present; false is for a deployed vehicle, where an absent feed should
- * read as all-clear rather than fabricate contacts. Both underlying sources are
- * started/stopped together.
+ * [demoEnabled] gates the fallback: true keeps the bench demo when no feed is
+ * present; false is for a deployed vehicle, where an absent feed should read
+ * as all-clear rather than fabricate contacts. It has NO default — every call
+ * site must state which it wants; see the constructor comment below for why.
+ * Both underlying sources are started/stopped together.
  */
 class RoutedThreatSource(
     private val network: ThreatSource,
