@@ -54,6 +54,20 @@ ID_STRIDE = TRACK_ID_LIMIT
 # is treated as one contact (see :func:`merge_contacts`).
 DEFAULT_DEDUP_DEG = 8.0
 
+# A mount must be level: to_global applies only mount_az_deg, so any pitch or
+# roll on the optical axis has no term to undo it and folds silently into
+# azimuth. HARDWARE.md's "Mounting angle" table quotes the mid-frame figure —
+# aim for <=2°; under 5° the azimuth error stays under ~0.2° and is lost in
+# the noise. This limit is looser than that target on purpose (a hard refusal
+# needs headroom above the aim point), but the table understates the worst
+# case: measured against the real geometry at the Lepton's 160°-diagonal
+# fisheye corner (not mid-frame), 5° pitch is up to 4.0° of azimuth error and
+# 30° is 35.9° — roll is worse still (5° -> 5.6°). validate_mount refuses any
+# declared |el| or |roll| past this, so a mis-mounted camera fails loudly
+# offline at --check time instead of silently folding elevation into azimuth
+# on the vehicle.
+MAX_MOUNT_TILT_DEG = 5.0
+
 # Friendlier spellings accepted in a --camera spec.
 _LENS_ALIASES = {
     "fisheye": LENS_EQUIDISTANT,
@@ -79,13 +93,23 @@ class CameraMount:
 
     ``mount_az_deg`` is the bearing of the optical axis off the vehicle's nose,
     positive to the right: 0 = forward, 90 = starboard, 180 = astern, -90 =
-    port. It is the *only* thing that turns a camera-local bearing into a
-    vehicle-global one."""
+    port. It is the *only* thing ``to_global`` applies — a camera-local
+    bearing becomes a vehicle-global one by adding this and nothing else.
+
+    ``mount_el_deg`` (optical-axis elevation off horizontal, +up — the same
+    convention as ``geometry.pixel_to_bearing``'s elevation) and
+    ``mount_roll_deg`` (roll about the optical axis) let a mount *state* its
+    measured attitude, but neither is applied anywhere: the bearing math has
+    no rotation term to undo them, so ``validate_mount`` requires both stay
+    near level (see ``MAX_MOUNT_TILT_DEG``) rather than silently folding a
+    tilted mount's elevation into its azimuth. Default 0.0 = level."""
 
     name: str
     source: str = "fake"
     device: str = "/dev/video0"
     mount_az_deg: float = 0.0
+    mount_el_deg: float = 0.0
+    mount_roll_deg: float = 0.0
     fov_deg: float = 160.0
     # DIAGONAL, not horizontal: the default fov_deg above is the Lepton Ultra
     # Wide's headline 160°, and that figure is the diagonal. Measured 2026-08-10
@@ -164,6 +188,19 @@ def validate_mount(mount: CameraMount) -> CameraMount:
         )
     if not math.isfinite(mount.mount_az_deg):
         raise ValueError(f"{prefix} mount az must be finite, got {mount.mount_az_deg}")
+    for label, value in (("el", mount.mount_el_deg), ("roll", mount.mount_roll_deg)):
+        # Finite check first: abs(nan) > N is False, so a nan would otherwise
+        # slip straight past the level guard below, exactly like the az=nan
+        # case this mirrors.
+        if not math.isfinite(value):
+            raise ValueError(f"{prefix} mount {label} must be finite, got {value}")
+        if abs(value) > MAX_MOUNT_TILT_DEG:
+            raise ValueError(
+                f"{prefix} mount {label} ({value}°) exceeds ±{MAX_MOUNT_TILT_DEG}° "
+                "— the bearing math assumes a level optical axis (see HARDWARE.md "
+                "'Mounting angle'); mount it level, or add a rotation to to_global "
+                "before running tilted"
+            )
     if not (math.isfinite(mount.fov_deg) and mount.fov_deg > 0):
         raise ValueError(f"{prefix} fov must be a positive, finite number of degrees, got {mount.fov_deg}")
     if mount.width <= 0 or mount.height <= 0:
@@ -211,8 +248,10 @@ def parse_camera_spec(
     identical serials — the Arducams all say ``SN0001``.) Such names contain
     colons, which this parser handles.
 
-    Optics/mount keys: ``az`` ``fov`` ``fovref`` (h|d) ``lens`` ``name``
-    ``width`` ``height``.
+    Optics/mount keys: ``az`` ``el`` ``roll`` ``fov`` ``fovref`` (h|d) ``lens``
+    ``name`` ``width`` ``height``. ``el``/``roll`` state a mount's measured
+    attitude and are validated near-level (``MAX_MOUNT_TILT_DEG``) — they are
+    not applied to the bearing math, see :class:`CameraMount`.
     Field-tuning keys (see :class:`DetectorTuning`): ``minarea`` ``match``
     ``farh`` ``nearh`` ``azrate`` ``minsize``.
 
@@ -255,6 +294,12 @@ def parse_camera_spec(
 
     name = kw.pop("name", f"{source}{index}")
     az = _parse_float("az", kw.pop("az", "0"))
+    # el/roll are mount geometry, same as az: per-camera, not inherited from
+    # `defaults` (a rig-wide tilt makes no sense), and NOT wrap180'd — a gross
+    # typo like roll=350 must surface as-is and be rejected by validate_mount,
+    # not silently wrapped into something that looks in-range.
+    el = _parse_float("el", kw.pop("el", "0"))
+    roll = _parse_float("roll", kw.pop("roll", "0"))
     fov = _parse_float("fov", kw.pop("fov", str(base.fov_deg)))
     width = _parse_int("width", kw.pop("width", str(base.width)))
     height = _parse_int("height", kw.pop("height", str(base.height)))
@@ -292,6 +337,8 @@ def parse_camera_spec(
             source=source,
             device=device,
             mount_az_deg=wrap180(az),
+            mount_el_deg=el,
+            mount_roll_deg=roll,
             fov_deg=fov,
             fov_ref=fov_ref,
             lens=lens,
@@ -307,7 +354,12 @@ def parse_camera_spec(
 def to_global(threat: DriverThreat, mount: CameraMount, cam_index: int) -> DriverThreat:
     """Rotate one camera-local contact into vehicle-global terms: bearing
     measured off the nose, and a track id namespaced to this camera so ids from
-    different cameras can never collide."""
+    different cameras can never collide.
+
+    Assumes a level mount — |mount_el_deg| and |mount_roll_deg| within
+    ``MAX_MOUNT_TILT_DEG``, enforced by ``validate_mount`` — and therefore
+    applies only ``mount_az_deg``. A genuinely tilted camera needs a rotation
+    added here; none exists yet (see :class:`CameraMount`)."""
     # Detectors are contracted to mint local ids in [1, ID_STRIDE) — see
     # normalize.TRACK_ID_LIMIT, which wraps them so a long run cannot escape the
     # block. The modulo here is belt-and-braces for a future detector (a trained

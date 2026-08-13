@@ -38,6 +38,37 @@ source's lifecycle. app test count −1 (the masking test), gate green.
 
 ---
 
+## 2026-08-13 — jetson P3: mount attitude is now declarable and gated, not corrected
+
+`CameraMount` had `mount_az_deg` but no pitch/roll term, so `to_global` folded
+any bracket tilt silently into azimuth — latent (no camera bolted on yet), but
+worse than `HARDWARE.md`'s existing mid-frame table let on. A full-frame-corner
+measurement against the real geometry (`zvision.geometry.pixel_to_bearing`,
+independently re-run against the numbers in the fix spec before committing
+them): **5° pitch is up to 4.0° of azimuth error at the Lepton 160°-diagonal
+fisheye corner, 30° is 35.9°; roll is worse — 5° is 5.6°.**
+
+Took the declare-and-gate option, not the full 3-axis correction: a real
+rotation would need elevation plumbed back through `bbox_to_rel_az` and
+`detector.py` (both currently drop it) and a rotation term added to
+`to_global` — real LIVE-aim surface area for a P3 on hardware that isn't
+attached, when the mount should be level anyway. `CameraMount` now has
+`mount_el_deg`/`mount_roll_deg` (default 0.0 = level, safe for every existing
+construction — all keyword beyond `name`, nothing reflects over the fields).
+`parse_camera_spec` accepts `el=`/`roll=` per camera, not wrap180'd (a typo
+like `roll=350` must surface as-is). `validate_mount` rejects non-finite
+values and anything beyond `MAX_MOUNT_TILT_DEG = 5.0`, so `--check` refuses a
+mis-mounted camera offline instead of letting it fold tilt into azimuth on the
+vehicle. `to_global` is unchanged — the gate stops a bad mount from running,
+it does not correct one. `jetson/HARDWARE.md`'s "Mounting angle" section
+updated accordingly.
+
+jetson tests: new `MountAttitudeTest` (6 tests, each mutation-proved genuine),
+459→**465**, gate green. (`CLAUDE.md`'s "429" count is stale — the tree has
+moved since 2026-08-10; not corrected here, out of scope for this fix.)
+
+---
+
 ## 2026-08-13 — fixed the two loose #9/#10 findings: map-load RETRY wedge (P1) + kiosk OTA-disable (P2)
 
 - **#9 map-touch P1 — the C10 RETRY chip wedged forever.** A re-attempt that failed

@@ -11,6 +11,7 @@ from zvision.geometry import FOV_DIAGONAL, FOV_HORIZONTAL, LENS_EQUIDISTANT, LEN
 from zvision.rig import (
     DEFAULT_DEDUP_DEG,
     ID_STRIDE,
+    MAX_MOUNT_TILT_DEG,
     CameraMount,
     MultiDetector,
     build_camera,
@@ -19,6 +20,7 @@ from zvision.rig import (
     merge_contacts,
     parse_camera_spec,
     to_global,
+    validate_mount,
 )
 from zvision.threat import DriverThreat
 
@@ -159,6 +161,47 @@ class NonFiniteSpecTest(unittest.TestCase):
         for bad in ("a/b", "..", "port\\aft"):
             with self.assertRaises(ValueError, msg=f"name={bad!r} must not pass"):
                 parse_camera_spec(f"fake:name={bad}")
+
+
+class MountAttitudeTest(unittest.TestCase):
+    """A ring camera has no pitch/roll term in the bearing math (to_global
+    applies only mount_az_deg), so a tilted mount silently folds elevation
+    into azimuth — measured up to 4.0° at 5° pitch and 35.9° at 30° pitch on
+    the Lepton's 160°-diagonal fisheye corner (roll is worse: 5.6° at 5°).
+    el/roll let a mount state its measured attitude, and --check refuses
+    anything past MAX_MOUNT_TILT_DEG so a non-level mount fails loudly
+    offline instead of silently on the vehicle."""
+
+    def test_el_and_roll_parse_and_store(self):
+        self.assertEqual(3.0, parse_camera_spec("fake:el=3").mount_el_deg)
+        self.assertEqual(2.0, parse_camera_spec("fake:roll=2").mount_roll_deg)
+
+    def test_default_mount_is_level(self):
+        m = CameraMount("t")
+        self.assertEqual(0.0, m.mount_el_deg)
+        self.assertEqual(0.0, m.mount_roll_deg)
+
+    def test_a_non_level_mount_is_refused(self):
+        with self.assertRaises(ValueError):
+            parse_camera_spec("fake:el=30")
+        with self.assertRaises(ValueError):
+            parse_camera_spec("fake:roll=30")
+
+    def test_a_near_level_mount_is_accepted(self):
+        # Pins the limit as a real tolerance, not a de-facto ban on any tilt.
+        self.assertEqual(2.0, parse_camera_spec("fake:el=2").mount_el_deg)
+
+    def test_non_finite_attitude_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_camera_spec("fake:el=nan")
+        with self.assertRaises(ValueError):
+            parse_camera_spec("fake:roll=inf")
+
+    def test_validate_mount_rejects_tilt_directly(self):
+        # The shared gate the legacy single-camera path also runs through.
+        m = CameraMount("c", mount_el_deg=MAX_MOUNT_TILT_DEG + 1.0)
+        with self.assertRaises(ValueError):
+            validate_mount(m)
 
 
 class TuningSpecTest(unittest.TestCase):
