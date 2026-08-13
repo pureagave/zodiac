@@ -13,7 +13,8 @@ from zvision.normalize import (
     REBASELINE_SETTLE_FRAMES,
     ReBaselineGuard,
     TRACK_ID_LIMIT,
-    assign_track_id,
+    _mint_id,
+    associate_tracks,
     image_rows,
     stretch_window,
 )
@@ -133,93 +134,120 @@ class TelemetryCropTest(unittest.TestCase):
 class TrackAssignmentTest(unittest.TestCase):
     """Stable ids are load-bearing: the collision estimator measures bearing
     *rate* per id, and the tracker light latches onto one. Churn makes a
-    standing person look like a stream of new contacts."""
+    standing person look like a stream of new contacts.
+
+    Single-blob cases exercise ``associate_tracks`` with a 1-element centroid
+    list — the global-nearest batch pass degenerates to the old per-blob
+    behaviour when there is only one blob to place."""
 
     def test_a_lone_blob_gets_a_fresh_id(self):
-        tid, nxt = assign_track_id(0.5, 0.5, {}, {}, 0.15, 7)
-        self.assertEqual(7, tid)
+        ids, nxt = associate_tracks([(0.5, 0.5)], {}, 0.15, 7)
+        self.assertEqual([7], ids)
         self.assertEqual(8, nxt)
 
     def test_a_small_movement_keeps_the_same_id(self):
         tracks = {3: (0.50, 0.50)}
-        tid, nxt = assign_track_id(0.52, 0.51, tracks, {}, 0.15, 9)
-        self.assertEqual(3, tid)
+        ids, nxt = associate_tracks([(0.52, 0.51)], tracks, 0.15, 9)
+        self.assertEqual([3], ids)
         self.assertEqual(9, nxt)  # no id consumed
 
     def test_a_jump_beyond_the_window_is_a_new_contact(self):
         tracks = {3: (0.10, 0.10)}
-        tid, nxt = assign_track_id(0.90, 0.90, tracks, {}, 0.15, 9)
-        self.assertEqual(9, tid)
+        ids, nxt = associate_tracks([(0.90, 0.90)], tracks, 0.15, 9)
+        self.assertEqual([9], ids)
         self.assertEqual(10, nxt)
 
     def test_the_nearest_track_wins(self):
         tracks = {1: (0.40, 0.50), 2: (0.55, 0.50)}
-        tid, _ = assign_track_id(0.54, 0.50, tracks, {}, 0.3, 9)
-        self.assertEqual(2, tid)
+        ids, _ = associate_tracks([(0.54, 0.50)], tracks, 0.3, 9)
+        self.assertEqual([2], ids)
 
-    def test_a_track_already_claimed_this_frame_cannot_be_reused(self):
+    def test_two_blobs_near_one_track_get_distinct_ids(self):
         # Two blobs must not collapse onto one id — that would make a single
         # contact appear to teleport between two people.
         tracks = {1: (0.50, 0.50)}
-        seen = {1: (0.50, 0.50)}
-        tid, nxt = assign_track_id(0.51, 0.50, tracks, seen, 0.15, 9)
-        self.assertEqual(9, tid)
+        ids, nxt = associate_tracks([(0.50, 0.50), (0.53, 0.50)], tracks, 0.15, 9)
+        self.assertEqual(2, len(set(ids)))
+        self.assertEqual(1, ids[0])  # the closer one inherits the track
+        self.assertEqual(9, ids[1])  # the other is genuinely new
         self.assertEqual(10, nxt)
-
-    def test_two_blobs_near_one_track_get_distinct_ids(self):
-        tracks = {1: (0.50, 0.50)}
-        seen = {}
-        first, nxt = assign_track_id(0.50, 0.50, tracks, seen, 0.15, 9)
-        seen[first] = (0.50, 0.50)
-        second, nxt2 = assign_track_id(0.53, 0.50, tracks, seen, 0.15, nxt)
-        self.assertNotEqual(first, second)
-        self.assertEqual(1, first)     # the closer one inherits the track
-        self.assertEqual(9, second)    # the other is genuinely new
 
     def test_match_distance_boundary_is_exclusive(self):
         tracks = {1: (0.0, 0.0)}
         # exactly at the threshold does not match (strict <)
-        tid, _ = assign_track_id(0.15, 0.0, tracks, {}, 0.15, 9)
-        self.assertEqual(9, tid)
-        tid, _ = assign_track_id(0.149, 0.0, tracks, {}, 0.15, 9)
-        self.assertEqual(1, tid)
+        ids, _ = associate_tracks([(0.15, 0.0)], tracks, 0.15, 9)
+        self.assertEqual([9], ids)
+        ids, _ = associate_tracks([(0.149, 0.0)], tracks, 0.15, 9)
+        self.assertEqual([1], ids)
 
     def test_matching_is_euclidean_not_per_axis(self):
         # 0.11 in each axis is 0.156 away — outside a 0.15 window, even though
         # neither axis alone exceeds it.
         tracks = {1: (0.0, 0.0)}
-        tid, _ = assign_track_id(0.11, 0.11, tracks, {}, 0.15, 9)
-        self.assertEqual(9, tid)
+        ids, _ = associate_tracks([(0.11, 0.11)], tracks, 0.15, 9)
+        self.assertEqual([9], ids)
 
     def test_ids_keep_increasing_across_many_new_contacts(self):
         nxt = 1
         ids = []
         for i in range(5):
-            tid, nxt = assign_track_id(float(i), 0.0, {}, {}, 0.15, nxt)
-            ids.append(tid)
+            frame_ids, nxt = associate_tracks([(float(i), 0.0)], {}, 0.15, nxt)
+            ids.append(frame_ids[0])
         self.assertEqual([1, 2, 3, 4, 5], ids)
+
+
+class AssociateTracksGlobalNearestTest(unittest.TestCase):
+    """The whole point of the finding 4 rewrite: association must be a single
+    global-nearest pass over the frame, not a per-blob greedy one. A per-blob
+    pass can let a blob processed earlier grab a track that a later blob is
+    actually closer to — teleporting that track's bearing (masking a real
+    constant-bearing collision) and re-minting an id for the blob that should
+    have kept it."""
+
+    def test_the_globally_closer_blob_inherits_the_track_not_the_first_one(self):
+        # Track sits at 0.50. blob0=0.42 (d=0.08) is farther than
+        # blob1=0.54 (d=0.04), but appears FIRST in contour order. A per-blob
+        # greedy pass would let blob0 claim the track since it's processed
+        # first and is still within match_dist; the correct, order-independent
+        # answer is that blob1 — the physically closer one — gets it.
+        tracks = {1: (0.50, 0.5)}
+        centroids = [(0.42, 0.5), (0.54, 0.5)]
+        ids, nxt = associate_tracks(centroids, tracks, 0.15, 9)
+        self.assertEqual([9, 1], ids, "the farther blob must mint, not steal, the track")
+        self.assertEqual(10, nxt)
+
+    def test_the_result_does_not_depend_on_contour_order(self):
+        # Same two blobs, reversed input order: the physically closer blob
+        # (at 0.54) must still be the one that inherits track 1, regardless
+        # of which index it now occupies.
+        tracks = {1: (0.50, 0.5)}
+        centroids = [(0.54, 0.5), (0.42, 0.5)]
+        ids, _ = associate_tracks(centroids, tracks, 0.15, 9)
+        self.assertEqual([1, 9], ids, "the closer blob keeps the track however it's ordered")
 
 
 class TrackIdWrapTest(unittest.TestCase):
     """Ids are namespaced into per-camera blocks by the rig, so a local id must
-    never leave its block — see TRACK_ID_LIMIT."""
+    never leave its block — see TRACK_ID_LIMIT. This wrap/mint logic is
+    load-bearing and is tested directly against ``_mint_id``, independent of
+    the association pass that calls it."""
 
     def test_ids_wrap_instead_of_growing_without_bound(self):
-        tid, nxt = assign_track_id(0.0, 0.0, {}, {}, 0.15, TRACK_ID_LIMIT - 1)
+        tid, nxt = _mint_id(TRACK_ID_LIMIT - 1, {}, set())
         self.assertEqual(TRACK_ID_LIMIT - 1, tid)
         self.assertEqual(1, nxt, "must wrap back into the block, not reach the limit")
 
     def test_the_wrap_never_yields_the_adhoc_sentinel(self):
         nxt = 1
-        seen = set()
+        minted = set()
         for _ in range(TRACK_ID_LIMIT * 2):
-            tid, nxt = assign_track_id(0.0, 0.0, {}, {}, 0.15, nxt)
-            seen.add(tid)
-        self.assertNotIn(0, seen, "0 is reserved for ad-hoc contacts")
-        self.assertTrue(all(0 < i < TRACK_ID_LIMIT for i in seen))
+            tid, nxt = _mint_id(nxt, {}, set())
+            minted.add(tid)
+        self.assertNotIn(0, minted, "0 is reserved for ad-hoc contacts")
+        self.assertTrue(all(0 < i < TRACK_ID_LIMIT for i in minted))
 
     def test_a_custom_limit_is_honoured(self):
-        tid, nxt = assign_track_id(0.0, 0.0, {}, {}, 0.15, 4, id_limit=5)
+        tid, nxt = _mint_id(4, {}, set(), id_limit=5)
         self.assertEqual(4, tid)
         self.assertEqual(1, nxt)
 
@@ -230,22 +258,22 @@ class TrackIdWrapTest(unittest.TestCase):
         # into one track: the collision estimator sees a teleporting bearing
         # and suppresses a real alarm, and the light follows the wrong person.
         tracks = {1: (0.9, 0.9)}
-        tid, nxt = assign_track_id(0.1, 0.1, tracks, {}, 0.15, 1)
+        tid, nxt = _mint_id(1, tracks, set())
         self.assertNotIn(tid, tracks, "minted a live track's id")
         self.assertEqual(2, tid)
         self.assertEqual(3, nxt)
 
     def test_a_lapped_counter_skips_ids_already_handed_out_this_frame(self):
-        seen = {1: (0.5, 0.5)}
-        tid, _ = assign_track_id(0.1, 0.1, {}, seen, 0.15, 1)
-        self.assertNotIn(tid, seen)
+        claimed = {1}
+        tid, _ = _mint_id(1, {}, claimed)
+        self.assertNotIn(tid, claimed)
         self.assertEqual(2, tid)
 
     def test_skipping_a_live_id_wraps_without_reaching_zero(self):
         # The last id in the block is alive; the skip must lap to 1, never 0.
         top = TRACK_ID_LIMIT - 1
         tracks = {top: (0.9, 0.9)}
-        tid, _ = assign_track_id(0.1, 0.1, tracks, {}, 0.15, top)
+        tid, _ = _mint_id(top, tracks, set())
         self.assertEqual(1, tid)
 
 

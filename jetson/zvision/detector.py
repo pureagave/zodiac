@@ -19,8 +19,17 @@ from .geometry import (
     bbox_height_to_size,
     pixel_to_bearing,
 )
-from .normalize import ReBaselineGuard, assign_track_id
+from .normalize import ReBaselineGuard, associate_tracks
 from .threat import DriverThreat
+
+# A missed blob (a frame where the background subtractor just doesn't find
+# it) does not by itself mean the person is gone. Carrying a track for a
+# couple of frames past its last sighting means a reappearing blob re-inherits
+# its id instead of re-minting one, and the collision estimator's baseline
+# survives the gap instead of restarting as a first-sighting. It is
+# Jetson-internal bookkeeping only: an unseen track is never emitted as a
+# contact, so nothing is coasted onto the driver's HUD.
+PRUNE_GRACE_FRAMES = 2
 
 
 @dataclass(frozen=True)
@@ -130,8 +139,14 @@ class MotionDetector:
             min_size=self._tuning.collision_min_size,
         )
         self._next_id = 1
-        # id -> (cx_norm, cy_norm) of last sighting, for nearest-centroid matching
+        # id -> (cx_norm, cy_norm) of last sighting, for nearest-centroid matching.
+        # Includes tracks carried through a short unseen grace (see
+        # PRUNE_GRACE_FRAMES) so a reappearing blob re-matches instead of
+        # re-minting.
         self._tracks: dict[int, tuple[float, float]] = {}
+        # id -> consecutive frames missed, for the prune grace. Absent means 0.
+        self._misses: dict[int, int] = {}
+        self._prune_grace_frames = PRUNE_GRACE_FRAMES
 
     def detect(self, t: float) -> List[DriverThreat]:
         cv2 = self._cv2
@@ -151,44 +166,70 @@ class MotionDetector:
 
         min_area = self._min_area_frac * w * h
         aspect = h / w if w else 1.0
-        seen: dict[int, tuple[float, float]] = {}
-        out: List[DriverThreat] = []
-        rects: List[tuple] = []
+
+        # Pass 1: every blob that clears the area gate, in contour order.
+        blobs: List[tuple] = []  # (rect, cx_norm, cy_norm)
         for c in contours:
             if cv2.contourArea(c) < min_area:
                 continue
             x, y, bw, bh = cv2.boundingRect(c)
-            rects.append((x, y, bw, bh))
             cx_norm = (x + bw / 2.0) / w
             cy_norm = (y + bh / 2.0) / h
-            tid = self._assign_id(cx_norm, cy_norm, seen)
+            blobs.append(((x, y, bw, bh), cx_norm, cy_norm))
+
+        # One global-nearest association pass for the whole frame at once —
+        # see zvision.normalize.associate_tracks for why this must not be a
+        # per-blob greedy loop.
+        centroids = [(cx, cy) for _rect, cx, cy in blobs]
+        ids, self._next_id = associate_tracks(
+            centroids, self._tracks, self._match_dist, self._next_id
+        )
+
+        # Pass 2: contacts, and the per-track state (collision baseline, last
+        # centroid) that only a resolved id makes meaningful.
+        seen: dict[int, tuple[float, float]] = {}
+        out: List[DriverThreat] = []
+        rects: List[tuple] = []
+        for (rect, cx_norm, cy_norm), tid in zip(blobs, ids):
+            rects.append(rect)
             seen[tid] = (cx_norm, cy_norm)
+            bh = rect[3]
             # Aim at the contact's feet-to-head centre through the real lens
             # model: on a wide fisheye the vertical offset shifts azimuth too.
             az, _el = pixel_to_bearing(
                 cx_norm, cy_norm, self._fov, aspect, self._lens, self._fov_ref
             )
-            size = bbox_height_to_size(bh / h, self._tuning.far_h, self._tuning.near_h)
-            collision = self._collision.update(tid, az, size, t)
+            h_norm = bh / h
+            size = bbox_height_to_size(h_norm, self._tuning.far_h, self._tuning.near_h)
+            # size is the clamped [0, 1] display/aim value; h_norm is the raw,
+            # unclamped closing signal — size saturates at near_h while a
+            # person can keep filling more of the frame right up to the car.
+            collision = self._collision.update(tid, az, size, t, range_proxy=h_norm)
             out.append(DriverThreat(rel_az_deg=az, size=size, collision=collision, id=tid))
-        # Prune collision history for tracks that vanished this frame, so the
-        # estimator's dict can't grow without bound over an all-night run.
-        for gone in self._tracks:
-            if gone not in seen:
-                self._collision.forget(gone)
-        self._tracks = seen
+
+        # Carry tracks unseen this frame for a short grace instead of pruning
+        # them immediately: a single missed blob must not re-mint the id or
+        # wipe the collision baseline on the very next detection. Unseen
+        # tracks never appear in `out`, so nothing is coasted onto the HUD.
+        next_tracks = dict(seen)
+        misses: dict[int, int] = {}
+        for tid, pos in self._tracks.items():
+            if tid in seen:
+                continue
+            count = self._misses.get(tid, 0) + 1
+            if count <= self._prune_grace_frames:
+                next_tracks[tid] = pos
+                misses[tid] = count
+            else:
+                self._collision.forget(tid)
+        self._tracks = next_tracks
+        self._misses = misses
+
         # Frame + its pixel boxes together, which is what an annotator needs.
         # The recorder swallows its own failures; detection never depends on it.
         if self._recorder is not None:
             self._recorder.record(self._name, t, frame, rects)
         return out
-
-    def _assign_id(self, cx: float, cy: float, seen: dict) -> int:
-        # Logic lives in zvision.normalize so it is testable without cv2.
-        tid, self._next_id = assign_track_id(
-            cx, cy, self._tracks, seen, self._match_dist, self._next_id
-        )
-        return tid
 
     def _kernel(self):
         return self._cv2.getStructuringElement(self._cv2.MORPH_ELLIPSE, (5, 5))

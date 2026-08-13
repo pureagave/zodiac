@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Dict, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Lens projection models: how a ray at angle t off the optical axis lands at
 # image radius r (in units where the horizontal half-width is r=1).
@@ -135,10 +135,10 @@ def bbox_height_to_size(h_norm: float, far_h: float = 0.05, near_h: float = 0.9)
 
 
 @dataclass
-class _Track:
-    az: float
-    size: float
+class _Sample:
     t: float
+    az: float
+    range_proxy: float
 
 
 @dataclass
@@ -146,27 +146,70 @@ class CollisionEstimator:
     """Flags a contact on the classic *constant bearing, decreasing range* rule:
     if a contact's bearing barely changes while it grows (closes), you're on an
     intercept course. Stateful per track id; call :meth:`update` once per contact
-    per frame."""
+    per frame.
+
+    az-rate and closing are measured over a ``window_s`` span, not frame to
+    frame. At 10 Hz a single MOG2 edge flicker or a duplicate Lepton frame (it
+    polls at ~9 fps) can zero or spike a one-frame delta and blink the flag;
+    comparing against a sample at least ``window_s`` old smooths that out
+    while still reacting inside roughly a second.
+    """
 
     az_rate_thresh_dps: float = 3.0  # |d(az)/dt| below this reads as constant bearing
     min_size: float = 0.35           # ignore distant contacts entirely
-    closing_eps: float = 0.0         # size must be strictly increasing to count
-    _tracks: Dict[int, _Track] = field(default_factory=dict)
+    closing_eps: float = 0.0         # range proxy must be strictly increasing to count
+    window_s: float = 0.5            # minimum baseline age before az-rate/closing are judged
+    _tracks: Dict[int, List[_Sample]] = field(default_factory=dict)
 
-    def update(self, tid: int, az: float, size: float, t: float) -> bool:
-        prev = self._tracks.get(tid)
-        if prev is None:
-            self._tracks[tid] = _Track(az, size, t)
+    def update(
+        self,
+        tid: int,
+        az: float,
+        size: float,
+        t: float,
+        range_proxy: Optional[float] = None,
+    ) -> bool:
+        """``range_proxy`` is the raw (unclamped) closing signal — defaults to
+        ``size`` for callers that only have the clamped display/aim value, so
+        every pre-existing caller is unaffected. Passing the unclamped value
+        recovers the closing band that clamping ``size`` to [0, 1] otherwise
+        discards near the frame-filling end of a contact's approach."""
+        if range_proxy is None:
+            range_proxy = size
+        samples = self._tracks.get(tid)
+        if not samples:
+            self._tracks[tid] = [_Sample(t, az, range_proxy)]
             return False
-        dt = t - prev.t
-        if dt <= 0:
+        newest = samples[-1]
+        if t <= newest.t:
             # Out-of-order or duplicate frame: ignore it and KEEP the baseline,
             # so a replayed sample can't poison the next legitimate delta.
             return False
-        self._tracks[tid] = _Track(az, size, t)
-        az_rate = abs(wrap180(az - prev.az)) / dt
-        closing = (size - prev.size) > self.closing_eps
+        samples.append(_Sample(t, az, range_proxy))
+        ref = self._reference(samples, t)
+        if ref is None:
+            # Track younger than the window: still warming up, no verdict yet.
+            return False
+        dt = t - ref.t
+        az_rate = abs(wrap180(az - ref.az)) / dt
+        closing = (range_proxy - ref.range_proxy) > self.closing_eps
         return size >= self.min_size and az_rate <= self.az_rate_thresh_dps and closing
+
+    def _reference(self, samples: List[_Sample], t: float) -> Optional[_Sample]:
+        """The newest stored sample (excluding the one just appended) whose
+        age is at least ``window_s`` — a MINIMUM baseline age, not a maximum,
+        so a sparse or dithering stream is never starved of a reference.
+        Prunes anything older than that reference in place, bounding memory."""
+        ref_idx = None
+        for i in range(len(samples) - 2, -1, -1):
+            if t - samples[i].t >= self.window_s:
+                ref_idx = i
+                break
+        if ref_idx is None:
+            return None
+        if ref_idx > 0:
+            del samples[:ref_idx]
+        return samples[0]
 
     def forget(self, tid: int) -> None:
         self._tracks.pop(tid, None)

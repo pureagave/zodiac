@@ -20,7 +20,7 @@ code that remains in :mod:`zvision.capture` is only plumbing.
 from __future__ import annotations
 
 import math
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 # Smoothing applied to the contrast scale. Deliberately only the scale — see
 # :func:`stretch_window`.
@@ -96,54 +96,29 @@ def image_rows(actual_rows: int, expected_rows: int) -> int:
     return expected_rows if actual_rows > expected_rows else actual_rows
 
 
-def assign_track_id(
-    cx: float,
-    cy: float,
-    tracks: Dict[int, Tuple[float, float]],
-    seen: Dict[int, Tuple[float, float]],
-    match_dist: float,
+def _mint_id(
     next_id: int,
+    tracks: Dict[int, Tuple[float, float]],
+    claimed: Set[int],
     id_limit: int = TRACK_ID_LIMIT,
 ) -> Tuple[int, int]:
-    """Match a blob at ``(cx, cy)`` to an existing track, or mint a new id.
+    """Mint a fresh track id, wrapping within [1, id_limit): 0 is reserved for
+    "ad-hoc, not a stable track".
+
+    Skips any id that is still alive — in ``tracks`` from previous frames, or
+    already ``claimed`` this frame. After the counter laps (a night of
+    churning blobs passes 1000 easily), ``next_id`` can land on a track that
+    has been held *continuously* the whole way round — say a stationary
+    person the DMX light is latched onto. Handing their id to a new blob
+    splices two people into one track: the collision estimator sees a
+    teleporting bearing (suppressing a real constant-bearing alarm), and the
+    light believes it is holding one person while being fed another.
 
     Returns ``(track_id, next_free_id)``.
-
-    Nearest-centroid association in normalised frame coordinates. A track
-    already claimed this frame (present in ``seen``) is skipped, so two blobs
-    cannot collapse onto one id — which would make a single contact appear to
-    teleport between two people. Nothing within ``match_dist`` means a genuinely
-    new contact and a fresh id.
-
-    Stable ids matter beyond tidiness: the collision estimator measures bearing
-    *rate* per id, and the tracker light latches onto one. Churn there makes a
-    stationary person look like a stream of new contacts, and makes the light
-    jump between them.
     """
-    best_id: Optional[int] = None
-    best_d = match_dist
-    for tid, (px, py) in tracks.items():
-        if tid in seen:
-            continue
-        d = math.hypot(cx - px, cy - py)
-        if d < best_d:
-            best_id, best_d = tid, d
-    if best_id is not None:
-        return best_id, next_id
-    # Mint, wrapping within [1, id_limit): 0 is reserved for "ad-hoc, not a
-    # stable track".
-    #
-    # Skip any id that is still alive — in ``tracks`` from previous frames, or
-    # in ``seen`` from earlier this frame. After the counter laps (a night of
-    # churning blobs passes 1000 easily), ``next_id`` can land on a track that
-    # has been held *continuously* the whole way round — say a stationary
-    # person the DMX light is latched onto. Handing their id to a new blob
-    # splices two people into one track: the collision estimator sees a
-    # teleporting bearing (suppressing a real constant-bearing alarm), and the
-    # light believes it is holding one person while being fed another.
     tid = next_id
     for _ in range(id_limit):
-        if tid not in tracks and tid not in seen:
+        if tid not in tracks and tid not in claimed:
             break
         tid += 1
         if tid >= id_limit:
@@ -152,6 +127,60 @@ def assign_track_id(
     if following >= id_limit:
         following = 1
     return tid, following
+
+
+def associate_tracks(
+    centroids: List[Tuple[float, float]],
+    tracks: Dict[int, Tuple[float, float]],
+    match_dist: float,
+    next_id: int,
+    id_limit: int = TRACK_ID_LIMIT,
+) -> Tuple[List[int], int]:
+    """Match every blob in this frame to an existing track, or mint a new id.
+
+    Returns ``(ids, next_free_id)`` with ``ids`` aligned to ``centroids``.
+
+    This is a single GLOBAL-nearest pass over the whole frame, not a per-blob
+    greedy one. Every (blob, track) pair within ``match_dist`` is a candidate;
+    candidates are resolved closest-first, so the physically closest pair
+    always wins the match — regardless of which blob a camera's contour scan
+    happens to return first. A per-blob greedy pass can let an earlier blob
+    grab a track that a later blob is actually closer to, which teleports
+    that track's bearing (masking a real constant-bearing collision) and
+    re-mints an id for the blob it should have kept.
+
+    Nothing within ``match_dist`` of any (still-unclaimed) track is a
+    genuinely new contact and mints a fresh id, in blob order. Stable ids
+    matter beyond tidiness: the collision estimator measures bearing *rate*
+    per id, and the tracker light latches onto one. Churn there makes a
+    stationary person look like a stream of new contacts, and makes the light
+    jump between them.
+    """
+    candidates: List[Tuple[float, int, int]] = []
+    for blob_idx, (cx, cy) in enumerate(centroids):
+        for tid, (px, py) in tracks.items():
+            d = math.hypot(cx - px, cy - py)
+            if d < match_dist:
+                candidates.append((d, blob_idx, tid))
+    candidates.sort()
+
+    resolved: Dict[int, int] = {}
+    claimed: Set[int] = set()
+    for _d, blob_idx, tid in candidates:
+        if blob_idx in resolved or tid in claimed:
+            continue
+        resolved[blob_idx] = tid
+        claimed.add(tid)
+
+    ids: List[int] = []
+    for blob_idx in range(len(centroids)):
+        if blob_idx not in resolved:
+            tid, next_id = _mint_id(next_id, tracks, claimed, id_limit)
+            claimed.add(tid)
+            resolved[blob_idx] = tid
+        ids.append(resolved[blob_idx])
+
+    return ids, next_id
 
 
 # A flat-field correction re-baselines every pixel at once. Measured on the real

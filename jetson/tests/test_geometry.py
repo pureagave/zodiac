@@ -246,6 +246,97 @@ class CollisionTest(unittest.TestCase):
         self.assertFalse(est.update(2, az=30.0, size=0.55, t=1.0))
 
 
+class RangeProxyTest(unittest.TestCase):
+    """P1: the display/aim ``size`` clamps to [0, 1] at ``near_h`` and stays
+    pinned there for the rest of the approach, so closing computed on ``size``
+    goes dark exactly when a person gets close enough to matter. ``range_proxy``
+    decouples the closing signal from that clamp."""
+
+    def test_closing_is_judged_on_the_unclamped_range_proxy(self):
+        est = CollisionEstimator()
+        # size is already saturated at 1.0 (person is inside near_h); the raw
+        # proxy is still climbing.
+        est.update(1, az=2.0, size=1.0, t=0.0, range_proxy=0.9)
+        self.assertTrue(est.update(1, az=2.0, size=1.0, t=1.0, range_proxy=1.2))
+
+    def test_range_proxy_defaults_to_size_for_backward_compatibility(self):
+        # Every pre-existing caller (and the whole CollisionTest suite above)
+        # never passes range_proxy at all — closing must still be judged on
+        # size in that case.
+        est = CollisionEstimator()
+        est.update(1, az=2.0, size=0.40, t=0.0)
+        self.assertTrue(est.update(1, az=2.1, size=0.55, t=1.0))
+        est2 = CollisionEstimator()
+        est2.update(2, az=2.0, size=0.60, t=0.0)
+        self.assertFalse(est2.update(2, az=2.0, size=0.60, t=1.0), "no growth, no closing")
+
+
+class CollisionWindowTest(unittest.TestCase):
+    """P2: az-rate and closing are judged over a >= window_s baseline, not a
+    single frame-to-frame delta, so a 10 Hz single-pixel dither or a
+    duplicate-frame Lepton read cannot blink the flag."""
+
+    def test_single_frame_jitter_does_not_blink_the_flag(self):
+        # 10 Hz closing contact whose bearing dithers +/-0.8 deg frame to
+        # frame (equivalent to 1px on a 160 deg lens) -- instantaneous rate
+        # would be 8 deg/s, well over the 3 deg/s threshold, but the net
+        # drift over the window is ~0.
+        est = CollisionEstimator()
+        t = 0.0
+        az_dither = [2.0, 2.8, 2.0, 2.8, 2.0, 2.8, 2.0]
+        size = 0.40
+        flagged_after_warmup = []
+        for i, az in enumerate(az_dither):
+            t = i * 0.1
+            size += 0.02
+            result = est.update(1, az=az, size=size, t=t)
+            if t >= 0.5:
+                flagged_after_warmup.append(result)
+        self.assertTrue(flagged_after_warmup, "warm-up should have completed within the run")
+        self.assertTrue(
+            all(flagged_after_warmup),
+            "single-frame dither must not blink a genuinely closing, constant-bearing contact",
+        )
+
+    def test_a_duplicate_frame_does_not_drop_the_flag(self):
+        # The Lepton polls at ~9 fps against a 10 Hz tick: about 1 frame in 10
+        # is an exact repeat of the previous one. Close steadily at 10 Hz
+        # (dt=0.1) until the window has a baseline, then repeat one reading
+        # verbatim (same az, same range_proxy, new t) the way a stale Lepton
+        # frame would.
+        est = CollisionEstimator()
+        est.update(1, az=2.0, size=0.40, t=0.0)
+        for i in range(1, 6):
+            result = est.update(1, az=2.0, size=0.40 + i * 0.02, t=i * 0.1)
+        self.assertTrue(result, "closing should already be flagging by t=0.5")
+        # t=0.6: an exact repeat of the t=0.5 reading (rp=0.50) -- single-frame
+        # comparison would see a zero delta here and drop the flag; the
+        # windowed reference (t=0.1, rp=0.42) still shows real closing.
+        self.assertTrue(
+            est.update(1, az=2.0, size=0.50, t=0.6),
+            "a duplicate reading must not read as the range opening",
+        )
+        # t=0.7: real growth resumes.
+        self.assertTrue(est.update(1, az=2.0, size=0.52, t=0.7))
+
+    def test_no_verdict_until_a_window_s_baseline_exists(self):
+        est = CollisionEstimator()
+        est.update(1, az=2.0, size=0.40, t=0.0)
+        # Within the window: still warming up, no verdict yet even though the
+        # raw per-sample delta would flag.
+        self.assertFalse(est.update(1, az=2.0, size=0.60, t=0.1))
+        self.assertFalse(est.update(1, az=2.0, size=0.70, t=0.3))
+        # Past the window: a verdict is now possible.
+        self.assertTrue(est.update(1, az=2.0, size=0.80, t=0.6))
+
+    def test_window_s_is_configurable(self):
+        est = CollisionEstimator(window_s=1.0)
+        est.update(1, az=2.0, size=0.40, t=0.0)
+        # 0.6s old: short of a 1.0s window, still warm-up.
+        self.assertFalse(est.update(1, az=2.0, size=0.60, t=0.6))
+        self.assertTrue(est.update(1, az=2.0, size=0.80, t=1.0))
+
+
 if __name__ == "__main__":
     unittest.main()
 
