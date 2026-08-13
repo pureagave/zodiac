@@ -30,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -117,6 +118,56 @@ private class AndroidBeaconGpsHandle(
 }
 
 /**
+ * Seam over the `AudioRecord` read/restart/close cycle, mirroring
+ * [BeaconGpsHandle]: lets the mic capture loop's error handling — a hard read
+ * error, a bounded restart budget, the guarded `startRecording()` — be
+ * exercised in a plain JVM test without a real `AudioRecord`, and without
+ * draining `start()`'s infinite tick+watchdog loops (impractical to drain
+ * safely under `runTest`; see AUDIT-2026 area 4 finding 3).
+ */
+internal interface MicSource {
+    /**
+     * Reads into [buf]; returns the sample count, 0 for "nothing this pass",
+     * or a negative Android `AudioRecord` error code on a hard failure.
+     */
+    fun read(buf: ShortArray): Int
+
+    /** Attempts to recover after a hard read error. Returns whether capture is usable again. */
+    fun restart(): Boolean
+
+    fun close()
+}
+
+/**
+ * Test seam: set to a factory before calling [TelemetryBroadcaster.start] to
+ * avoid touching a real `AudioRecord`. The factory returning null simulates a
+ * guarded `startRecording()` failure (device busy, no usable mic) — the same
+ * "skip this channel, keep broadcasting the rest" contract as
+ * [gpsHandleOverride].
+ */
+internal var micSourceOverride: (() -> MicSource?)? = null
+
+private class AndroidMicSource(private val record: AudioRecord) : MicSource {
+    override fun read(buf: ShortArray): Int = runCatching { record.read(buf, 0, buf.size) }.getOrDefault(-1)
+
+    // A hard read error (e.g. ERROR_DEAD_OBJECT from an audioserver restart)
+    // leaves the AudioRecord unusable in place; stop+startRecording is the
+    // bounded recovery this seam supports, not a re-create — a full re-create
+    // needs the sizing/permission context this seam deliberately doesn't
+    // carry (real-device recovery is the flagged hardware-validation item,
+    // not something this class can prove on its own).
+    override fun restart(): Boolean {
+        runCatching { record.stop() }
+        return runCatching { record.startRecording() }.isSuccess
+    }
+
+    override fun close() {
+        runCatching { record.stop() }
+        record.release()
+    }
+}
+
+/**
  * The Zodiac Beacon engine: reads the phone's GNSS (raw NMEA) and magnetometer
  * heading and sends them over UDP to the vehicle LAN — to the fixed fleet
  * multicast group (239.7.7.10:10110, DHCP-independent) with a /24 subnet-directed
@@ -177,6 +228,12 @@ object TelemetryBroadcaster : SensorEventListener {
     private const val AUDIO_FRAME_SAMPLES = 1024
     private const val BYTES_PER_SAMPLE = 2
 
+    // A hard read error (n < 0) gets a few bounded, delayed restart attempts —
+    // an audioserver restart on an old phone is transient, but a hot-spin
+    // retry loop on a genuinely dead mic would be its own bug.
+    private const val MAX_MIC_RESTARTS = 3
+    private const val MIC_RESTART_DELAY_MS = 200L
+
     private val _status = MutableStateFlow("Idle")
     val status: StateFlow<String> = _status.asStateFlow()
     private val _running = MutableStateFlow(false)
@@ -229,7 +286,11 @@ object TelemetryBroadcaster : SensorEventListener {
 
     @Volatile private var audioBeat: Boolean = false
 
-    @Volatile private var audioActive: Boolean = false
+    // internal, not private: the mic capture loop is pulled out into
+    // runAudioCapture() (AUDIT area 4 finding 3) so its error handling can be
+    // exercised directly in a JVM test with a fake MicSource, and the test
+    // needs to observe that this drops the instant capture ends.
+    @Volatile internal var audioActive: Boolean = false
 
     // Tick-loop health (B6): the loop's own last-run timestamp/error tally, and
     // the most recent full readout it managed to compute — so the watchdog
@@ -243,12 +304,20 @@ object TelemetryBroadcaster : SensorEventListener {
 
     @Volatile private var lastGoodStatus: String = ""
 
+    // The watchdog's own error tally (AUDIT area 4 finding 2): since it now
+    // runs through TickLoop like the tick loop itself, a throw inside a pass
+    // (maintainTransport, tickHealthLine) is caught and counted instead of
+    // ending the watchdog's retry loop for good.
+    @Volatile private var watchdogErrors: Long = 0L
+
+    @Volatile private var lastWatchdogError: String? = null
+
     private var startElapsedMs: Long = 0
     private var appContext: Context? = null
     private var prefs: SharedPreferences? = null
     private var shockDetector: ShockDetector? = null
     private var odometer: TripOdometer? = null
-    private var audioRecord: AudioRecord? = null
+    private var micSource: MicSource? = null
 
     /**
      * @param micEnabled whether the mic channel ($ZAUD) should even attempt to
@@ -268,6 +337,8 @@ object TelemetryBroadcaster : SensorEventListener {
         tickErrors = 0L
         lastTickError = null
         lastGoodStatus = ""
+        watchdogErrors = 0L
+        lastWatchdogError = null
         gpsWired = false
         val store = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs = store
@@ -382,16 +453,30 @@ object TelemetryBroadcaster : SensorEventListener {
      * straight to `_status`, bypassing `statusText()`'s normal cadence. Note
      * the honest limitation: a Doze stall freezes this coroutine too (B4's
      * territory); the banner appears on wake.
+     *
+     * Routed through [TickLoop] rather than a bespoke `while (isActive)` (AUDIT
+     * area 4 finding 2): the loop's own only unguarded throw source was the
+     * DHCP-info read inside [maintainTransport], and an unguarded throw here
+     * used to end the watchdog coroutine for good — no later tick-loop death
+     * could banner, a transmit socket that was still null at boot was never
+     * retried, and the broadcast targets froze. TickLoop catches and counts
+     * instead.
      */
     private fun launchDeadmanWatchdog(loopScope: CoroutineScope) {
         loopScope.launch {
-            while (isActive) {
-                delay(TICK_DEAD_MS / 2)
-                maintainTransport(SystemClock.elapsedRealtime())
-                tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)?.let { health ->
-                    _status.value = "$health\n$lastGoodStatus"
-                }
-            }
+            TickLoop(
+                body = { _ ->
+                    maintainTransport(SystemClock.elapsedRealtime())
+                    tickHealthLine(SystemClock.elapsedRealtime(), lastTickAtMs, tickErrors, lastTickError)?.let { health ->
+                        _status.value = "$health\n$lastGoodStatus"
+                    }
+                },
+                onError = { t ->
+                    watchdogErrors++
+                    lastWatchdogError = t.message ?: t::class.simpleName
+                    Log.e(TAG, "watchdog error (watchdog errors so far: $watchdogErrors)", t)
+                },
+            ).run(TICK_DEAD_MS / 2)
         }
     }
 
@@ -407,11 +492,8 @@ object TelemetryBroadcaster : SensorEventListener {
         sensorManager?.unregisterListener(this)
         scope?.cancel()
         scope = null
-        audioRecord?.let { rec ->
-            runCatching { rec.stop() }
-            rec.release()
-        }
-        audioRecord = null
+        micSource?.close()
+        micSource = null
         audioActive = false
         socket?.close()
         socket = null
@@ -475,7 +557,10 @@ object TelemetryBroadcaster : SensorEventListener {
         // runs at boot, before the vehicle's router is necessarily up, and any
         // throw in start() used to leave the service alive with its wake lock
         // held, its notification showing, and nothing on the wire — silently, on
-        // a phone nobody can reach. Retried every tick until it succeeds.
+        // a phone nobody can reach. The retry lives entirely in the deadman
+        // watchdog (launchDeadmanWatchdog), which — since AUDIT area 4 finding
+        // 2 — runs this through TickLoop, so a throw anywhere in this pass is
+        // caught and counted instead of ending the retry for good.
         if (socket == null) {
             socket =
                 runCatching {
@@ -496,8 +581,14 @@ object TelemetryBroadcaster : SensorEventListener {
         // against a zero baseline and start with no targets at all.
         if (last != null && nowMs - last < TARGET_REFRESH_MS) return
         targetsResolvedAtMs = nowMs
+        // Guarded (AUDIT area 4 finding 1): a throw here used to escape
+        // maintainTransport() -> start()'s synchronous tail before `_running`
+        // was set, leaving a zombie service (wake lock held, notification
+        // lying "Broadcasting", isRunning false so STOP can't even reach it).
+        // ip=0 on failure flows through the existing broadcastTargets()
+        // fallback to the limited broadcast — degraded, not silently dead.
         @Suppress("DEPRECATION")
-        val ip = wifiManager?.dhcpInfo?.ipAddress ?: 0
+        val ip = runCatching { wifiManager?.dhcpInfo?.ipAddress }.getOrNull() ?: 0
         val fresh = runCatching { BeaconNet.broadcastTargets(GROUP, ip, LIMITED_BROADCAST) }.getOrNull() ?: return
         if (fresh != targets) {
             Log.i(TAG, "beacon: targets -> ${fresh.joinToString { it.hostAddress ?: "?" }}")
@@ -562,50 +653,107 @@ object TelemetryBroadcaster : SensorEventListener {
     /**
      * Start the mic capture loop that emits `$ZAUD` for sound-reactive lighting.
      * RECORD_AUDIO is optional: if it's not granted (or the device has no usable
-     * mic), we simply skip it and every other channel keeps broadcasting. Only a
-     * level/beat number is emitted — no audio is recorded or transmitted.
+     * mic, or the guarded `startRecording()` below fails), we simply skip it and
+     * every other channel keeps broadcasting. Only a level/beat number is
+     * emitted — no audio is recorded or transmitted.
      */
     private fun startAudioCapture(
         app: Context,
         loopScope: CoroutineScope,
     ) {
-        if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
-        val record = createAudioRecord() ?: return
-        audioRecord = record
-        audioActive = true
-        val levels = AudioLevels()
-        record.startRecording()
-        loopScope.launch {
-            val buf = ShortArray(AUDIO_FRAME_SAMPLES)
-            while (isActive) {
-                val n = runCatching { record.read(buf, 0, buf.size) }.getOrDefault(-1)
-                if (n <= 0) break // stopped/released or read error → end the loop
-                val f = levels.analyze(buf, n)
-                audioRms = f.rms
-                audioBeat = f.beat
-                send(Nmea.zaud(f.rms, f.peak, f.beat))
+        // Builds the real `AudioRecord`-backed [MicSource], with the guarded
+        // `startRecording()` this seam exists for (AUDIT area 4 finding 1): a
+        // start failure here used to throw out of `start()`'s synchronous
+        // tail before `_running` was set, leaving the service
+        // half-initialized. On failure the record is released and null is
+        // returned — same "skip this channel, keep broadcasting the rest"
+        // contract as every other optional sensor. Local, not a member: it
+        // has exactly one call site and no reason to count against the
+        // object's function budget.
+        @SuppressLint("MissingPermission") // this function's only caller checks RECORD_AUDIO first
+        fun createMicSource(): MicSource? {
+            val minBuf = AudioRecord.getMinBufferSize(AUDIO_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+            val record =
+                runCatching {
+                    AudioRecord(
+                        MediaRecorder.AudioSource.MIC,
+                        AUDIO_SAMPLE_RATE,
+                        AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        max(minBuf, AUDIO_FRAME_SAMPLES * BYTES_PER_SAMPLE),
+                    )
+                }.getOrNull()
+            if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
+                record?.release()
+                return null
             }
+            val started = runCatching { record.startRecording() }.isSuccess
+            if (!started) {
+                Log.e(TAG, "beacon: mic startRecording() failed, \$ZAUD disabled")
+                runCatching { record.release() }
+                return null
+            }
+            return AndroidMicSource(record)
         }
+
+        if (ContextCompat.checkSelfPermission(app, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        val override = micSourceOverride
+        val source = (if (override != null) override() else createMicSource()) ?: return
+        micSource = source
+        audioActive = true
+        loopScope.launch { runAudioCapture(source) }
     }
 
-    @SuppressLint("MissingPermission") // caller checks RECORD_AUDIO before invoking
-    private fun createAudioRecord(): AudioRecord? {
-        val minBuf = AudioRecord.getMinBufferSize(AUDIO_SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val record =
-            runCatching {
-                AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    AUDIO_SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    max(minBuf, AUDIO_FRAME_SAMPLES * BYTES_PER_SAMPLE),
-                )
-            }.getOrNull()
-        if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
-            record?.release()
-            return null
+    /**
+     * The mic capture loop: analyze frames into `$ZAUD` until [source] gives up
+     * for good. Pulled out of [startAudioCapture] as its own `suspend fun`
+     * (AUDIT area 4 finding 3) so it's directly callable in a JVM test with a
+     * fake [MicSource] — `start()`'s infinite tick+watchdog loops make in-situ
+     * coroutine draining impractical.
+     *
+     * `audioActive` — and so the on-device MIC line — must drop the instant
+     * capture ends, for any reason, which is what the `finally` guarantees. It
+     * used to end silently on the first bad read while `audioActive` stayed
+     * true, freezing the last-seen "rms" line on a channel that was actually
+     * dead.
+     */
+    internal suspend fun runAudioCapture(source: MicSource) {
+        // A hard read error (n < 0, e.g. `ERROR_DEAD_OBJECT` from an
+        // audioserver restart) gets a bounded, delayed restart budget rather
+        // than either ending the loop outright (the shipped bug) or
+        // hot-spinning on a genuinely dead mic. Local to this function — it
+        // has no reason to be a separate seam, only [source] does.
+        suspend fun recoverFromReadError(): Boolean {
+            audioActive = false
+            repeat(MAX_MIC_RESTARTS) {
+                delay(MIC_RESTART_DELAY_MS)
+                if (source.restart()) {
+                    audioActive = true
+                    return true
+                }
+            }
+            return false
         }
-        return record
+
+        val levels = AudioLevels()
+        val buf = ShortArray(AUDIO_FRAME_SAMPLES)
+        try {
+            while (currentCoroutineContext().isActive) {
+                val n = source.read(buf)
+                if (n > 0) {
+                    val f = levels.analyze(buf, n)
+                    audioRms = f.rms
+                    audioBeat = f.beat
+                    send(Nmea.zaud(f.rms, f.peak, f.beat))
+                } else if (n < 0 && !recoverFromReadError()) {
+                    break
+                }
+                // n == 0: nothing this pass — not an error, loop again.
+            }
+        } finally {
+            audioActive = false
+            source.close()
+        }
     }
 
     /** Battery percent from the sticky ACTION_BATTERY_CHANGED intent (0 if unknown). */

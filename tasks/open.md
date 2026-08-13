@@ -6,6 +6,33 @@ What's worth doing next. Critical and High audit items are all done — see `don
 > 8-agent Fable+Opus fan-out, ~40 findings (8 CONFIRMED P1). Not yet triaged into
 > tasks below. Fix-first: the 3 LIVE-now P1s (beacon `start()`/watchdog,
 > `NetworkThreatSource` rebuild). See SYNC top for the summary.
+>
+> Beacon area 4 (`start()`/watchdog/`$ZAUD`) fixed on `fix/audit-beacon` — see
+> SYNC 2026-08-13. One item deliberately deferred, below.
+
+- [ ] **Beacon transmit socket should bind to the vehicle WiFi `Network`, not
+      wildcard.** `docs/AUDIT-2026-08-13.md` area 4, P2 SUSPECTED (code fact
+      confirmed, real-world silent-drop not reproduced) —
+      `TelemetryBroadcaster.kt` creates a plain `MulticastSocket()` with no
+      `ConnectivityManager.NetworkCallback` / `Network.bindSocket`. With any
+      second route (cellular, VPN, or the planned Jetson backup-WiFi AP —
+      `design/jetson-camera-ring-usb.md` territory, see
+      `project_jetson_usb_expansion` memory) both the multicast group and the
+      subnet broadcast could silently follow the default network away from the
+      vehicle LAN while `sentences` keeps counting up. Deferred rather than
+      fixed: this is the fleet's only GNSS source, a wrong bind (transient
+      Network, wrong Network mid-handover) takes it fully off the wire, and CI
+      cannot exercise multi-network routing at all. **Do this alongside the
+      backup-AP rollout, not before** — same milestone, same on-hardware test
+      pass. Validation before shipping (see the audit doc for the full
+      protocol): bring up a second route next to vehicle WiFi and confirm
+      frames still egress WiFi; drop/reacquire WiFi and confirm the socket
+      rebinds without permanent silence; exercise the real backup-AP handover
+      and confirm the fleet keeps receiving `$Z*` throughout. Interim
+      mitigation (keep it, don't change it): XCover stays airplane-mode +
+      WiFi-only, which is what makes the trigger unreachable today. Sibling P3
+      (`BeaconNet.kt:50-56` hardcodes a `/24` subnet mask) is related but
+      separate and out of scope for this item.
 
 > **Handoff, 2026-08-08 (evening).** The three sections below are the live
 > picture. Everything under them is older backlog. Read the top of `SYNC.md`

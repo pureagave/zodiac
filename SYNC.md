@@ -38,6 +38,52 @@ doc with the P3 batch.
 
 ---
 
+## 2026-08-13 — Beacon area 4 fixes: `start()`/watchdog no longer abort on a throw, `$ZAUD` no longer freezes "on" when dead
+
+Three of the four `docs/AUDIT-2026-08-13.md` area-4 findings fixed on
+`fix/audit-beacon`, gate green (`app` 979 / `beacon` 93):
+
+- **`start()` no longer aborts permanently on an unguarded throw.** The two
+  fallible calls in `start()`'s synchronous tail — `wifiManager.dhcpInfo` (via
+  `maintainTransport()`) and `AudioRecord.startRecording()` — are now guarded.
+  A throwing DHCP read degrades to `ip=0` (limited-broadcast fallback, not a
+  dead service); a failing `startRecording()` skips the mic channel exactly
+  like "permission not granted." Either way `start()` now always reaches
+  `_running = true`, so the START/STOP toggle stays truthful and the
+  `if (_running.value) return` re-entry guard actually holds (no more
+  double-`wire()` on a half-initialized singleton).
+- **The deadman watchdog now runs through `TickLoop`** instead of a bespoke
+  `while (isActive)` — a throw inside `maintainTransport()` used to end the
+  watchdog coroutine for good (no later tick-loop death could banner, a
+  transmit socket still null at boot was never retried). Mirrors the tick
+  loop's own resilience; pinned by the existing `TickLoopTest` (mechanism) +
+  the new DHCP-throw test (source).
+- **`$ZAUD` capture no longer freezes `audioActive = true` on a dead mic.**
+  The loop is behind a new `MicSource` seam (mirrors `BeaconGpsHandle`); a hard
+  read error now gets a bounded, delayed restart (3 attempts, 200 ms apart)
+  distinguishing it from `n == 0` ("nothing this pass"), and a `finally`
+  guarantees `audioActive` drops the instant capture ends for any reason — no
+  more on-device "rms" line lying that the mic is still live.
+- **Deferred, not fixed:** the transmit `MulticastSocket` is wildcard-bound,
+  never `Network.bindSocket` — with any second route (cellular, VPN, the
+  planned Jetson backup-AP) both multicast and subnet-broadcast could silently
+  follow the default network away from the vehicle WiFi. Real fix needs
+  `ConnectivityManager.NetworkCallback` on the beacon's only GNSS source, which
+  CI cannot exercise and a wrong bind is worse than the status quo (masked
+  today by the XCover's airplane-mode/WiFi-only provisioning). Tied to the
+  backup-AP milestone — see `tasks/open.md`.
+
+Two Robolectric probes proved the fixes genuine (mutation reverted → red,
+confirmed, restored): a custom `WifiManager` shadow that throws from
+`getDhcpInfo()`, and a scripted `MicSource` fake that scripts a recovered vs.
+exhausted read-error sequence. `TelemetryBroadcaster` was at 25 member
+functions after the straightforward extraction (`thresholdInObjects: 22`);
+brought back to 21 by making the two new functions that only have one call
+site each (`createMicSource`, the bounded-restart helper) local functions
+nested in their callers rather than object members — no threshold bump.
+
+---
+
 ## 2026-08-13 — Fable+Opus fan-out bug hunt (8 agents, 8 subsystems) → full catalogue at `docs/AUDIT-2026-08-13.md`
 
 Eight read-only worktree agents (4 Fable on areas 1–4, 4 high-reasoning Opus on
