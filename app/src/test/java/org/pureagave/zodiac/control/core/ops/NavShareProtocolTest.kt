@@ -106,6 +106,36 @@ class NavShareProtocolTest {
     }
 
     @Test
+    fun an_out_of_range_hour_returns_null_instead_of_throwing_from_clocktime() {
+        // Load-bearing pre-check (NavShare.kt): the clock field is range-checked
+        // to hours 2..10 BEFORE a ClockTime is constructed, whose own `require`
+        // allows the wider 1..12 and THROWS outside it. Hours the regex admits
+        // ([0-9]{1,2}) but ClockTime would reject -- 0 and 13..99 -- must come
+        // back as null, never as a thrown IllegalArgumentException out of a
+        // parser documented to "never throw". The existing 1 / 11 cases can't
+        // catch this: ClockTime accepts both, so only the 2..10 window fires,
+        // not the throw guard. Construct ClockTime unconditionally in
+        // parseClockField and every assertNull below turns into a thrown
+        // exception.
+        assertNotNull("control: 2:15 is inside the city-clock window", NavShareProtocol.parse(sentence("ZNAV,1,A,ADDR,2:15,H")))
+        assertNull("hour 0 (ClockTime would throw) must parse to null", NavShareProtocol.parse(sentence("ZNAV,1,A,ADDR,0:15,H")))
+        assertNull("hour 13 (ClockTime would throw) must parse to null", NavShareProtocol.parse(sentence("ZNAV,1,A,ADDR,13:00,H")))
+        assertNull("hour 99 (ClockTime would throw) must parse to null", NavShareProtocol.parse(sentence("ZNAV,1,A,ADDR,99:00,H")))
+    }
+
+    @Test
+    fun the_seq_and_src_length_caps_are_pinned_at_their_exact_boundaries() {
+        // The upper bounds of the pinned grammars, which the "rejects 10-digit /
+        // 9-char" cases don't fix: narrowing SEQ_REGEX to {1,8} or SRC_REGEX to
+        // {1,7} would still reject those and pass every other test, so the
+        // boundary itself needs a positive control right at the cap.
+        assertNotNull("a 9-digit seq is the largest the grammar admits", NavShareProtocol.parse(sentence("ZNAV,123456789,A,BATH")))
+        assertNull("a 10-digit seq is one past the cap", NavShareProtocol.parse(sentence("ZNAV,1234567890,A,BATH")))
+        assertNotNull("an 8-char src is the longest the grammar admits", NavShareProtocol.parse(sentence("ZNAV,1,ABCDEFGH,BATH")))
+        assertNull("a 9-char src is one past the cap", NavShareProtocol.parse(sentence("ZNAV,1,ABCDEFGHI,BATH")))
+    }
+
+    @Test
     fun unknown_or_lowercase_rings_are_rejected() {
         assertNotNull("control: H is a known ring", NavShareProtocol.parse(sentence("ZNAV,1,A,ADDR,4:00,H")))
         assertNull("Z is not a key of StreetRingRadiiM", NavShareProtocol.parse(sentence("ZNAV,1,A,ADDR,4:00,Z")))

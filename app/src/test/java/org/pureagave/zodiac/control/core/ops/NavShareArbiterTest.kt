@@ -160,4 +160,53 @@ class NavShareArbiterTest {
 
         assertEquals("seed must be a max(), never a regression", 100, arbiter.maxSeen)
     }
+
+    @Test
+    fun seed_does_not_confer_ownership() {
+        // Seeding restores the Lamport high-water mark from persistence, but it
+        // is NOT a set: a rebooted device has applied nothing yet, so it must
+        // not believe it owns the target -- otherwise it would start
+        // re-broadcasting a target it never actually holds.
+        val arbiter = NavShareArbiter(mySrc = "A")
+        arbiter.seed(persistedSeq = 41)
+        assertFalse("seeding the counter must not make the device an owner", arbiter.owning)
+    }
+
+    @Test
+    fun userSet_mints_above_the_high_water_mark_not_the_last_applied_key() {
+        // The whole reason maxSeen is tracked separately from the last-applied
+        // key: after a reboot (seed) a device may adopt an OLD, low-seq message
+        // -- late-join adopts the first thing it hears -- leaving lastApplied at
+        // a low seq while maxSeen still holds the persisted high-water mark. A
+        // local set must outbid the fleet's real history (maxSeen), not the
+        // stale key it happens to be displaying, or a rebooted authority loses
+        // to a fleet that already agreed on a far higher seq.
+        val arbiter = NavShareArbiter(mySrc = "A")
+        arbiter.seed(persistedSeq = 50)
+        val adopted = arbiter.onReceived(seq = 5, src = "B") // late-join adopts despite the low seq
+        assertTrue("precondition: late-join adopts the first message even below the seed", adopted)
+
+        val seq = arbiter.userSet()
+
+        assertEquals("userSet must mint maxSeen+1 (51), not lastApplied.seq+1 (6)", 51, seq)
+        assertEquals(51, arbiter.maxSeen)
+        assertTrue("a local set makes this device the owner again", arbiter.owning)
+    }
+
+    @Test
+    fun a_seeded_device_still_adopts_a_first_message_below_the_seed() {
+        // Adoption is gated on the last-APPLIED key, never on maxSeen. A device
+        // that has only seeded its counter (applied nothing) must still adopt
+        // the first valid message it hears -- even one whose seq is below the
+        // seed -- or a rebooted device could never re-sync from the owner's
+        // periodic re-broadcast. Guards against a "fix" that gates adoption on
+        // maxSeen.
+        val arbiter = NavShareArbiter(mySrc = "A")
+        arbiter.seed(persistedSeq = 100)
+
+        val adopted = arbiter.onReceived(seq = 5, src = "B")
+
+        assertTrue("a seeded-but-never-applied device must adopt its first message", adopted)
+        assertFalse("adopting a remote key never confers ownership", arbiter.owning)
+    }
 }
