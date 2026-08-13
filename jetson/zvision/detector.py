@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Protocol
 
 from .geometry import (
-    FOV_HORIZONTAL,
+    FOV_DIAGONAL,
     LENS_EQUIDISTANT,
     CollisionEstimator,
     bbox_height_to_size,
@@ -115,7 +115,7 @@ class MotionDetector:
         camera,
         fov_deg: float = 160.0,
         lens: str = LENS_EQUIDISTANT,
-        fov_ref: str = FOV_HORIZONTAL,
+        fov_ref: str = FOV_DIAGONAL,
         tuning: Optional[DetectorTuning] = None,
         recorder=None,
         name: str = "cam",

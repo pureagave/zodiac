@@ -10,64 +10,79 @@ from zvision.geometry import (
     LENS_RECTILINEAR,
     CollisionEstimator,
     bbox_height_to_size,
-    bbox_to_rel_az,
     pixel_to_bearing,
     wrap180,
 )
 
 
+def _rel_az(
+    cx_norm: float,
+    fov_deg: float,
+    cy_norm: float = 0.5,
+    aspect: float = 1.0,
+    lens: str = LENS_EQUIDISTANT,
+    fov_ref: str = FOV_HORIZONTAL,
+) -> float:
+    """Azimuth-only view onto ``pixel_to_bearing``, standing in for the thin
+    azimuth wrapper that used to live in ``geometry.py`` before it was deleted
+    as dead production code (byte-identical signature/body/default), so the
+    lens-model coverage below stays routed through the same horizontal-
+    reference reading it always asserted."""
+    return pixel_to_bearing(cx_norm, cy_norm, fov_deg, aspect, lens, fov_ref)[0]
+
+
 class RelAzTest(unittest.TestCase):
     def test_centre_is_dead_ahead(self):
-        self.assertAlmostEqual(0.0, bbox_to_rel_az(0.5, 57.0), places=6)
+        self.assertAlmostEqual(0.0, _rel_az(0.5, 57.0), places=6)
 
     def test_left_edge_is_negative_half_fov(self):
-        self.assertAlmostEqual(-28.5, bbox_to_rel_az(0.0, 57.0), places=6)
+        self.assertAlmostEqual(-28.5, _rel_az(0.0, 57.0), places=6)
 
     def test_right_edge_is_positive_half_fov(self):
-        self.assertAlmostEqual(28.5, bbox_to_rel_az(1.0, 57.0), places=6)
+        self.assertAlmostEqual(28.5, _rel_az(1.0, 57.0), places=6)
 
     def test_ultra_wide_edges_reach_half_of_160(self):
         # The whole point of the UW fix: an 160° lens must report ±80° at the
         # frame edges, not ±28.5° left over from the Lepton 3.5's default.
-        self.assertAlmostEqual(-80.0, bbox_to_rel_az(0.0, 160.0), places=6)
-        self.assertAlmostEqual(80.0, bbox_to_rel_az(1.0, 160.0), places=6)
+        self.assertAlmostEqual(-80.0, _rel_az(0.0, 160.0), places=6)
+        self.assertAlmostEqual(80.0, _rel_az(1.0, 160.0), places=6)
 
 
 class LensModelTest(unittest.TestCase):
     def test_equidistant_is_linear_along_the_horizon(self):
         # f-theta on the centreline: quarter of the way in from the left edge is
         # exactly a quarter of the half-FOV short of it.
-        self.assertAlmostEqual(-40.0, bbox_to_rel_az(0.25, 160.0, lens=LENS_EQUIDISTANT), places=6)
+        self.assertAlmostEqual(-40.0, _rel_az(0.25, 160.0, lens=LENS_EQUIDISTANT), places=6)
 
     def test_rectilinear_edge_matches_configured_fov(self):
-        az = bbox_to_rel_az(1.0, 90.0, lens=LENS_RECTILINEAR)
+        az = _rel_az(1.0, 90.0, lens=LENS_RECTILINEAR)
         self.assertAlmostEqual(45.0, az, places=6)
 
     def test_rectilinear_mid_frame_is_not_linear(self):
         # A pinhole lens compresses angle toward the edges: halfway out in pixels
         # is well under halfway out in degrees (atan(0.5*tan45) = 26.57°).
-        az = bbox_to_rel_az(0.75, 90.0, lens=LENS_RECTILINEAR)
+        az = _rel_az(0.75, 90.0, lens=LENS_RECTILINEAR)
         self.assertAlmostEqual(math.degrees(math.atan(0.5)), az, places=6)
         self.assertLess(az, 22.5 + 10.0)
 
     def test_rectilinear_cannot_be_pushed_past_180(self):
         # tan(90°) is infinite; a 160° "rectilinear" config must stay finite.
-        az = bbox_to_rel_az(1.0, 160.0, lens=LENS_RECTILINEAR)
+        az = _rel_az(1.0, 160.0, lens=LENS_RECTILINEAR)
         self.assertTrue(math.isfinite(az))
         self.assertLess(az, 90.0)
 
     def test_equisolid_edge_matches_configured_fov(self):
-        self.assertAlmostEqual(80.0, bbox_to_rel_az(1.0, 160.0, lens=LENS_EQUISOLID), places=6)
+        self.assertAlmostEqual(80.0, _rel_az(1.0, 160.0, lens=LENS_EQUISOLID), places=6)
 
     def test_equisolid_squeezes_more_angle_toward_the_edge_than_equidistant(self):
         # Both hit 80° at the edge, but equisolid gets there later: mid-frame it
         # reports a smaller angle, i.e. the periphery is more compressed.
-        eqd = bbox_to_rel_az(0.75, 160.0, lens=LENS_EQUIDISTANT)
-        eqs = bbox_to_rel_az(0.75, 160.0, lens=LENS_EQUISOLID)
+        eqd = _rel_az(0.75, 160.0, lens=LENS_EQUIDISTANT)
+        eqs = _rel_az(0.75, 160.0, lens=LENS_EQUISOLID)
         self.assertLess(eqs, eqd)
 
     def test_legacy_linear_model_ignores_vertical_offset(self):
-        flat = bbox_to_rel_az(1.0, 160.0, cy_norm=1.0, lens=LENS_LINEAR)
+        flat = _rel_az(1.0, 160.0, cy_norm=1.0, lens=LENS_LINEAR)
         self.assertAlmostEqual(80.0, flat, places=6)
 
 
@@ -77,7 +92,7 @@ class VerticalCouplingTest(unittest.TestCase):
         # ~113° off-axis — past the camera plane — so a corner contact is
         # actually behind the lens' own edge bearing, not short of it. This is
         # the flat map's biggest lie and the reason FOV_DIAGONAL exists.
-        az, el = pixel_to_bearing(1.0, 1.0, fov_deg=160.0, aspect=1.0)
+        az, el = pixel_to_bearing(1.0, 1.0, fov_deg=160.0, aspect=1.0, fov_ref=FOV_HORIZONTAL)
         self.assertGreater(az, 90.0)
         self.assertLess(el, 0.0)  # bottom of the frame is below the axis
 
@@ -91,13 +106,13 @@ class VerticalCouplingTest(unittest.TestCase):
         self.assertLess(el, 0.0)
 
     def test_diagonal_reference_narrows_the_horizontal_edge(self):
-        h = bbox_to_rel_az(1.0, 160.0, aspect=1.0)
-        d = bbox_to_rel_az(1.0, 160.0, aspect=1.0, fov_ref=FOV_DIAGONAL)
+        h = _rel_az(1.0, 160.0, aspect=1.0)
+        d = _rel_az(1.0, 160.0, aspect=1.0, fov_ref=FOV_DIAGONAL)
         self.assertAlmostEqual(80.0, h, places=6)
         self.assertAlmostEqual(80.0 / math.sqrt(2.0), d, places=6)
 
     def test_top_of_frame_is_positive_elevation(self):
-        _, el = pixel_to_bearing(0.5, 0.0, fov_deg=160.0, aspect=1.0)
+        _, el = pixel_to_bearing(0.5, 0.0, fov_deg=160.0, aspect=1.0, fov_ref=FOV_HORIZONTAL)
         self.assertAlmostEqual(80.0, el, places=6)
 
     def test_centreline_has_zero_elevation(self):
@@ -113,7 +128,7 @@ class VerticalCouplingTest(unittest.TestCase):
     def test_beyond_90_off_axis_stays_signed_correctly(self):
         # A 200° lens: the frame edge is 100° off the nose — behind the camera
         # plane. atan2 must report +100, not fold it back toward zero.
-        az, _ = pixel_to_bearing(1.0, 0.5, fov_deg=200.0)
+        az, _ = pixel_to_bearing(1.0, 0.5, fov_deg=200.0, fov_ref=FOV_HORIZONTAL)
         self.assertAlmostEqual(100.0, az, places=6)
 
     def test_off_axis_angle_never_exceeds_a_half_turn(self):
@@ -125,6 +140,20 @@ class VerticalCouplingTest(unittest.TestCase):
         self.assertEqual((0.0, 0.0), pixel_to_bearing(float("nan"), 0.5, 160.0))
         self.assertEqual((0.0, 0.0), pixel_to_bearing(0.5, 0.5, 0.0))
         self.assertEqual((0.0, 0.0), pixel_to_bearing(0.5, 0.5, 160.0))
+
+
+class FovReferenceDefaultTest(unittest.TestCase):
+    """`fov_ref` must default to diagonal, matching CameraMount and --fov-ref
+    (rig.py, app.py) -- the measured DOC-1 truth. A horizontal default here is
+    the trap: it silently stretches edge bearings ~1.25x on the 4:3 Lepton the
+    moment a caller constructs pixel_to_bearing directly instead of through
+    those already-correct surfaces."""
+
+    def test_pixel_to_bearing_defaults_to_the_diagonal_reference(self):
+        # 160 deg on the real 160x120 Lepton (aspect 0.75), no fov_ref passed.
+        az, _ = pixel_to_bearing(1.0, 0.5, 160.0, aspect=0.75)
+        self.assertAlmostEqual(64.0, az, delta=0.5)
+        self.assertLess(abs(az), 75.0)
 
 
 class Wrap180Test(unittest.TestCase):

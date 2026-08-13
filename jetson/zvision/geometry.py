@@ -57,7 +57,7 @@ def pixel_to_bearing(
     fov_deg: float = 160.0,
     aspect: float = 1.0,
     lens: str = LENS_EQUIDISTANT,
-    fov_ref: str = FOV_HORIZONTAL,
+    fov_ref: str = FOV_DIAGONAL,
 ) -> Tuple[float, float]:
     """Unproject a normalised image point to (azimuth, elevation) in degrees off
     the camera's optical axis — azimuth +right, elevation +up.
@@ -74,7 +74,11 @@ def pixel_to_bearing(
 
     ``fov_ref`` says whether ``fov_deg`` is measured across the frame width or
     its diagonal; on a wide lens over a near-square sensor the two differ by
-    tens of degrees.
+    tens of degrees. Defaults to diagonal, matching every construction surface
+    (``CameraMount.fov_ref``, ``--fov-ref``) and the measured DOC-1 truth for
+    the Lepton UW: reading its "160°" as horizontal silently stretches edge
+    bearings ~1.25x, which is what mis-aimed the tracker light before that was
+    caught.
     """
     if not (math.isfinite(cx_norm) and math.isfinite(cy_norm)):
         return 0.0, 0.0
@@ -103,20 +107,6 @@ def pixel_to_bearing(
     az = math.degrees(math.atan2(dx, dz))
     el = math.degrees(math.atan2(-dy, math.hypot(dx, dz)))
     return az, el
-
-
-def bbox_to_rel_az(
-    cx_norm: float,
-    fov_deg: float,
-    cy_norm: float = 0.5,
-    aspect: float = 1.0,
-    lens: str = LENS_EQUIDISTANT,
-    fov_ref: str = FOV_HORIZONTAL,
-) -> float:
-    """Bearing off the optical axis for a detection centred at ``cx_norm`` (0..1
-    across the frame). Thin wrapper over :func:`pixel_to_bearing` for callers
-    that only need azimuth."""
-    return pixel_to_bearing(cx_norm, cy_norm, fov_deg, aspect, lens, fov_ref)[0]
 
 
 def bbox_height_to_size(h_norm: float, far_h: float = 0.05, near_h: float = 0.9) -> float:

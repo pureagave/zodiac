@@ -1,7 +1,8 @@
+import inspect
 import unittest
 
 from zvision.detector import PRUNE_GRACE_FRAMES, DetectorTuning, FakeDetector, MotionDetector
-from zvision.geometry import FOV_HORIZONTAL, LENS_EQUIDISTANT, CollisionEstimator
+from zvision.geometry import FOV_DIAGONAL, FOV_HORIZONTAL, LENS_EQUIDISTANT, CollisionEstimator
 from zvision.normalize import ReBaselineGuard
 
 
@@ -25,6 +26,19 @@ class FakeDetectorTest(unittest.TestCase):
         for tenth in range(0, 200):
             sweeper = next(c for c in d.detect(tenth / 10.0) if c.id == 1)
             self.assertLessEqual(abs(sweeper.rel_az_deg), 40.0)
+
+
+class MotionDetectorFovReferenceDefaultTest(unittest.TestCase):
+    """fov_ref must default to diagonal, matching every other construction
+    surface (CameraMount, --fov-ref) and the measured DOC-1 truth -- a
+    horizontal default here is the trap a future direct MotionDetector(...)
+    caller falls into. Checked via signature inspection, not construction:
+    MotionDetector.__init__ imports cv2 lazily in its body, and
+    inspect.signature never runs the body, so this stays cv2-free."""
+
+    def test_motiondetector_defaults_to_the_diagonal_reference(self):
+        default = inspect.signature(MotionDetector.__init__).parameters["fov_ref"].default
+        self.assertEqual(FOV_DIAGONAL, default)
 
 
 if __name__ == "__main__":
