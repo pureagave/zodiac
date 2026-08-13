@@ -9,7 +9,7 @@ import org.junit.Test
 class PinchSessionTest {
     private var zoom = 1.0
 
-    private fun session() = PinchSession { zoom }
+    private fun session() = PinchSession(currentZoom = { zoom })
 
     private fun one(
         x: Float,
@@ -177,5 +177,63 @@ class PinchSessionTest {
             s.onPointers(listOf(TouchPoint(0f, 0f), TouchPoint(200f, 0f), TouchPoint(50f, 400f)))
 
         assertEquals(2.0, withThird.zoom!!, 1e-9)
+    }
+
+    @Test
+    fun lifting_the_first_of_three_fingers_re_establishes_the_grip() {
+        // Grip tracks the pair by list position pressed[0]/pressed[1] == (A,B).
+        // Lifting A leaves [B,C] — still size >= 2, so without identity
+        // tracking this would silently compare B/C against the stale A/B
+        // baseline instead of re-establishing.
+        val s = session()
+        val a = TouchPoint(0f, 0f, 1L)
+        val b = TouchPoint(400f, 0f, 2L)
+        val c = TouchPoint(0f, 300f, 3L)
+        s.onPointers(listOf(a, b, c)) // pinch tracks (A, B)
+
+        val afterLift = s.onPointers(listOf(TouchPoint(400f, 0f, 2L), TouchPoint(0f, 300f, 3L)))
+
+        assertEquals(GestureUpdate.NONE, afterLift)
+    }
+
+    @Test
+    fun after_the_first_of_three_lifts_zoom_tracks_the_new_pair() {
+        val s = session()
+        val a = TouchPoint(0f, 0f, 1L)
+        val b = TouchPoint(400f, 0f, 2L)
+        val c = TouchPoint(0f, 300f, 3L)
+        s.onPointers(listOf(a, b, c)) // pinch tracks (A, B), |A-B| = 400
+        s.onPointers(listOf(TouchPoint(400f, 0f, 2L), TouchPoint(0f, 300f, 3L))) // re-grip on (B, C), |B-C| = 500
+
+        // Span (B, C) doubles to 1000 -> zoom should be 2.0 relative to the
+        // NEW baseline of 500, not the stale (A, B) baseline of 400.
+        val spread = s.onPointers(listOf(TouchPoint(0f, 0f, 2L), TouchPoint(-800f, 600f, 3L)))
+
+        assertEquals(2.0, spread.zoom!!, 1e-9)
+    }
+
+    // --- touch slop ---------------------------------------------------------
+
+    @Test
+    fun a_one_finger_drift_within_touch_slop_does_not_pan() {
+        val s = PinchSession(currentZoom = { zoom }, touchSlopPx = 12f)
+        s.onPointers(one(100f, 100f))
+
+        // hypot(6, 4) ~= 7.2 px, inside the 12 px slop.
+        val drift = s.onPointers(one(106f, 104f))
+
+        assertEquals(GestureUpdate.NONE, drift)
+    }
+
+    @Test
+    fun a_one_finger_drag_past_touch_slop_pans() {
+        val s = PinchSession(currentZoom = { zoom }, touchSlopPx = 12f)
+        s.onPointers(one(100f, 100f))
+        s.onPointers(one(106f, 104f)) // still inside slop
+
+        // 40 px from the down point, well past the 12 px slop.
+        val dragged = s.onPointers(one(100f, 140f))
+
+        assertTrue("expected a pan, got $dragged", dragged.panDx != 0f || dragged.panDy != 0f)
     }
 }

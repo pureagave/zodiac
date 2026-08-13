@@ -13,6 +13,7 @@ import org.pureagave.zodiac.control.core.model.FollowMode
 import org.pureagave.zodiac.control.core.model.MapMode
 import org.pureagave.zodiac.control.data.prefs.CockpitPreferences
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
+import kotlin.math.abs
 
 /**
  * Everything that moves the *map camera* — mode, tilt, zoom, free pan, view
@@ -47,6 +48,15 @@ internal class MapCameraController(
      * pending revert rather than stacking.
      */
     private var autoRecenterJob: Job? = null
+
+    /**
+     * Cumulative twist, in degrees, accumulated while still in
+     * [FollowMode.TRACK_UP]. Lets [nudgeViewRotation] tell "a deliberate
+     * rotate gesture" from "incidental finger twist during a pinch-zoom" —
+     * see [ROTATE_FREE_COMMIT_DEG]. Reset on every commit to FREE and on
+     * every [recenterPan].
+     */
+    private var pendingTwistDeg: Float = 0f
 
     fun setMapMode(mode: MapMode) {
         state.update { it.copy(camera = it.camera.copy(mapMode = mode)) }
@@ -98,17 +108,34 @@ internal class MapCameraController(
     /**
      * Two-finger rotate delta in degrees (CW positive on screen). Spins
      * the *display* — what compass direction sits at the top of the
-     * viewport — without touching the ego's physical heading. Like the
-     * pan gesture, switches to FREE so the camera doesn't immediately
-     * snap back to track-up on the next GPS tick.
+     * viewport — without touching the ego's physical heading.
+     *
+     * While still in [FollowMode.TRACK_UP], the delta only *accumulates*
+     * ([pendingTwistDeg]) until it clears [ROTATE_FREE_COMMIT_DEG]: a pinch
+     * co-fires a per-frame rotate step for every incidental twist of the
+     * fingers, and committing to FREE on the first sub-degree step flipped
+     * essentially every zoom out of track-up. Once accumulated twist (or a
+     * single big nudge) clears the threshold, the whole accumulated amount
+     * is applied in one step — so the display continues smoothly from
+     * heading + accumulated twist rather than jumping — and the gesture
+     * commits to FREE exactly like a pan does. Already-FREE nudges are
+     * unaffected: every delta applies immediately, same fine-rotation feel
+     * as before.
      */
     fun nudgeViewRotation(deltaDeg: Float) {
         if (deltaDeg == 0f) return
+        val wasTrackUp = state.value.followMode == FollowMode.TRACK_UP
+        if (wasTrackUp) {
+            pendingTwistDeg += deltaDeg
+            if (abs(pendingTwistDeg) < ROTATE_FREE_COMMIT_DEG) return
+        }
+        val appliedDeg = if (wasTrackUp) pendingTwistDeg else deltaDeg
+        pendingTwistDeg = 0f
         state.update { current ->
             // Floored modulo keeps the accumulated rotation in [0, 360) so it
             // never grows unbounded and bleeds float precision over a long
             // session of rotate gestures.
-            val raw = current.viewRotationDeg + deltaDeg
+            val raw = current.viewRotationDeg + appliedDeg
             val normalized = ((raw % FULL_CIRCLE_DEG) + FULL_CIRCLE_DEG) % FULL_CIRCLE_DEG
             current.copy(
                 camera = current.camera.copy(viewRotationDeg = normalized, followMode = FollowMode.FREE),
@@ -127,6 +154,7 @@ internal class MapCameraController(
     fun recenterPan() {
         autoRecenterJob?.cancel()
         autoRecenterJob = null
+        pendingTwistDeg = 0f
         state.update { current ->
             // One named operation rather than three coordinated field
             // edits — recentring is a single idea and now reads as one.
@@ -146,3 +174,12 @@ internal class MapCameraController(
 
 /** Degrees in a full revolution — used to normalize accumulated view rotation. */
 private const val FULL_CIRCLE_DEG: Double = 360.0
+
+/**
+ * Cumulative twist, in degrees, required to commit a rotate gesture out of
+ * [FollowMode.TRACK_UP] into [FollowMode.FREE]. A chosen UX threshold, NOT a
+ * measured/datasheet constant — a few degrees, picked to sit below a
+ * deliberate two-finger rotate and above the incidental twist a pinch-zoom
+ * puts on the fingers. Device-verify the felt behaviour on the glass.
+ */
+private const val ROTATE_FREE_COMMIT_DEG: Float = 5.0f

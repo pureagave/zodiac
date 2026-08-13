@@ -5,6 +5,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalViewConfiguration
 
 const val MAP_MIN_ZOOM: Double = 0.05
 const val MAP_MAX_ZOOM: Double = 5.0
@@ -45,16 +46,19 @@ fun Modifier.cockpitTouchInput(
         val panCb by rememberUpdatedState(onPan)
         val zoomCb by rememberUpdatedState(onZoom)
         val rotateCb by rememberUpdatedState(onRotate)
+        val touchSlop = LocalViewConfiguration.current.touchSlop
         pointerInput(Unit) {
             // All the decisions live in PinchSession (unit-tested); this loop
-            // only adapts pointer frames in and callbacks out.
-            val session = PinchSession { zoomGetter() }
+            // only adapts pointer frames in and callbacks out. touchSlop is the
+            // device-measured platform constant, captured once when the
+            // modifier attaches (matching pointerInput(Unit)'s one-shot setup).
+            val session = PinchSession(currentZoom = { zoomGetter() }, touchSlopPx = touchSlop)
             awaitPointerEventScope {
                 while (true) {
                     val pressed =
                         awaitPointerEvent().changes
                             .filter { it.pressed }
-                            .map { TouchPoint(it.position.x, it.position.y) }
+                            .map { TouchPoint(it.position.x, it.position.y, it.id.value) }
                     val update = session.onPointers(pressed)
                     if (update.panDx != 0f || update.panDy != 0f) panCb(update.panDx, update.panDy)
                     update.zoom?.let(zoomCb)

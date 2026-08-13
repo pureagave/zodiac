@@ -404,6 +404,44 @@ class CockpitViewModelTest {
         }
 
     @Test
+    fun nudgeViewRotation_incidentalTwistStaysTrackUp_cumulativeCommitsFree() =
+        runTest {
+            val store = ViewModelStore()
+            try {
+                val factory =
+                    CockpitViewModelFactory(
+                        telemetryRepository = StaticTelemetryRepo(),
+                        vehicleGateway = FakeVehicleGateway(),
+                        playaMapRepository = NoOpPlayaMapRepository,
+                        locationSource = newFakeRoutedLocationSource(this.backgroundScope),
+                        preferences = NoOpCockpitPreferences(),
+                        fakeLocationSource =
+                            org.pureagave.zodiac.control.data.sensor.FakeLocationSource(
+                                scope = this.backgroundScope,
+                            ),
+                    )
+                val vm = ViewModelProvider(store, factory)[CockpitViewModel::class.java]
+                advanceUntilIdle() // let VM init settle
+                assertEquals(FollowMode.TRACK_UP, vm.uiState.value.followMode)
+
+                // A pinch co-fires a rotate step for every incidental twist of the
+                // fingers. Four 1-degree steps (4 deg total) stay below the 5 deg
+                // commit threshold, so the gesture must not flip out of track-up.
+                repeat(4) { vm.nudgeViewRotation(1f) }
+                assertEquals(FollowMode.TRACK_UP, vm.uiState.value.followMode)
+
+                // The fifth 1-degree step crosses the 5 deg cumulative threshold and
+                // commits to FREE. Do NOT advance the scheduler here (mirrors
+                // nudgeViewRotation_normalizesIntoRange) or the 60 s auto-recenter
+                // job would fire; store.clear() below cancels it either way.
+                vm.nudgeViewRotation(1f)
+                assertEquals(FollowMode.FREE, vm.uiState.value.followMode)
+            } finally {
+                store.clear()
+            }
+        }
+
+    @Test
     fun cycleConcept_advancesThroughAllFourAndPersistsEach() =
         runTest {
             val prefs = RecordingCockpitPreferences()
