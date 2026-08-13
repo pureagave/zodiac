@@ -6,6 +6,48 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-12 — `$ZNAV` verified live on hardware (first device-to-device proof); reachable fleet reflashed to `8f531e18a`
+
+`$ZNAV` shipped with 913 tests but had never been demonstrated device-to-device
+on the actual fleet. Proven today, end-to-end, across all three device classes,
+with the wire captured independently on the Jetson (the Mac can't listen — its
+firewall drops inbound UDP):
+
+- **S9+ (authority)** — tapped MAN on the DriveToBar → it began broadcasting
+  `$ZNAV,1,9C1977,PRESET,MAN*07` on `239.7.7.30:10130`, **every 3 s**, **twice per
+  tick** (multicast + subnet broadcast), valid XOR checksum. Owner-side UI flipped
+  to `▸ MAN` / `ON COURSE`. (Sniffed with an ephemeral `znav_listen.py` on the
+  Jetson — joins the group, prints frames. Currently at `/tmp/znav_listen.py` on
+  the box + scratchpad; worth promoting to `tools/` beside `beacon_listen.py` /
+  `threat_listen.py`.)
+- **A54 (authority, adopter)** — drive-to flipped **HOME → MAN** with no local
+  action. Adoption over the wire confirmed.
+- **Fire 11th (follower)** — also adopted **HOME → MAN** (shown `▸ MAN 584.8km`,
+  bearing 104°L — its ego is on the beacon's real GPS, ~585 km from BRC), and its
+  DriveToBar tracks the selection **but the buttons are gated** (spec R4: a
+  follower sees where the fleet is headed, can't change it). Also confirmed the
+  beacon is live and the Fire's `$ZNAV`/GPS receive works (`FIX`, `SATS 21`).
+
+Baseline before the set: **0 `$ZNAV` frames** on the bus — the documented idle
+state (no owner ⇒ no traffic). Fleet target reset to HOME after the test.
+
+**Reflash:** per "do the other ones," the three reachable tablets (S9+, A54,
+Fire 11th) were reflashed to current HEAD and verified reporting
+`versionName=0.1.0+8f531e18a` (the FLEET-2 staleness check via `dumpsys package`).
+NB the pre-commit gate's APK was built **dirty** (changes uncommitted at gate
+time), so a clean `assembleDebug` was rebuilt post-commit before flashing — else
+the fleet would have carried a `.dirty` identity. **Fire 9th still pending** (on
+charge, off the bus). Beacon (XCover) and Jetson untouched — `8f531e1` is
+`:app`-only.
+
+Traps re-hit: the S9+ and A54 wake into a stuck `NotificationShade` over adb
+(clear with HOME + `am start`, not the documented swipe, which didn't take this
+time); the Fire threw a "low power charger" dialog **and** a runtime-permission
+prompt on first launch (dismiss + `pm grant` the location/BT perms). OLED
+displays slept after (burn-in discipline).
+
+---
+
 ## 2026-08-12 — closed the last silent-loss channel in the logging path (`FileLogTree`)
 
 `RollingFileLog` counts every line it loses three ways (`droppedLines` for IO
