@@ -149,6 +149,33 @@ class DriverAlertsTest {
             job.cancel()
         }
 
+    @Test
+    fun the_rear_callout_is_speed_gated_too_slowing_to_a_stop_silences_it() =
+        runTest {
+            // Same failure as the_speed_gate_is_read_per_frame_..., mirrored
+            // for the rear callout: a parked or crawling car in a crowd must
+            // not keep flashing CHECK REAR at every constant-bearing bystander.
+            val frames = MutableSharedFlow<List<DriverThreat>>()
+            val seen = mutableListOf<DriverAlerts>()
+            var speed = driving
+            val job = launch { frames.driverAlerts({ speed }, latch(), latch()).toList(seen) }
+            runCurrent()
+            frames.emit(listOf(t(az = 175f, collision = true)))
+            runCurrent()
+            assertEquals(listOf(true), seen.map { it.checkRear })
+            speed = 0f
+            advanceTimeBy(AlarmLatch.DEFAULT_HOLD_MS + 1)
+            runCurrent()
+            frames.emit(listOf(t(az = 175f, collision = true)))
+            runCurrent()
+            assertEquals(
+                "stopped: the contact still draws, the callout goes quiet",
+                listOf(true, false),
+                seen.map { it.checkRear },
+            )
+            job.cancel()
+        }
+
     /** A latch on the test's virtual clock, so holds elapse with advanceTimeBy. */
     private fun kotlinx.coroutines.test.TestScope.latch() = AlarmLatch(nowMs = { testScheduler.currentTime })
 

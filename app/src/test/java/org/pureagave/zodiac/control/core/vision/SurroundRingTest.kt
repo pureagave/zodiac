@@ -212,7 +212,7 @@ class SurroundRingTest {
         // teaches the driver to ignore the real one.
         val rear = listOf(t(az = 175f, collision = true))
         assertFalse(SurroundRing.brakeAdvised(rear, aboveGate))
-        assertTrue("but it is still worth showing", SurroundRing.rearAlert(rear))
+        assertTrue("but it is still worth showing", SurroundRing.rearAlert(rear, aboveGate))
     }
 
     @Test
@@ -227,27 +227,27 @@ class SurroundRingTest {
     fun a_rear_contact_that_is_not_closing_raises_nothing() {
         val rear = listOf(t(az = 170f, size = 0.9f, collision = false))
         assertFalse(SurroundRing.brakeAdvised(rear, aboveGate))
-        assertFalse(SurroundRing.rearAlert(rear))
+        assertFalse(SurroundRing.rearAlert(rear, aboveGate))
     }
 
     @Test
     fun a_forward_collision_alongside_a_rear_one_still_brakes() {
         val mixed = listOf(t(az = 178f, collision = true), t(az = 3f, collision = true))
         assertTrue(SurroundRing.brakeAdvised(mixed, aboveGate))
-        assertTrue(SurroundRing.rearAlert(mixed))
+        assertTrue(SurroundRing.rearAlert(mixed, aboveGate))
     }
 
     @Test
     fun a_quiet_field_of_contacts_raises_nothing() {
         val quiet = (0..350 step 10).map { t(az = it.toFloat(), size = 0.4f) }
         assertFalse(SurroundRing.brakeAdvised(quiet, aboveGate))
-        assertFalse(SurroundRing.rearAlert(quiet))
+        assertFalse(SurroundRing.rearAlert(quiet, aboveGate))
     }
 
     @Test
     fun no_contacts_at_all_is_silent() {
         assertFalse(SurroundRing.brakeAdvised(emptyList(), aboveGate))
-        assertFalse(SurroundRing.rearAlert(emptyList()))
+        assertFalse(SurroundRing.rearAlert(emptyList(), aboveGate))
     }
 
     // -- speed gating (1.5d) -----------------------------------------------------
@@ -276,6 +276,27 @@ class SurroundRingTest {
         assertFalse(SurroundRing.brakeAdvised(threats, speedKph = 0f))
         val blip = SurroundRing.blips(threats).single()
         assertTrue(blip.collision)
+    }
+
+    @Test
+    fun check_rear_is_suppressed_below_the_speed_gate() {
+        // A parked or crawling art car in a crowd sees a constant-bearing
+        // rear "collision" almost continuously — the same walk-up rationale
+        // as the brake gate, sharing the same threshold.
+        val rear = listOf(t(az = 175f, collision = true))
+        assertFalse(SurroundRing.rearAlert(rear, speedKph = 0f))
+        assertTrue(SurroundRing.rearAlert(rear, speedKph = aboveGate))
+
+        // A parked rear collision must not invent CHECK_REAR at the HUD level
+        // either — mirrors the brake-speed-gated CLEAR case above.
+        assertEquals(
+            HudStatus.CLEAR,
+            SurroundRing.hudStatus(
+                SurroundRing.brakeAdvised(rear, speedKph = 0f),
+                SurroundRing.rearAlert(rear, speedKph = 0f),
+                VisionFeed.LIVE,
+            ),
+        )
     }
 
     // -- what gets drawn: placement --------------------------------------------
@@ -457,7 +478,7 @@ class SurroundRingTest {
             HudStatus.NO_VISION,
             SurroundRing.hudStatus(
                 SurroundRing.brakeAdvised(forward, aboveGate),
-                SurroundRing.rearAlert(forward),
+                SurroundRing.rearAlert(forward, aboveGate),
                 VisionFeed.ABSENT,
             ),
         )
@@ -470,7 +491,7 @@ class SurroundRingTest {
         val mixed = listOf(t(az = 178f, collision = true), t(az = 3f, collision = true))
         assertEquals(
             HudStatus.BRAKE,
-            SurroundRing.hudStatus(SurroundRing.brakeAdvised(mixed, aboveGate), SurroundRing.rearAlert(mixed), VisionFeed.LIVE),
+            SurroundRing.hudStatus(SurroundRing.brakeAdvised(mixed, aboveGate), SurroundRing.rearAlert(mixed, aboveGate), VisionFeed.LIVE),
         )
     }
 
@@ -481,7 +502,7 @@ class SurroundRingTest {
             HudStatus.CHECK_REAR,
             SurroundRing.hudStatus(
                 SurroundRing.brakeAdvised(rearOnly, aboveGate),
-                SurroundRing.rearAlert(rearOnly),
+                SurroundRing.rearAlert(rearOnly, aboveGate),
                 VisionFeed.LIVE,
             ),
         )
@@ -492,7 +513,7 @@ class SurroundRingTest {
         val quiet = listOf(t(az = 0f, collision = false))
         assertEquals(
             HudStatus.DEMO,
-            SurroundRing.hudStatus(SurroundRing.brakeAdvised(quiet, aboveGate), SurroundRing.rearAlert(quiet), VisionFeed.DEMO),
+            SurroundRing.hudStatus(SurroundRing.brakeAdvised(quiet, aboveGate), SurroundRing.rearAlert(quiet, aboveGate), VisionFeed.DEMO),
         )
     }
 
@@ -505,7 +526,7 @@ class SurroundRingTest {
             HudStatus.BRAKE,
             SurroundRing.hudStatus(
                 SurroundRing.brakeAdvised(demoCollision, aboveGate),
-                SurroundRing.rearAlert(demoCollision),
+                SurroundRing.rearAlert(demoCollision, aboveGate),
                 VisionFeed.DEMO,
             ),
         )
@@ -516,7 +537,7 @@ class SurroundRingTest {
         val quiet = listOf(t(az = 0f, collision = false))
         assertEquals(
             HudStatus.CLEAR,
-            SurroundRing.hudStatus(SurroundRing.brakeAdvised(quiet, aboveGate), SurroundRing.rearAlert(quiet), VisionFeed.LIVE),
+            SurroundRing.hudStatus(SurroundRing.brakeAdvised(quiet, aboveGate), SurroundRing.rearAlert(quiet, aboveGate), VisionFeed.LIVE),
         )
     }
 
@@ -539,7 +560,7 @@ class SurroundRingTest {
             HudStatus.CLEAR,
             SurroundRing.hudStatus(
                 SurroundRing.brakeAdvised(boarding, speedKph = 0f),
-                SurroundRing.rearAlert(boarding),
+                SurroundRing.rearAlert(boarding, aboveGate),
                 VisionFeed.LIVE,
             ),
         )

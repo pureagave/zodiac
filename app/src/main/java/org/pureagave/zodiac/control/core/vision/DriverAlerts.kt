@@ -48,7 +48,7 @@ fun Flow<List<DriverThreat>>.driverAlerts(
         emit(
             DriverAlerts(
                 brake = brakeLatch.update(SurroundRing.brakeAdvised(threats, speedKph())),
-                checkRear = rearLatch.update(SurroundRing.rearAlert(threats)),
+                checkRear = rearLatch.update(SurroundRing.rearAlert(threats, speedKph())),
             ),
         )
         // Nothing else will wake us: schedule the clear for exactly when the

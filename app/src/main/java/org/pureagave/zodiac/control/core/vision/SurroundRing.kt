@@ -97,13 +97,15 @@ object SurroundRing {
     const val SWITCH_MARGIN: Float = 0.08f
 
     /**
-     * Below this speed, [brakeAdvised] stays quiet even with a closing
-     * forward contact. People deliberately walk up to art cars — every one of
-     * them looks like a constant-bearing, looming track while boarding or
-     * parked, and a driver who sees "! BRAKE !" at a dead stop tunes it out
-     * long before it matters at speed on open playa. Contacts still draw and
-     * collision blips still render red below this speed; only the braking
-     * instruction is suppressed.
+     * Below this speed, both the brake and check-rear imperatives stay quiet
+     * even with a closing contact. People deliberately walk up to art cars —
+     * every one of them looks like a constant-bearing, looming track while
+     * boarding or parked, and a driver who sees "! BRAKE !" or
+     * "! CHECK REAR !" at a dead stop tunes it out long before it matters at
+     * speed on open playa. Contacts still draw and collision blips still
+     * render red below this speed; only the imperatives are suppressed. This
+     * is the moving gate, not a brake-only one — [rearAlert] shares it rather
+     * than carrying a second threshold, so the two stay in lockstep.
      */
     const val BRAKE_MIN_KPH: Float = 5f
 
@@ -119,7 +121,8 @@ object SurroundRing {
      * demands a ~200° diagonal — not a lens that exists. Read as the diagonal
      * it is an ordinary fisheye, and the horizontal half-angle is
      * 80° × 80/100 = **64°**. The Jetson rig spec carries the matching
-     * `fovref=d`; `LeptonUwFovReferenceTest` pins the arithmetic.
+     * `fovref=d`; `LeptonUwFovReferenceTest` (`:app` unit tests) pins the
+     * arithmetic by re-deriving it from the raw rig geometry.
      *
      * Under genuine uncertainty this errs toward under-claiming on purpose. A
      * ring that says "not watched" where something is watching costs a little
@@ -312,8 +315,25 @@ object SurroundRing {
         speedKph >= BRAKE_MIN_KPH &&
             threats.any { it.collision && sectorOf(it.relAzDeg) != Sector.REAR }
 
-    /** A closing contact behind the vehicle — worth showing, not worth braking for. */
-    fun rearAlert(threats: List<DriverThreat>): Boolean = threats.any { it.collision && sectorOf(it.relAzDeg) == Sector.REAR }
+    /**
+     * A closing contact behind the vehicle — worth showing, not worth braking
+     * for.
+     *
+     * Also gated on [BRAKE_MIN_KPH], the same walk-up rationale as
+     * [brakeAdvised]: a parked or crawling art car in a crowd sees a
+     * constant-bearing rear "collision" almost continuously, and an
+     * always-on "! CHECK REAR !" in that state is uninformative right when it
+     * would otherwise matter. This does not serve the pre-reverse check —
+     * reversing is not modelled here any more than it is in [brakeAdvised];
+     * at a standstill, rear safety is a spotter-procedure gap, not something
+     * this alert covers.
+     */
+    fun rearAlert(
+        threats: List<DriverThreat>,
+        speedKph: Float,
+    ): Boolean =
+        speedKph >= BRAKE_MIN_KPH &&
+            threats.any { it.collision && sectorOf(it.relAzDeg) == Sector.REAR }
 
     /**
      * The DRIVER HUD's status line is one of these five mutually-exclusive
