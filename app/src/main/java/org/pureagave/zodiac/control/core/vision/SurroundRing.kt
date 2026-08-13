@@ -90,9 +90,15 @@ object SurroundRing {
      * How much more urgent a challenger must be than an incumbent before it
      * takes the incumbent's slot under the [MAX_BLIPS] cap. Without this,
      * noisy `size` estimates make the cap boundary flicker — marks popping in
-     * and out is more attention-grabbing than any real signal. Mirrors
-     * `tracker.py`'s `switch_margin`, which solves the same problem for the
-     * DMX head.
+     * and out is more attention-grabbing than any real signal.
+     *
+     * `tracker.py`'s `switch_margin` is the same hysteresis idea applied to
+     * the DMX head's single-target follow-latch, but the two are tuned
+     * independently and are not meant to match: this one gates a difference
+     * in [urgency] across up to [MAX_BLIPS] ring slots, that one gates a
+     * difference in raw `size` for a single held target. Different
+     * quantities on different scales doing different jobs — don't "fix" one
+     * to equal the other.
      */
     const val SWITCH_MARGIN: Float = 0.08f
 
