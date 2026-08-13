@@ -103,16 +103,28 @@ Followers (Fires) still run the receiver but need not render the card.
 ## Phasing (each phase green + runnable, committed separately)
 
 1. **Protocol** — `core/telemetry/FleetVersion*` (message type + build + parse) +
-   tests. Pure, wired to nothing.
-2. **Aggregator** — `core/telemetry/FleetRoster` (pure table math) + tests.
-3. **Plumbing** — `data/fleet/FleetVersionSender` + `FleetVersionReceiver`
-   (mirror `NavShareSender`/`NavShareReceiver`) + tests.
-4. **App integration** — the app emits its own identity, receives peers, the
-   roster flows to state; a log line makes it observable without the card.
-   Verifiable on hardware with a `zver_listen.py` sniffer.
-5. **UI card** on the hero (needs a device for placement/legibility).
-6. **Beacon + Jetson emit** + the golden corpus.
+   tests. Pure, wired to nothing. — **DONE 2026-08-12 (`1c74cc5`).**
+2. **Aggregator** — `core/telemetry/FleetRoster` (pure table math) + tests. —
+   **DONE 2026-08-12 (`def9eb6`).**
+3. **Plumbing** —
+   - **3a** `core/telemetry/FleetPeerTable` — the pure receive-side fold (parse →
+     upsert by node), kept off the socket loop + tests. — **DONE (`517da46`).**
+   - **3b** `data/fleet/FleetVersionReceiver` + `FleetVersionSender` — the socket
+     loops (mirror `NavShareReceiver`/`NavShareSender`; the receiver just calls
+     `FleetPeerTable.ingest`, the sender broadcasts one fixed sentence every
+     10 s). Thin glue, verified on hardware. — **TODO.**
+4. **App integration** — a self-contained `FleetVersionMonitor` in
+   `ZodiacApplication`: combine `FleetPeerTable` peers + self + a periodic tick
+   through `FleetRoster.compute` into a `StateFlow<List<FleetRosterEntry>>`. Kept
+   **off** `CockpitUiState` (it is a slow side-channel, not per-frame cockpit
+   state — the A5 hot-path stays lean). Self identity = `FleetVersion(navSrcId,
+   Build.MODEL, BuildIdentity.parse(BuildConfig.VERSION_NAME,
+   GIT_COMMIT_EPOCH_SECONDS))`. A log line makes it observable without the card;
+   verify emit on hardware with a `zver_listen.py` sniffer. — **TODO.**
+5. **UI card** on the hero (needs a device for placement/legibility — Rob's eye).
+6. **Beacon + Jetson emit** + the golden corpus (`protocol/version-protocol-golden.json`).
 
-Phases 1–4 are pure/plumbing and land without a device. 5 needs the S9+; 6 spans
-all three languages. This doc is the contract; the code wins if they disagree
-(fix the doc, note it in `SYNC.md`).
+**Status:** the pure, tested core (phases 1, 2, 3a) is done and mutation-checked —
+everything with real logic. Remaining: the socket glue (3b), the DI wiring (4),
+the card (5, needs the S9+), and cross-language emit + corpus (6). This doc is the
+contract; the code wins if they disagree (fix the doc, note it in `SYNC.md`).

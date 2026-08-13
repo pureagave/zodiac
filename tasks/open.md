@@ -252,6 +252,13 @@ API contract, not real OS scheduling.
       (`GIT_COMMIT_EPOCH_SECONDS` is the "newest-wins" comparator; an `unknown`/
       dirty build must render as unknown, never current — `BuildIdentity.known`
       already encodes that). The Jetson still needs its own version-report path.
+      **IN PROGRESS 2026-08-12** — spec at `design/FLEET-1-version-monitor-spec.md`;
+      wire is `$ZVER` on **239.7.7.40:10140**. Pure, tested core done + pushed:
+      `core/telemetry/FleetVersion*` (protocol, `1c74cc5`), `FleetRoster`
+      (aggregator, `def9eb6`), `FleetPeerTable` (receive-side fold, `517da46`).
+      Remaining: 3b socket sender/receiver plumbing, 4 DI wiring
+      (`FleetVersionMonitor`, kept off `CockpitUiState`) + hardware emit verify,
+      5 hero UI card (needs the S9+), 6 beacon+Jetson emit + golden corpus.
 - [x] **FLEET-2 DONE 2026-08-11 — builds are now self-identifying.** Spec at
       `design/FLEET-2-build-identity-spec.md`. Git values computed **once** in the
       root `build.gradle.kts` (`providers.exec`, failing toward unknown/dirty) and

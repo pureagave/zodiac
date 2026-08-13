@@ -6,6 +6,45 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-12 — FLEET-1 version monitor: spec + pure tested core built (protocol + roster + peer-table)
+
+Started the fleet version monitor Rob asked for (2026-08-11). Spec at
+`design/FLEET-1-version-monitor-spec.md`. Wire is a new `$ZVER` sentence on a new
+group **`239.7.7.40 : 10140`** (following `.10` GPS / `.20` threats / `.30` nav):
+`$ZVER,<node>,<name>,<base>,<sha>,<dirty>,<epoch>*CC`. Each node announces itself;
+**"latest" = newest commit-epoch seen among peers** (offline, serverless).
+
+Built and pushed the **pure, tested core** — everything with real logic:
+- `core/telemetry/FleetVersion*` — the `$ZVER` build/parse (`1c74cc5`). Third
+  hand-written impl of a wire (with the beacon's and Jetson's to come), so the
+  grammar is pinned with explicit regexes validated in one pass; parse never
+  throws; the pinned-string tests use **hand-computed** checksums (`*58`/`*57`) so
+  the format can't agree with a broken XOR (the ZTHREAT trap), and `xor→or`
+  reddens them.
+- `core/telemetry/FleetRoster` — the aggregator (`def9eb6`). Enforces the one
+  rule: silence → OFFLINE (never healthy), dirty/unknown/epoch-0 → UNKNOWN and
+  never sets the bar, self never offline. Newest-epoch = CURRENT. Clock injected,
+  pure; the "dirty is never a reference" mutation reddens three tests.
+- `core/telemetry/FleetPeerTable` — the receive-side fold (`517da46`), kept off
+  the socket loop: valid `$ZVER` upserts by node; garbage returns the table
+  unchanged (asserted by identity).
+
+Design decisions worth noting: **`name` = device model / hostname**, not a
+derived "role" — models are unique per device in this fleet (`SM-X810`, `KFTUWI`,
+`KFMAWI`, `SM-G715U`, `zvision`), so the operator reads "SM-X810 = the hero"
+without the app having to guess hero-vs-driver (which it can't do reliably). The
+monitor will live in a self-contained `FleetVersionMonitor`, **off**
+`CockpitUiState` (a slow side-channel, not per-frame state — keeps the A5 hot path
+lean). app 915→**941**.
+
+**Remaining (phases 3b–6):** socket sender/receiver plumbing, DI wiring + a
+hardware emit verify (via a `zver_listen.py` sniffer), the hero UI card (needs the
+S9+ — Rob's eye on placement/legibility), and beacon+Jetson emit + a golden
+corpus. Also this session: **`tools/znav_listen.py`** added (`84a52b2`) — completes
+the listener set; used to capture the `$ZNAV` broadcast during today's live verify.
+
+---
+
 ## 2026-08-12 — `$ZNAV` verified live on hardware (first device-to-device proof); reachable fleet reflashed to `8f531e18a`
 
 `$ZNAV` shipped with 913 tests but had never been demonstrated device-to-device
