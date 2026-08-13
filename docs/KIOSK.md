@@ -38,6 +38,14 @@ reset is needed — it is not superstition, the `dpm` command refuses otherwise.
 
    Success prints `Active admin set to component {...}`.
 
+   ⚠️ **Provision with a release-signed APK from a stable, backed-up keystore** —
+   not a per-machine `app-debug.apk`. A device-owner app can't be uninstalled and
+   can only be *updated* by an APK signed with the **same** key, so a tablet
+   provisioned with one laptop's debug keystore can never be moved to a release
+   build (or a debug build from any other machine) without a factory reset. The
+   `app-debug.apk` above is fine for a throwaway test tablet; use the release APK
+   for anything that stays in the fleet.
+
 5. Launch the app. It locks itself on resume.
 
 ### Verify
@@ -49,16 +57,38 @@ adb logcat -d | grep "kiosk:"          # "kiosk: locked to org.pureagave..."
 
 ## Getting back out
 
-Device owner **cannot be removed without another factory reset** — that is the
-point of it. For servicing, uninstalling the app is the escape hatch:
+There is **no adb un-provision** on the shipped build. `dpm remove-active-admin`
+throws `SecurityException: Attempt to remove non-test admin` (it only works on a
+`testOnly` APK, which the fleet is not), and a device-owner app **cannot be
+uninstalled** (`DELETE_FAILED_DEVICE_POLICY_MANAGER`). So there are exactly two
+ways out:
 
-```sh
-adb shell dpm remove-active-admin \
-  org.pureagave.zodiac.control/.kiosk.ZodiacDeviceAdminReceiver
-```
+1. **The hidden exit code — primary, no reset.** On the running cockpit, tap the
+   two hidden right-edge corners — **bottom-right, then top-right, alternating,
+   six taps total** — each within 2 s of the last. The app un-provisions itself
+   (`KioskController.exitKiosk` → `clearDeviceOwnerApp`): it leaves lock task and
+   relinquishes device owner, so the tablet is unlocked and can be serviced,
+   updated, or uninstalled. `engage()` then no-ops on resume (no longer owner), so
+   it stays unlocked. Confirm:
 
-Plan on this being a one-way door per tablet, and provision the fleet only once
-the build is settled.
+   ```sh
+   adb logcat -d | grep "kiosk:"                              # "kiosk: device owner cleared; ..."
+   adb shell dumpsys device_policy | grep -i "device owner"   # now empty
+   ```
+
+   The sequence is `KioskExitCode.DEFAULT_CODE` (a constant — change it there if it
+   ever leaks). Passengers can't guess it; the trade is that an operator who
+   forgets it falls back to (2).
+
+2. **Factory reset — fallback.** If the app is wedged and won't take the code, a
+   reset is the only other way; it wipes the tablet and you re-provision from
+   step 1 of the previous section.
+
+⚠️ **Verify the exit code on a test tablet before committing any device to the
+fleet** — provision one, enter the code, confirm `dumpsys device_policy` shows no
+device owner. The device-owner path cannot be exercised in CI, so this on-device
+dry-run is the only real check. Provision the fleet only once the build is
+settled.
 
 ## Which tablets should get it
 

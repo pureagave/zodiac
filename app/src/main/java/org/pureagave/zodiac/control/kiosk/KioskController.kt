@@ -74,10 +74,40 @@ class KioskController(context: Context) {
             .onFailure { Timber.w(it, "kiosk: startLockTask failed") }
     }
 
-    /** Leave kiosk — for servicing. Only possible from an already-owned device. */
+    /** Leave lock task without un-provisioning — a temporary unlock for servicing. */
     fun release(activity: Activity) {
         runCatching { activity.stopLockTask() }
             .onSuccess { Timber.i("kiosk: released") }
             .onFailure { Timber.w(it, "kiosk: stopLockTask failed") }
+    }
+
+    /**
+     * Un-provision the tablet: leave lock task, then relinquish device owner via
+     * [DevicePolicyManager.clearDeviceOwnerApp]. This is the **only** recovery
+     * short of a factory reset — a debug/non-`testOnly` build cannot be
+     * un-provisioned over adb (`dpm remove-active-admin` throws, and a
+     * device-owner app cannot be uninstalled), and nothing else self-clears. See
+     * `docs/KIOSK.md`. Reached only by the hidden exit code
+     * ([org.pureagave.zodiac.control.core.kiosk.KioskExitCode]) so a passenger
+     * can't trigger it. No-op unless this app is device owner.
+     *
+     * After this returns, [engage] is a no-op (no longer device owner), so the
+     * tablet stays unlocked and can be serviced, updated, or uninstalled.
+     */
+    @Suppress("DEPRECATION")
+    fun exitKiosk(activity: Activity) {
+        val manager = dpm
+        if (manager == null || !isDeviceOwner) {
+            Timber.i("kiosk: exit requested but not device owner; nothing to un-provision")
+            return
+        }
+        runCatching { activity.stopLockTask() }
+            .onFailure { Timber.w(it, "kiosk: stopLockTask during exit failed") }
+        // clearDeviceOwnerApp is deprecated in API 34, but it is the only
+        // self-service un-provision path and still functions; the recommended
+        // replacements require an enrolled management flow we deliberately do not run.
+        runCatching { manager.clearDeviceOwnerApp(packageName) }
+            .onSuccess { Timber.i("kiosk: device owner cleared; tablet un-provisioned and unlocked") }
+            .onFailure { Timber.w(it, "kiosk: clearDeviceOwnerApp failed") }
     }
 }

@@ -17,6 +17,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.burnin.burnInScaffold
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
+import org.pureagave.zodiac.control.core.kiosk.KioskExitCode
+import org.pureagave.zodiac.control.core.kiosk.KioskTapZone
 import org.pureagave.zodiac.control.core.log.RollingFileLog
 import org.pureagave.zodiac.control.core.model.CockpitConcept
 import org.pureagave.zodiac.control.core.ops.sunTimes
@@ -60,10 +62,19 @@ fun cockpitScreen(
     onSetPassengerMode: (Boolean) -> Unit = {},
     /** Pre-rendered art images; null outside the passenger display. */
     artImages: ArtImageStore? = null,
+    /**
+     * Un-provision a kiosked (device-owner) tablet — the only recovery short of a
+     * factory reset (see `docs/KIOSK.md`). Fired by the hidden [KioskExitCode]
+     * tapped on the two right-edge corners; a no-op on any non-kiosked device.
+     */
+    onExitKiosk: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val cycle: () -> Unit = viewModel::cycleConcept
     var logsOpen by remember { mutableStateOf(false) }
+    // Recogniser for the hidden kiosk-exit tap code; taps come from the two
+    // right-edge hot-zones below (short taps, so it never fights their long-press).
+    val kioskExit = remember { KioskExitCode() }
 
     // Sun times are a local calculation and change once a day; compute per
     // date, not per recomposition.
@@ -120,7 +131,12 @@ fun cockpitScreen(
                         Modifier
                             .align(Alignment.BottomEnd)
                             .size(LOG_HOT_ZONE)
-                            .pointerInput(Unit) { detectTapGestures(onLongPress = { logsOpen = true }) },
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = { onKioskCornerTap(KioskTapZone.BOTTOM_END, kioskExit, onExitKiosk) },
+                                    onLongPress = { logsOpen = true },
+                                )
+                            },
                 )
                 // Top-right long-press assigns this tablet's role. Hidden by
                 // design in both directions: a rider must not be able to leave
@@ -132,6 +148,7 @@ fun cockpitScreen(
                             .size(LOG_HOT_ZONE)
                             .pointerInput(passengerMode) {
                                 detectTapGestures(
+                                    onTap = { onKioskCornerTap(KioskTapZone.TOP_END, kioskExit, onExitKiosk) },
                                     onLongPress = { onSetPassengerMode(!passengerMode) },
                                 )
                             },
@@ -147,6 +164,19 @@ fun cockpitScreen(
             }
         }
     }
+}
+
+/**
+ * Feed a hidden-corner tap into the kiosk-exit recogniser; fire [onExit] only
+ * when the full code just completed. Extracted so the branch lives here, not in
+ * the (complexity-capped) cockpit composable.
+ */
+private fun onKioskCornerTap(
+    zone: KioskTapZone,
+    code: KioskExitCode,
+    onExit: () -> Unit,
+) {
+    if (code.tap(zone, System.currentTimeMillis())) onExit()
 }
 
 /** Corner hot-zone for the log-viewer long-press; mirrors the burn-in scaffold's. */

@@ -6,6 +6,38 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — kiosk P0 fixed: a working exit from device-owner lock (was factory-reset-only)
+
+The #10 audit (map-touch/kiosk pass) found a **P0**: a kiosked (device-owner)
+tablet had **no recovery short of a factory reset**. The documented escapes both
+fail on the shipped build — `dpm remove-active-admin` throws (only works on a
+`testOnly` APK) and a device-owner app can't be uninstalled — and the app never
+self-cleared. A wedged/wrong-Wi-Fi kiosk tablet on the playa = a screen lost for
+the week. Caught **before any tablet was provisioned**.
+
+**Fix (shipped):** `KioskController.exitKiosk()` calls `clearDeviceOwnerApp()` —
+the only self-service un-provision path, works regardless of `testOnly`. It's
+reached by a **hidden tap code** so a passenger can't trigger it: tap the two
+right-edge corners **bottom, top, alternating, six times**, each within 2 s. The
+sequence logic is a pure, mutation-tested `core/kiosk/KioskExitCode` (the
+staleness-restart mutation reddens it); the two right corners already existed
+(log-viewer + passenger-role long-press) so the short-tap code doesn't disturb
+them. `docs/KIOSK.md` "Getting back out" rewritten to the truth (exit code +
+factory-reset fallback; removed the false `remove-active-admin`/uninstall claims),
+and step 4 now warns to **provision with a release-signed APK from a backed-up
+keystore** (the #10 P1 signature-trap: a debug-signed device-owner tablet can
+never be updated or un-provisioned without a reset).
+
+⚠️ **The device-owner path can't be exercised in CI** — before committing any
+tablet, provision a test unit, enter the code, and confirm `dumpsys device_policy`
+shows no owner. Deferred (noted, not fixed): the #10 P2 — `engage()` sets OTA via
+`setGlobalSetting("ota_disable_automatic_update")`, which throws on API 34 and is
+swallowed, so the "no OTA mid-event" guarantee is silently unmet; the fix is
+`setSystemUpdatePolicy`. Full #9/#10 findings still to be folded into the audit
+doc with the P3 batch.
+
+---
+
 ## 2026-08-13 — Fable+Opus fan-out bug hunt (8 agents, 8 subsystems) → full catalogue at `docs/AUDIT-2026-08-13.md`
 
 Eight read-only worktree agents (4 Fable on areas 1–4, 4 high-reasoning Opus on

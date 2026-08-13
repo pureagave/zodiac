@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableImmersiveMode()
-        setContent { zodiacApp() }
+        setContent { zodiacApp(onExitKiosk = { kiosk.exitKiosk(this@MainActivity) }) }
     }
 
     override fun onResume() {
@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun zodiacApp() {
+private fun zodiacApp(onExitKiosk: () -> Unit = {}) {
     val app = LocalContext.current.applicationContext as ZodiacApplication
     val viewModel = rememberCockpitViewModel(app)
 
@@ -90,6 +90,7 @@ private fun zodiacApp() {
         passengerMode = passengerMode,
         onSetPassengerMode = app.displayRole::setPassengerMode,
         artImages = app.artImages,
+        onExitKiosk = onExitKiosk,
     )
     // Emitted *after* the cockpit deliberately: siblings at the root stack in
     // declaration order, so a gate declared first draws underneath the whole
