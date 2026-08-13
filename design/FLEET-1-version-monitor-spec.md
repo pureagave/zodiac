@@ -36,7 +36,7 @@ e.g. $ZVER,9C1977,SM-X810,0.1.0,8f531e18a,0,1691900000*CC
 | Field | Grammar | Meaning |
 |---|---|---|
 | `node` | `[A-Z0-9]{1,8}` | stable unique key — last 6 of `Settings.Secure.ANDROID_ID`, uppercased (same derivation as `$ZNAV`'s `src`). The Jetson/beacon use their own stable id. **The table's primary key.** |
-| `name` | `[A-Z0-9._-]{1,16}` | human label for display: `Build.MODEL` on tablets/beacon (`SM-X810`, `KFTUWI`, …), hostname on the Jetson (`zvision`). Unique per device in this fleet, so the operator reads "SM-X810 = the hero" without any hero/driver derivation the app can't do reliably. |
+| `name` | `[A-Za-z0-9._-]{1,16}` | human label for display: `Build.MODEL` on tablets/beacon (`SM-X810`, `KFTUWI`, …), hostname on the Jetson (`zvision` — lowercase, hence the mixed-case class). Unique per device in this fleet, so the operator reads "SM-X810 = the hero" without any hero/driver derivation the app can't do reliably. |
 | `base` | `[0-9A-Za-z.+~-]{1,16}` | `VERSION_BASE` (`0.1.0`) |
 | `sha` | `[0-9a-f]{7,40}` \| `unknown` | `GIT_SHA` (9 hex normally); `unknown` when the build couldn't identify itself |
 | `dirty` | `0` \| `1` | `GIT_DIRTY` — a dirty build is never "current" |

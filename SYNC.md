@@ -6,6 +6,66 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — overnight audit of the last two days' work (4 parallel worktree agents); 2 real bugs fixed, +38 tests
+
+Ran four audit agents in isolated git worktrees (non-overlapping scopes, merged
+one at a time with the gate between — the endorsed fan-out pattern), each hunting
+the project's recurring failure mode: *tests that agree with the code they test*.
+Every added test was mutation-proved (break the code, confirm red, revert). `:app`
+**941 → 979** unit tests; combined gate green; all four cherry-picked onto `main`.
+
+**2 real bugs found and fixed** — both in today's new `$ZVER` protocol (`FleetVersion.kt`):
+- **Signed checksum accepted.** `checksumMatches` used `toIntOrNull(16)`, which
+  swallows a leading sign, so `*+0` / `*-0` were accepted for any body whose XOR
+  is `0x00`. This is exactly the cross-language drift class the golden corpus
+  exists to prevent — a spec-conformant Python peer regex-checking `[0-9A-Fa-f]{2}`
+  would reject frames this Kotlin side accepted. Fixed: grammar-check the checksum
+  with `[0-9A-Fa-f]{1,2}` before `toInt(16)` (case- and 1-digit-leniency kept).
+- **`build()` round-trip breaks on an out-of-range epoch.** `coerceAtLeast(0)`
+  lower-bounded only; an 11-digit epoch emitted a sentence its own `[0-9]{1,10}`
+  parser then rejected, so `parse(build(v))` returned null — violating the file's
+  "output always parses back" contract. Fixed: `coerceIn(0, 9_999_999_999)`.
+
+**Weak/incomplete tests strengthened** (each left a load-bearing mutant alive):
+- Logging: the overflow test asserted only the drop *count*, not that the *oldest*
+  lines are shed (`removeFirst`→`removeLast` survived) — now pinned; plus the
+  rotation shift-cascade failure path (all prior tests used `keep=1`, where the
+  cascade loop is empty), `logBlocking` inline-write, and the priority floor.
+- $ZNAV: the arbiter's `maxSeen` high-water-mark vs `lastApplied` was never
+  exercised by the seed+adopt-low path (a `+1`-off-the-wrong-field mutant passed
+  everything); the out-of-range-clock test used hours 1/11 which `ClockTime`
+  *accepts*, never exercising the "range-check before ClockTime" throw guard.
+- Telemetry: the roster `staleAfter` boundary used `age = stale+1`, so `>`→`>=`
+  survived; added the exclusive-boundary case and a secondary-sort test.
+- Discovery: an order-equality test could pass vacuously as `assertEquals(null,
+  null)` if both field orders dropped — strengthened with `assertNotNull`. Added a
+  `DiscoverySeedAssetTest` that validates the **real shipped `discovery_seed.json`
+  bytes** — a camp placement-rate tripwire (≥0.80; the bug was 0.32) that would
+  catch any regression of the 56%-drop, plus on-ring and 5-km-gate invariants.
+
+**Behavior-neutral production tidy-ups** (logging agent): `FileLogTree.isLoggable`
+widened `protected`→`public` (matches `log()`; Timber calls it virtually — no
+runtime change) for direct testability; the viewer's aged-out scroll-offset math
+extracted from the composable's `LaunchedEffect` into a pure `logViewerScrollTarget`
+(identical: `lines.lastIndex == size-1`); a duplicated comment removed.
+
+**Findings left for you (no fix made):**
+- The `$ZVER` `sha` is not sanitized on `build()` and `BuildIdentity.known`
+  assumes a sanitized sha — both safe in practice (self-identity always comes from
+  `BuildIdentity.parse`/`sanitizeSha`), flagged as trust-boundary notes only.
+- Watch item: `campPoint` places only when the ring token is a letter/ESP; if BM
+  ever emits a *themed street name* in the intersection field, those camps drop
+  silently (same shape as the 56% bug) — mitigated by the fetch-count log line and
+  the new placement-rate tripwire, but worth knowing.
+- Doc fix applied here: the FLEET-1 spec's `name` grammar cell said `[A-Z0-9._-]`
+  (uppercase-only) but the code correctly allows lowercase for the Jetson's
+  `zvision` hostname — code wins, cell corrected to `[A-Za-z0-9._-]`.
+
+No functional bugs found in `$ZNAV`, the logging concurrency (doorbell/deque
+reasoned through — no lost-wakeup), the roster rules, or the 2026 placement path.
+
+---
+
 ## 2026-08-12 — FLEET-1 version monitor: spec + pure tested core built (protocol + roster + peer-table)
 
 Started the fleet version monitor Rob asked for (2026-08-11). Spec at
