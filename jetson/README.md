@@ -127,12 +127,12 @@ in [DEPLOY.md §8](DEPLOY.md#8-tuning-on-playa-laptop-only--no-keyboard-mouse-or
 | `zvision/detector.py` | `FakeDetector` (stdlib) + `MotionDetector` (cv2) |
 | `zvision/geometry.py` | pixel → (az, el) through a lens model, bbox → size, constant-bearing collision rule |
 | `zvision/rig.py` | camera mounts, `--camera` spec parsing, full-circle merge + overlap dedup |
-| `zvision/capture.py` | UVC camera wrapper (cv2) |
+| `zvision/capture.py` | `UvcCamera` + `ThermalCamera` (cv2); reopens a camera that wedges in `select()` at cold boot |
 | `zvision/tracker.py` | DMX tracker light — target-select + pan/tilt map + slew + idle sound show |
 | `zvision/dmx.py` | DMX transport — `FakeDmxSink` (stdlib) + `OlaDmxSink` (posts to `olad`) |
 | `zvision/recorder.py` | frame + weak-label dump for model training (`--record`) |
 | `zvision/audio_bus.py` | `$ZAUD` listener — beacon mic levels for the idle sound-reactive show |
-| `zvision/normalize.py` | the array-free arithmetic — contrast stretch window, track-id assignment, re-baseline guard (exists so the suite runs without numpy) |
+| `zvision/normalize.py` | the array-free arithmetic — contrast stretch window, track-id assignment, re-baseline guard, camera-stall guard (exists so the suite runs without numpy) |
 | `zvision/dmxpark.py` | fail-safe: zeroes all 512 slots, with retries. Also the operator kill: `python3 -m zvision.dmxpark` |
 | `zvision/tracklog.py` | breadcrumb recorder — joins the telemetry group, writes daily NMEA-derived CSV |
 | `zvision/trackserve.py` | read-only HTTP server for those CSVs, port 8087, `/index.json` listing |

@@ -19,6 +19,8 @@ repository [`README.md`](../README.md) for what the system is.
 |---|---|
 | [`KIOSK.md`](KIOSK.md) | Locking a fleet tablet to the cockpit (device-owner provisioning) |
 | [`AUDIT-2026-08-09.md`](AUDIT-2026-08-09.md) | Historical: the 20-finding Android audit and its evidence. All closed |
+| [`AUDIT-2026-08-13.md`](AUDIT-2026-08-13.md) | The 8-agent fleet-wide bug-hunt catalogue (~40 findings; P1/P2 fixed) |
+| [`AUDIT-2026-08-13-resilience.md`](AUDIT-2026-08-13-resilience.md) | Does the fleet recover by itself after a power event? (power-loss / unplug / reboot auto-recovery) |
 
 ## Elsewhere in the repository
 

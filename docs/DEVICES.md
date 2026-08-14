@@ -14,7 +14,7 @@ they cannot be checked from this repository, and are marked where that matters.
 | Driver night display | Galaxy A54 (`SM-A546V`) | `:app`, DRIVER concept | 6.4" OLED | HUD built; night legibility unverified |
 | Passenger / crew displays | Fire HD 10 (`KFTUWI`), Fire HD 8, spare tablets | `:app`, passenger carousel or RADAR/MAP | LCD | In use |
 | Sensor hub | XCover Pro (`SM-G715U`) | `:beacon`, headless | screen off | Built; GPS + compass verified |
-| Vision edge box | Jetson Orin Nano Super | `zvision` | — | Software built; no camera attached |
+| Vision edge box | Jetson Orin Nano Super | `zvision` | — | Software built; thermal + RGB cameras now streaming on the box; ring/aim/detector pending |
 | Light control surface | Elgato Stream Deck Mini | `zdeck` | 6 keys | Driven on real hardware |
 | Tracker light | DMX moving head + FTDI USB-DMX | `zvision` / `zdeck` via `olad` | — | Characterised; aim uncalibrated |
 | Network | travel router (AP + DHCP) | — | — | In use |
@@ -186,13 +186,19 @@ the body.
 | Thermal | FLIR Lepton Ultra Wide on a PureThermal Mini USB board | **160×120**, 9 fps native, `Y16` raw. The quoted 160° FOV is argued to be the *diagonal* |
 | RGB | Arducam day/night IMX462 USB, ~85° horizontal M12 lens | count and final lens FOV still to be decided |
 
-**No camera has been connected to the box yet.** Everything downstream is proved
-with `--source fake`.
+**Cameras have now been connected and streamed on the box** — the thermal Lepton
+(measured on-board 2026-08-13: `Y16` 160×120 @ 8.79 fps) and Arducam RGB pairs
+over the USB-C host port. What remains: the permanent multi-camera ring,
+on-vehicle mount/aim, and a trained detector. `--source fake` stays the CI and
+bring-up path.
 
-> **Open discrepancy:** the tablet treats the thermal camera as covering ±64°
-> (the diagonal reading), while `zvision`'s `--fov-ref` defaults to horizontal
-> and so computes ±80°. The two sides disagree by up to 16° at the frame edge.
-> See [`PROTOCOLS.md`](PROTOCOLS.md) §4.
+> **FOV reference (resolved 2026-08-10):** both the tablet and `zvision` default
+> to the **diagonal** reference and agree at **±64°** horizontal. (The Ultra
+> Wide's quoted 160° is the diagonal, confirmed by measurement — a cold target at
+> a known off-axis angle read ~61° horizontal half-FOV, ruling out ±80°.) Use the
+> diagonal for anything circular in the optical path (the germanium window) and
+> the horizontal ±64° for bearings and coverage arcs. Detail in
+> [`PROTOCOLS.md`](PROTOCOLS.md) §4.
 
 Thermal optics need an **IR-transmissive window** — germanium or similar. Glass
 blocks LWIR entirely. Playa dust also fouls the optic, so this is a cleaning item

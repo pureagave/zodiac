@@ -42,8 +42,8 @@ by tests that agreed with the code they tested more than once.
 cd jetson && python3 -m unittest discover -s tests -t .                 # when touching the edge box
 ```
 
-Counts as of 2026-08-10, all green: `:app` **817**, `:beacon` **77**,
-`jetson` **429**.
+Counts as of 2026-08-14, all green: `:app` **1008**, `:beacon` **109**,
+`jetson` **475**.
 
 CI on push/PR to `main`:
 
@@ -70,17 +70,18 @@ Dagger. Everything is `by lazy`; `onCreate` does the only ordered work.
   on `CockpitConcept` to `MotionTrackerScreen` (RADAR) / `InstrumentBayScreen`
   (MAP) / `DriverNightScreen` (DRIVER), or bypasses all three for
   `passengerScreen` when this device holds the passenger role.
-- **`ui/viewmodel/`** — **four** files: `CockpitViewModel` (457 lines, 20 public
+- **`ui/viewmodel/`** — **five** files: `CockpitViewModel` (~536 lines, 20 public
   functions) owns the single `MutableStateFlow<CockpitUiState>` and the flow
   wiring, and delegates to `MapCameraController` (pan/zoom/rotate/tilt/recenter),
-  `NavigationController` (drive-to, routing, street and art callouts) and
-  `GpsController` (source selection, fake-GPS nudges). The public API is the
+  `NavigationController` (drive-to, routing, street and art callouts),
+  `GpsController` (source selection, fake-GPS nudges) and `NavShareController`
+  (adopt/broadcast the shared `$ZNAV` destination). The public API is the
   ViewModel's; the delegates are internal collaborators.
-- **`ui/state/CockpitUiState`** — one immutable data class, 37 fields, updated by
+- **`ui/state/CockpitUiState`** — one immutable data class, 36 fields, updated by
   `.copy()`. The per-frame copy cost is known and tracked as A5 in `tasks/open.md`.
 - **`core/`** — all pure logic, no Android: `geo`, `navigation`, `ops`, `vision`,
   `telemetry`, `sensor`, `model`, `connection`, `log`, `net`, `passenger`,
-  `permission`. **No new logic in a composable** — draw code turns decisions into
+  `permission`, `kiosk`. **No new logic in a composable** — draw code turns decisions into
   pixels; decisions live in `core/` with tests. `SurroundRing` /
   `SurroundRingCanvas` is the model split to follow.
 - **`data/`** — `VehicleConnectionGateway` / `RoutedVehicleGateway`,
@@ -299,7 +300,7 @@ dimmer night set for dark adaptation.
 - The GPS location sources, by contrast, have real System/BLE/USB/Network
   implementations.
 - MAP's cell gauges and throttle trace are hard-coded literals.
-- The Jetson has no trained detector and no camera has been attached to the box.
+- The Jetson has no trained detector. Thermal + RGB cameras now stream on the box, but the permanent multi-camera ring, on-vehicle mount/aim, and the model are not built.
 - The tracker light's aim constants are uncalibrated placeholders.
 
 ## Workspace

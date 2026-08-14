@@ -87,13 +87,13 @@ Prefix a task with a module to scope it: `./gradlew :beacon:testDebugUnitTest`.
 
 ### Test counts
 
-Measured 2026-08-10, all green:
+Measured 2026-08-14, all green:
 
-| Suite | Classes | Tests |
-|---|---|---|
-| `:app` | 76 | **817** |
-| `:beacon` | 13 | **77** |
-| `jetson` | 19 files | **429** |
+| Suite | Tests |
+|---|---|
+| `:app` | **1008** |
+| `:beacon` | **109** |
+| `jetson` | **475** |
 
 Tests are JUnit 4 with `kotlinx-coroutines-test` (`runTest`, `advanceUntilIdle`)
 and a `MainDispatcherRule` `TestWatcher` for dispatcher setup. Four `:beacon`

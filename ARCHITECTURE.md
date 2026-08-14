@@ -46,7 +46,7 @@ Full rationale in [`docs/DEVICES.md`](docs/DEVICES.md).
 | Driver night display | Galaxy A54 (`SM-A546V`), OLED | `:app` (DRIVER) | 🚧 night legibility unverified |
 | Passenger / crew displays | Fire HD 10 (`KFTUWI`) + others, LCD | `:app` | ✅ |
 | Sensor hub | XCover Pro (`SM-G715U`), headless | `:beacon` | ✅ |
-| Vision edge box | Jetson Orin Nano Super | `zvision` | 🚧 no camera attached yet |
+| Vision edge box | Jetson Orin Nano Super | `zvision` | 🚧 thermal + RGB cameras streaming on the box; ring/aim/detector pending |
 | Light control surface | Stream Deck Mini (`0fd9:0063`) | `zdeck` | ✅ |
 | Tracker light | DMX moving head + FTDI USB-DMX + `olad` | `zvision` / `zdeck` | 🚧 aim uncalibrated |
 | Network | travel router, single /24, DHCP | — | ✅ |
@@ -97,8 +97,9 @@ multicast frames from apps to save power unless the app holds a
 |---|---|---|---|---|
 | Vehicle telemetry | `:beacon` | all tablets | raw GNSS NMEA verbatim + `$GPHDT` + `$ZTLM` | ✅ |
 | Sensor channels | `:beacon` | all tablets | `$ZAUD` `$ZENV` `$ZSHK` `$ZBCN` `$ZODO` | ✅ |
-| Thermal threats | `zvision` | all tablets, DMX light | `ZTHREAT` frames | 🚧 both ends built, no camera yet |
-| Destination / nav | hero dashboard | all tablets | active drive-to target | 📋 |
+| Thermal threats | `zvision` | all tablets, DMX light | `ZTHREAT` frames | ✅ both ends built + tested; thermal/RGB cameras now streaming on the box |
+| Destination / nav | OLED tablets (S9+/A54) | all tablets | active drive-to target (`$ZNAV`, 239.7.7.30:10130) | ✅ verified device-to-device |
+| Fleet version | all nodes | hero dashboard | `$ZVER` build identity (239.7.7.40:10140) | 🚧 pure core built; emit + UI in progress |
 | Vehicle commands | — | vehicle | heading / speed | 📋 (transports are fake) |
 | Raw thermal video | `zvision` | opt-in viewers | MJPEG/RTSP | 📋 |
 
@@ -140,13 +141,15 @@ CockpitScreen ─ burnInScaffold → theme → dispatch on CockpitConcept
 CockpitViewModel ─ one StateFlow<CockpitUiState>
      │   ├── MapCameraController    pan / zoom / rotate / tilt / recenter
      │   ├── NavigationController   drive-to targets, routing, street + art callouts
-     │   └── GpsController          source selection, fake-GPS nudges
+     │   ├── GpsController          source selection, fake-GPS nudges
+     │   └── NavShareController     adopt / broadcast the shared $ZNAV destination
      │
 data/ ─ VehicleConnectionGateway · TelemetryRepository · LocationSource
         ThreatSource · PlayaMapRepository · DiscoveryRepository · CockpitPreferences
+        nav (NavShare send/receive) · art (pre-rendered art)
      │
 core/ ─ pure logic, no Android: geo · navigation · ops · vision · telemetry
-        sensor · model · connection · log · net · passenger · permission
+        sensor · model · connection · log · net · passenger · permission · kiosk
 ```
 
 `core/` is where every decision that can be tested without a device lives. The
@@ -156,10 +159,10 @@ code turns decisions into pixels, and the decisions live in `core/` with tests.
 
 ### 4.3 The ViewModel and its delegates
 
-`ui/viewmodel/` is four files. `CockpitViewModel` (457 lines, 20 public
+`ui/viewmodel/` is five files. `CockpitViewModel` (~536 lines, 20 public
 functions) owns the single `MutableStateFlow<CockpitUiState>`, the flow
 subscriptions, and the vehicle-command actions; it constructs and delegates to
-three controllers that share that state handle:
+four controllers that share that state handle:
 
 | File | Owns |
 |---|---|
@@ -167,6 +170,7 @@ three controllers that share that state handle:
 | `MapCameraController.kt` | `setMapMode`, `setTiltDeg`, `setPixelsPerMeter`, `panBy`, `nudgeViewRotation`, `recenterPan`, auto-recenter scheduling |
 | `NavigationController.kt` | `setNavTarget`, `driveToNearestToilet`, address entry, route recomputation, street-crossing and passing callouts |
 | `GpsController.kt` | `selectLocationSource`, `restartLocationSource`, fake-GPS nudge/reset |
+| `NavShareController.kt` | adopt an inbound `$ZNAV` destination and broadcast local sets when this device is a nav authority (`NavShareArbiter` orders + de-echoes) |
 
 The public API of `CockpitViewModel` is unchanged by the split — the delegates
 are internal collaborators, not a new surface.
@@ -176,7 +180,7 @@ point — chip, gesture, synthetic GPS, persisted preference — is bounded by t
 same rules: heading 0–359, speed 0–160 kph, tilt 0–80°, zoom 0.05–5.0 px/m,
 camera pan ±5000 m per axis.
 
-`CockpitUiState` is one immutable data class of 37 fields updated with `.copy()`.
+`CockpitUiState` is one immutable data class of 36 fields updated with `.copy()`.
 That is a known cost — a per-frame field change copies the whole state — tracked
 as item A5 in `tasks/open.md`.
 
@@ -457,7 +461,7 @@ path served the map, discovery refresh outcomes.
 
 ### 4.13 Preferences
 
-`DataStoreCockpitPreferences` persists 21 keys in one Preferences DataStore —
+`DataStoreCockpitPreferences` persists 22 keys in one Preferences DataStore —
 GPS source, map mode, tilt, zoom, concept, passenger role, and every burn-in
 parameter. Enums are stored **by name**, so a renamed constant falls back to the
 default rather than mis-mapping. Every numeric read is clamped to the same range
@@ -545,16 +549,25 @@ library only — with `numpy` and `opencv-python` as an optional `camera` extra
 imported lazily. That is deliberate: the whole test suite, and the `--source
 fake` bus proof, run anywhere.
 
+**Built to come back by itself after a power event.** A camera whose V4L2 handle
+was opened before its USB device was streaming-ready can hang forever in
+`select()` — a cold boot once left the box "running but blind" for hours emitting
+false all-clear. A `CameraStallGuard` now reopens a stalled camera (~20 s,
+measured on hardware); the broadcaster re-derives its subnet-broadcast target if
+it started before the DHCP lease; and `olad` is `Restart=always`. These are the
+jetson half of the 2026-08-13 resilience audit
+([`docs/AUDIT-2026-08-13-resilience.md`](docs/AUDIT-2026-08-13-resilience.md)).
+
 ### 6.1 `zvision` modules
 
 | Module | Role |
 |---|---|
 | `app.py` | CLI runner; the broadcast + tracker loop |
 | `rig.py` | camera mounts, `--camera` spec parsing, full-circle merge and overlap dedup, coverage-gap reporting |
-| `capture.py` | `UvcCamera` and `ThermalCamera` (cv2) |
+| `capture.py` | `UvcCamera` and `ThermalCamera` (cv2); reopens a camera that wedges in `select()` after a cold boot |
 | `detector.py` | `Detector` protocol, `FakeDetector`, `MotionDetector` |
 | `geometry.py` | pixel → bearing through a lens model, bbox → size, constant-bearing collision rule |
-| `normalize.py` | the array-free arithmetic — contrast stretch window, track-id assignment, re-baseline guard |
+| `normalize.py` | the array-free arithmetic — contrast stretch window, track-id assignment, re-baseline guard, camera-stall guard |
 | `threat.py` / `threat_protocol.py` | the `DriverThreat` record and the ZTHREAT wire format |
 | `broadcaster.py` | UDP sender — multicast **and** subnet broadcast |
 | `fleet_bus.py` | group/port constants, mirrored from Kotlin |
@@ -731,7 +744,7 @@ wrong.
 | Vehicle command vocabulary | `SetHeading` / `SetSpeed` only, delivered to a fake. |
 | MAP cell gauges and throttle trace | Hard-coded literals in the composable. |
 | Jetson detector | Background subtraction. No model, no weights, no inference runtime. |
-| Jetson camera ring | Software complete; **no camera has been connected to the box.** |
+| Jetson camera ring | Software complete; thermal + RGB cameras have now been connected and streamed on the box (`--source fake` stays the CI/bring-up path). The **permanent multi-camera ring**, on-vehicle mount/aim, and a trained detector are still to come. |
 | Tracker light aim | `tilt_far` / `tilt_near` / `pan_center` are uncalibrated placeholders. |
 | DMX arbitration | Unresolved. `zvision --dmx ola` and `zdeck` must not run together. |
 | `CockpitUiState.tiltDeg` | Persisted and clamped, but the renderer uses a compile-time 45°. |

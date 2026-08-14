@@ -27,8 +27,9 @@ treated as unreliable; nothing safety-relevant depends on it.
 | **`:beacon`** — Zodiac Beacon | Kotlin, headless | one Android phone | The vehicle's sensor hub. Reads GNSS, compass, IMU, mic level, ambient light, shock and battery, and broadcasts them as NMEA over UDP multicast to the whole fleet. |
 | **`jetson/`** — `zvision` + `zdeck` | Python 3 | Jetson Orin Nano Super | The edge box. A ring of cameras → one full-circle threat list on the fleet bus, plus a DMX moving-head tracker light and a six-key Stream Deck control surface. |
 
-They share no code. They agree through two documented wire formats
-(NMEA sentences and `ZTHREAT` frames), both of which are pinned by tests — see
+They share no code. They agree through three documented wire formats — NMEA
+sentences (beacon → fleet), `ZTHREAT` frames (Jetson → fleet), and `$ZNAV`
+nav-share (tablet ↔ tablet) — all pinned by tests, see
 [`docs/PROTOCOLS.md`](docs/PROTOCOLS.md).
 
 ```
@@ -42,11 +43,15 @@ They share no code. They agree through two documented wire formats
                                         ┌─────────────────┐          ▼
                                         │  :app tablets   │◀── 239.7.7.20:10120
                                         │  (8–10 of them) │    + subnet broadcast
-                                        └─────────────────┘
-                                                                     │ DMX (via olad)
-                                                                     ▼
-                                                            moving-head tracker light
+                                        └───────┬─────────┘
+                                                │ $ZNAV 239.7.7.30:10130       │ DMX (via olad)
+                                                └─▶ shared drive-to target     ▼
+                                                    (tablet ↔ tablet)  moving-head tracker light
 ```
+
+The tablets also share one piece of state among *themselves* — the drive-to
+destination — over a third bus, `$ZNAV` (239.7.7.30:10130). A fourth,
+`$ZVER` (239.7.7.40:10140), is being added for fleet build-version reporting.
 
 ---
 
@@ -64,6 +69,11 @@ tools/          offline asset pipelines (art pre-render)
 SYNC.md         append-only decision log — the project's working memory
 ```
 
+A handful of root-level files (`AGENTS.md`, `SOUL.md`, `IDENTITY.md`,
+`BOOTSTRAP.md`, `HEARTBEAT.md`, `TOOLS.md`, `USER.md`, `NEXT.md`) are
+**AI-assistant workspace/persona files, not product documentation** — safe to
+ignore when reading the codebase.
+
 ---
 
 ## What runs where
@@ -77,7 +87,7 @@ Full detail, including why each role is on the hardware it is on, in
 | Driver night display | Galaxy A54 (`SM-A546V`), OLED | `:app`, DRIVER concept | HUD built; on-vehicle night legibility check outstanding |
 | Passenger / crew displays | Fire HD 10 (`KFTUWI`) and other tablets, LCD | `:app`, passenger carousel or RADAR/MAP | In use; the Fire is the performance floor |
 | Sensor hub | XCover Pro (`SM-G715U`), screen off | `:beacon` | Built, GPS + compass verified end-to-end |
-| Vision edge box | Jetson Orin Nano Super | `zvision` | Software built and tested; **no camera has been attached yet** |
+| Vision edge box | Jetson Orin Nano Super | `zvision` | Software built and tested; thermal + RGB cameras now connected and streaming on the box; permanent ring, on-vehicle mount/aim and a trained detector still to come |
 | Light control surface | Elgato Stream Deck Mini (`0fd9:0063`) | `zdeck` | Built and driven on the real deck |
 | Tracker light | DMX moving head + FTDI USB-DMX | driven by `zvision` / `zdeck` via `olad` | Fixture characterised on the bench; on-vehicle aim calibration outstanding |
 | Network | travel router (AP + DHCP) | — | In use |
@@ -129,6 +139,13 @@ presentational — all three read the same state.
   art within 120 m.
 - A heading-guidance chevron that slides along a track to show how far off the
   target is and which way to turn.
+- **Shared destination across the fleet.** When one tablet sets a drive-to
+  target, every tablet adopts it over `$ZNAV` (239.7.7.30:10130), so the whole
+  fleet's DRIVER HUD points the same way. The OLED tablets (S9+, A54) are
+  automatic broadcast authorities and the two Fires follow — authority is *not* a
+  toggle, it is the same OLED-device check burn-in uses. Lamport `(seq, src)`
+  ordering, single-owner, no-echo (`NavShareArbiter`); adoption reuses the same
+  local drive-to path, so no new HUD was needed.
 
 **Sensing**
 - Five pluggable GPS sources behind one interface — `FAKE`, `SYSTEM`, `BLE`
@@ -157,7 +174,10 @@ presentational — all three read the same state.
   change. Every parameter is adjustable on the playa from a hidden tuning panel
   and persists.
 - **Kiosk mode**: device-owner lock task, lockscreen and automatic OS updates
-  disabled. See [`docs/KIOSK.md`](docs/KIOSK.md).
+  disabled, and — because Android blocks a boot receiver from launching an
+  activity — the cockpit is set as the device's Home app so a kiosked tablet
+  **relaunches itself after a reboot or power loss** instead of sitting on the
+  stock launcher. See [`docs/KIOSK.md`](docs/KIOSK.md).
 - **On-device postmortem logging**: every build writes a size-capped rotating log
   (512 KiB × 5 segments ≈ 2.5 MB). It counts everything it discards — write
   failures, rotation failures, and lines aged out of the ring — so it can never
@@ -257,6 +277,15 @@ astern ever appears. A camera that fails costs its arc, not the run; if nothing
 opens at all the runner exits rather than broadcasting a confident "all clear"
 while blind.
 
+**It also self-heals a wedged camera.** A V4L2 handle opened before its USB
+device is streaming-ready can hang forever in `select()` and never recover — on a
+cold boot that once left the box "running but blind" for hours, emitting false
+all-clear. A `CameraStallGuard` now reopens a camera that has stopped delivering
+frames (~20 s, measured on hardware), so a power-cycle no longer needs a human.
+The broadcaster likewise re-derives its subnet-broadcast target if it started
+before the DHCP lease, and `olad` is set to restart on crash — the fleet's
+edge is built to come back by itself after a power event.
+
 **The detector today is background subtraction, not a model.** There is no
 TensorRT, ONNX, YOLO or PyTorch anywhere in the tree and no weights file. The
 trained thermal model is a roadmap ([`jetson/DETECTOR.md`](jetson/DETECTOR.md),
@@ -291,9 +320,9 @@ output defaults to `none`. See [`jetson/DECK.md`](jetson/DECK.md).
 
 | | Built & verified | Built, not yet proven on the vehicle | Not built |
 |---|---|---|---|
-| **`:app`** | all three concepts, playa map, routing, GPS sourcing incl. NET, burn-in, kiosk, logging, passenger display | 2026 base-map address check on-device | real vehicle transports |
+| **`:app`** | all three concepts, playa map, routing, shared `$ZNAV` destination (verified device-to-device), GPS sourcing incl. NET, burn-in, kiosk (incl. auto-relaunch after reboot), logging, passenger display | 2026 base-map address check on-device | real vehicle transports |
 | **`:beacon`** | GPS + compass end-to-end; all seven sentence types under test | the five sensor channels in a moving vehicle | production Pi + u-blox hub |
-| **`jetson/`** | ZTHREAT bus with `--source fake`, DMX fixture characterised, Stream Deck driven on real hardware | camera attached to the box; tracker aim calibration | trained detector, DMX arbitration between tracker and deck, proximity alarm |
+| **`jetson/`** | ZTHREAT bus with `--source fake`; thermal + RGB cameras streaming on the box; boot-wedge self-heal proven on hardware; DMX fixture characterised; Stream Deck driven on real hardware | tracker aim calibration; the permanent multi-camera ring on the vehicle | trained detector, DMX arbitration between tracker and deck, proximity alarm |
 
 ---
 
@@ -310,8 +339,8 @@ Detail, including exact CI gates and deploy commands, in
 cd jetson && python3 -m unittest discover -s tests -t .
 ```
 
-Measured 2026-08-10, all green: **`:app` 817 tests**, **`:beacon` 77**,
-**`jetson` 429**.
+Measured 2026-08-14, all green: **`:app` 1008 tests**, **`:beacon` 109**,
+**`jetson` 475**.
 
 CI runs on push and PR to `main`:
 
