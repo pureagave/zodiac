@@ -1,6 +1,6 @@
 # Zodiac — Next Up (execution plan)
 
-**Start here, plus [`HANDOFF.md`](HANDOFF.md) (full current state) and [`SYNC.md`](SYNC.md) (history).** `main` is clean and green. The S9+ is on wifi adb (`192.168.0.253:5555`).
+**Start here, plus [`README.md`](README.md) (current snapshot) and [`SYNC.md`](SYNC.md) (history).** `main` is clean and green. The S9+ is on wifi adb (`192.168.0.253:5555`).
 
 Current focus: **Playa Discovery via the Burning Man API — offline-first.** The user is offline for much of the burn, so the app must **cache the entire burn dataset ahead of time** (sync once at camp over Starlink) and work fully offline, with **≥ nightly** refresh when it has signal.
 
@@ -46,4 +46,4 @@ Current focus: **Playa Discovery via the Burning Man API — offline-first.** Th
 ---
 
 ## Resume prompt (paste after `/clear`)
-> Continue the Zodiac playa-discovery feature. Read HANDOFF.md and NEXT.md first, then start Phase 3: RADAR contacts (nearby art/camps as blips on the scope). Deploy/verify on the S9+ over wifi.
+> Continue the Zodiac playa-discovery feature. Read README.md and NEXT.md first, then start Phase 3: RADAR contacts (nearby art/camps as blips on the scope). Deploy/verify on the S9+ over wifi.
