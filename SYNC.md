@@ -6,6 +6,22 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — deployed the broadcaster + olad resilience fixes to /opt/zodiac
+
+The thermal fix (RES-P1-1) went to the box during its validation; deployed the
+other two now. `broadcaster.py` (RES-P3-2 cold-boot re-derive) overwritten — its
+deployed base was byte-identical to repo minus my change, verified by diff — and
+zvision restarted (active, 61 ZTHREAT/4s; that restart also transiently stalled
+twice and the CameraStallGuard recovered it, so the reopen fix is now proven in
+the wild on a plain restart too). `olad.service.d/override.conf` (RES-P2-2)
+replaced + `daemon-reload`; effective `Restart=always` / `RestartSec=2s` /
+`StartLimitIntervalSec=0`, olad uninterrupted. Backups `*.bak-20260813` on the box.
+
+Box state now: `capture.py`/`normalize.py`/`broadcaster.py` carry the main-era
+fixes while the rest of `/opt/zodiac` is still `c842d08` — each patched file was
+diff-verified compatible with that base, so it's consistent and running, but a
+**full `/opt/zodiac` redeploy to `main`** is still the clean end state (owed).
+
 ## 2026-08-13 — RES-P1-1 FIXED + proven on hardware: zvision self-heals a boot-time camera wedge
 
 Supersedes the "thermal stall diagnosed" note below with the full diagnosis, fix,

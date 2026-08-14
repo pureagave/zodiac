@@ -48,20 +48,20 @@ What's worth doing next. Critical and High audit items are all done — see `don
 > - [ ] **RES-P2-1 [CODE-NOW] — blind Jetson == genuine all-clear on the wire.**
 >       Carry a per-arc health/blind bit (or a heartbeat line) so the HUD can show
 >       "SENSOR BLIND." Pairs with RES-P1-1.
-> - [x] **RES-P2-2 DONE IN REPO 2026-08-13 (pending deploy) — `olad` self-heals.**
->       Extended the existing `olad.service.d/override.conf` in
->       `scripts/install-ola.sh` with `Restart=always` + `RestartSec=2` ([Service])
->       and `StartLimitIntervalSec=0` ([Unit], correct placement). **Not yet applied
->       to the live box** — re-run `install-ola.sh` (or drop in the override +
->       `daemon-reload` + `restart olad`) at next deploy. Latent until `--dmx ola`.
-> - [x] **RES-P3-2 (broadcast half) DONE IN REPO 2026-08-13 (pending deploy).**
->       `ThreatBroadcaster` now lazily re-derives the auto subnet-broadcast target
->       until a real (non-loopback) address appears, then freezes — so a Jetson that
->       starts before its DHCP lease no longer stays stuck at `127.0.0.255`. Operator
->       overrides (`broadcast`/`bind_ip`/`iface_ip`) are respected verbatim. 3
->       mutation-killing tests (jetson 470 green). **Still owed:** pin `--iface-ip`
->       to the `enP8p1s0` address in `/etc/default/zvision` for multicast-egress NIC
->       selection (owner config change; the flag already exists).
+> - [x] **RES-P2-2 DONE + DEPLOYED 2026-08-13 — `olad` self-heals.** Extended the
+>       `olad.service.d/override.conf` in `scripts/install-ola.sh` with
+>       `Restart=always` + `RestartSec=2` ([Service]) and `StartLimitIntervalSec=0`
+>       ([Unit]). **Applied to the live box** (drop-in installed + `daemon-reload`;
+>       effective `Restart=always`/`StartLimitIntervalSec=0` confirmed; olad
+>       uninterrupted). Backup `override.conf.bak-20260813`. Latent until `--dmx ola`.
+> - [x] **RES-P3-2 (broadcast half) DONE + DEPLOYED 2026-08-13.** `ThreatBroadcaster`
+>       lazily re-derives the auto subnet-broadcast target until a real (non-loopback)
+>       address appears, then freezes — a Jetson that starts before its DHCP lease no
+>       longer stays stuck at `127.0.0.255`. Operator overrides respected verbatim. 3
+>       mutation-killing tests. **Deployed to `/opt/zodiac`; zvision restarted,
+>       healthy** (backup `broadcaster.py.bak-20260813`). **Still owed:** pin
+>       `--iface-ip` to the `enP8p1s0` address in `/etc/default/zvision` for
+>       multicast-egress NIC selection (owner config change; the flag already exists).
 > - [ ] **RES-P3-1/P3-4 [CONFIG/OWNER]** — Jetson has no persistent RTC (boots at a
 >       stale epoch until NTP; journal is volatile) and is on DHCP with no
 >       reservation. Enable persistent journald; add a DHCP reservation.
