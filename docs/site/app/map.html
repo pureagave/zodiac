@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group is-here">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -203,6 +203,30 @@ releases the 2026 data, roughly three weeks pre-event.</p>
   remains outstanding, because the city has moved.</p>
 </div>
 
+<h2 id="nav-share">Shared destination across the fleet</h2>
+
+<p>When one tablet sets a drive-to target, every tablet <strong>adopts</strong> it over
+<code>$ZNAV</code> (<code>239.7.7.30:10130</code>), so the whole fleet's DRIVER HUD points the same
+way. The HUD's existing heading arch just starts pointing at the shared target &mdash; no new HUD UI
+was added, because adoption reuses the same <code>NavigationController</code> entry points a local
+set uses. Verified device-to-device.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Rule</th><th>How</th></tr></thead>
+<tbody>
+<tr><th>Who may set it</th><td>The <strong>nav-authority</strong> tablets &mdash; the two OLED Samsungs (S9+, A54). Authority is <em>not</em> a toggle: it <em>is</em> OLED-device-ness (<code>BurnInDeviceProfile.visualModulationSupported()</code>, the same manufacturer check burn-in uses), computed once at startup. The two Fires follow &mdash; their local drive-to controls are gated no-ops.</td></tr>
+<tr><th>Ordering</th><td>Lamport total order on <code>(seq, src)</code>: higher <code>seq</code> wins, ties broken by the greater <code>src</code>. A device adopts only a key strictly greater than the last it applied.</td></tr>
+<tr><th>No echo</th><td><code>NavShareArbiter</code> ignores any message carrying its own <code>src</code>, and <strong>adoption never re-broadcasts</strong> &mdash; only the owner re-broadcasts, every <span class="val">3&nbsp;s</span>.</td></tr>
+<tr><th>Payload is semantic</th><td><code>PRESET</code> / <code>ADDR</code> / <code>BATH</code> / <code>CLEAR</code>, not resolved coordinates &mdash; each device reconstructs through its own nav entry points, so the two sides cannot drift. <code>BATH</code> stays dynamic: every device resolves its own nearest toilet from the shared ego.</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The Lamport counter is persisted separately from the settings snapshot, so a rebooted authority
+does not mint a losing low <code>seq</code> that every follower rejects. Full wire grammar on
+<a href="../protocols/index.html">the fleet bus</a> and in <code>docs/PROTOCOLS.md</code> &sect;5.</p>
+
 <h2 id="labels">Zoom-gated labels</h2>
 
 <div class="tablewrap">
@@ -266,7 +290,7 @@ no art markers&rdquo;.</li>
 failure. Art and camp markers simply never appear.</p>
 
 </div>
-<p class="srcnote"><b>Converted from</b><br><code>ARCHITECTURE.md &sect;4.8</code> &middot; <code>README.md</code> &middot; <code>tasks/open.md</code> &middot; <code>docs/BUILD.md &sect;1</code></p>
+<p class="srcnote"><b>Converted from</b><br><code>ARCHITECTURE.md &sect;4.8</code> &middot; <code>docs/PROTOCOLS.md &sect;5</code> &middot; <code>README.md</code> &middot; <code>tasks/open.md</code> &middot; <code>docs/BUILD.md &sect;1</code></p>
 
 <nav class="pager" aria-label="Page navigation"><a class="prev" href="../app/gps.html"><span class="pager-dir">Previous</span><span class="pager-name">GPS sourcing</span></a><a class="next" href="../app/vision.html"><span class="pager-dir">Next</span><span class="pager-name">Threats &amp; the DRIVER HUD</span></a></nav>
   </article>

@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html" aria-current="page">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -227,16 +227,16 @@ whichever direction nobody executes.</p>
 <p>The shared truth is a measured corpus that both test suites read.
 <a href="golden-corpus.html">The golden corpus &rarr;</a></p>
 
-<h2 id="fov">The bearings themselves are not fully trusted</h2>
+<h2 id="fov">The bearing reference is settled</h2>
 
-<div class="note bug">
-  <span class="label">Open bug</span>
+<div class="note">
+  <span class="label">Settled 2026-08-10</span>
   <p>Bearings on this channel are computed by <code>zvision</code>'s <code>pixel_to_bearing</code>,
-  which is fed by a <code>--fov-ref</code> flag that defaults to horizontal. The tablet assumes the
-  forward thermal camera covers <span class="val">&plusmn;64&deg;</span>; the Python side currently
-  computes as if it covered <span class="val">&plusmn;80&deg;</span>.
-  <strong>Edge bearings on this wire disagree by up to 16&deg; between the two sides of the
-  vehicle.</strong> <a href="fov-discrepancy.html">Read the full argument &rarr;</a></p>
+  fed by <code>--fov-ref</code>, which <strong>now defaults to <code>d</code></strong> (diagonal). The
+  tablet assumes the forward thermal camera covers <span class="val">&plusmn;64&deg;</span>, and the
+  Python side now computes the same <span class="val">&plusmn;64&deg;</span> by default, so the two
+  sides agree without anyone remembering a flag &mdash; confirmed by measurement.
+  <a href="fov-discrepancy.html">Read the full argument &rarr;</a></p>
 </div>
 
 </div>

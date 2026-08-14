@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -130,11 +130,15 @@ appears. <a href="zvision.html">The rig in detail &rarr;</a></p>
 </div>
 
 <div class="note absent">
-  <span class="label">No camera has been connected to the box</span>
-  <p>Everything downstream &mdash; the bus, the merge, the broadcaster, the HUD &mdash; is proved
-  with <code>--source fake</code>. <code>FakeDetector</code>, three deterministic synthetic contacts,
-  is the default source, and as shipped by <code>install.sh</code> there are <strong>zero real
-  cameras</strong> in the service config.</p>
+  <span class="label">Cameras now stream &mdash; the ring, the mount and the detector do not yet exist</span>
+  <p>The thermal Lepton (measured on-board 2026-08-13: <code>Y16</code>
+  <span class="val">160&times;120</span> at <span class="val">8.79&nbsp;fps</span>) and Arducam RGB
+  have been connected and streamed on the box over the USB-C host port. What remains is the
+  permanent multi-camera ring, the on-vehicle mount and aim, and a trained detector. The bus,
+  merge, broadcaster and HUD are still proved with <code>--source fake</code>, which stays the CI
+  and bring-up path &mdash; <code>install.sh</code> ships
+  <code>ZVISION_ARGS=--source fake --hz 10</code>, so a fresh install has <strong>zero real
+  cameras</strong> until you edit the config.</p>
 </div>
 
 <h2 id="deps">Zero declared dependencies, deliberately</h2>
@@ -164,6 +168,17 @@ be able to stall the threat broadcaster. It counts them and reports once per out
 <code>ExecStopPost</code> on every DMX-touching unit, which systemd runs on crash and kill &mdash;
 not just a clean stop.</li>
 </ul>
+
+<div class="note">
+  <span class="label">Built to come back by itself after a power event</span>
+  <p>A V4L2 handle opened before its USB camera is streaming-ready can hang forever in
+  <code>select()</code> and never recover &mdash; on a cold boot that once left the box
+  &ldquo;running but blind&rdquo; for hours, emitting false all-clear. A <code>CameraStallGuard</code>
+  now reopens a camera that has stopped delivering frames
+  (<span class="val">~20&nbsp;s</span>, measured on hardware). The broadcaster re-derives its
+  subnet-broadcast target if it started before the DHCP lease, and <code>olad</code> is set to
+  restart on crash (<code>Restart=always</code>). A power-cycle no longer needs a human.</p>
+</div>
 
 <h2 id="pages">In this section</h2>
 

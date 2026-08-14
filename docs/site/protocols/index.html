@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -93,13 +93,15 @@
   <article class="page">
 <p class="kicker">Protocols &#183; the seams</p>
 <h1>The fleet bus</h1>
-<p class="standfirst">The three parts of Zodiac share no code. They agree through two wire formats on the fleet
-    bus. This section is the byte-level reference for both &mdash; it is the most valuable document
-    in the repository, because it is the only place the three codebases actually meet.</p>
+<p class="standfirst">The three parts of Zodiac share no code. They agree through two cross-codebase wire formats on
+    the fleet bus &mdash; NMEA and <code>ZTHREAT</code> &mdash; plus a third channel, <code>$ZNAV</code>,
+    over which the tablets share one piece of state among themselves. This section is the byte-level
+    reference &mdash; it is the most valuable document in the repository, because it is the only place
+    the codebases actually meet.</p>
 <div class="prose">
 
 
-<h2 id="channels">The two channels</h2>
+<h2 id="channels">The channels</h2>
 
 <div class="tablewrap">
 <table>
@@ -107,6 +109,7 @@
 <tbody>
 <tr><th>Telemetry (NMEA)</th><td><code>239.7.7.10</code></td><td class="num">10110</td><td><code>:beacon</code></td><td>Every <code>:app</code> tablet; <code>zvision</code>'s <code>$ZAUD</code> listener</td></tr>
 <tr><th>Threats (ZTHREAT)</th><td><code>239.7.7.20</code></td><td class="num">10120</td><td><code>zvision</code></td><td>Every <code>:app</code> tablet</td></tr>
+<tr><th>Shared nav target (<code>$ZNAV</code>)</th><td><code>239.7.7.30</code></td><td class="num">10130</td><td>A nav-authority <code>:app</code> tablet</td><td>Every <code>:app</code> tablet</td></tr>
 </tbody>
 </table>
 </div>
@@ -114,8 +117,18 @@
 <p>Multicast TTL is <span class="val">1</span> &mdash; nothing leaves the vehicle's subnet.
 <code>239.0.0.0/8</code> is administratively scoped.</p>
 
+<p><code>$ZNAV</code> is the newest channel and the only <strong>app-to-app</strong> one: the fleet's
+drive-to destination, so every tablet's DRIVER HUD points the same way. It is single-language
+(<code>:app</code> only), so unlike NMEA and <code>ZTHREAT</code> it carries no cross-language drift
+risk. A fourth channel, <code>$ZVER</code> (<code>239.7.7.40:10140</code>), is <strong>in
+progress</strong> for fleet build-version reporting. See
+<a href="../app/map.html#nav-share">shared destination</a> and the
+<a href="#all">bus-channel status table</a> below.</p>
+
 <pre class="diagram"><code>TELEMETRY_GROUP = 239.7.7.10   TELEMETRY_PORT = 10110    TTL = 1
-THREAT_GROUP    = 239.7.7.20   THREAT_PORT    = 10120</code></pre>
+THREAT_GROUP    = 239.7.7.20   THREAT_PORT    = 10120
+NAV_GROUP       = 239.7.7.30   NAV_PORT       = 10130    ($ZNAV, :app &lt;-&gt; :app)
+VER_GROUP       = 239.7.7.40   VER_PORT       = 10140    ($ZVER, in progress)</code></pre>
 
 <h2 id="double">Every sender transmits twice</h2>
 
@@ -152,10 +165,11 @@ discipline, not a mechanism.</p>
 </table>
 </div>
 
-<p>Note that <code>FleetBus.TTL</code> is declared on the app side but unused there &mdash;
-receivers do not set TTL; it is a sender concern.</p>
+<p><code>FleetBus.TTL</code> is now used on the app side too, by <code>NavShareSender</code> &mdash;
+<code>$ZNAV</code> is the app's first device-to-device transmit path, where every prior
+<code>:app</code> role was a receiver. Receivers never set TTL; it is purely a sender concern.</p>
 
-<h2 id="all">All bus channels, including the ones that do not exist</h2>
+<h2 id="all">Every bus channel, built and planned</h2>
 
 <div class="tablewrap">
 <table>
@@ -163,8 +177,9 @@ receivers do not set TTL; it is a sender concern.</p>
 <tbody>
 <tr><th>Vehicle telemetry</th><td><code>:beacon</code></td><td>All tablets</td><td>Raw GNSS NMEA verbatim + <code>$GPHDT</code> + <code>$ZTLM</code></td><td><span class="chip ok">Built</span></td></tr>
 <tr><th>Sensor channels</th><td><code>:beacon</code></td><td>All tablets</td><td><code>$ZAUD</code> <code>$ZENV</code> <code>$ZSHK</code> <code>$ZBCN</code> <code>$ZODO</code></td><td><span class="chip ok">Built</span></td></tr>
-<tr><th>Thermal threats</th><td><code>zvision</code></td><td>All tablets, DMX light</td><td><code>ZTHREAT</code> frames</td><td><span class="chip unproven">Both ends built, no camera yet</span></td></tr>
-<tr><th>Destination / nav</th><td>Hero dashboard</td><td>All tablets</td><td>Active drive-to target</td><td><span class="chip none">Planned</span></td></tr>
+<tr><th>Thermal threats</th><td><code>zvision</code></td><td>All tablets, DMX light</td><td><code>ZTHREAT</code> frames</td><td><span class="chip unproven">Both ends built; cameras now streaming, ring &amp; detector pending</span></td></tr>
+<tr><th>Shared nav target (<code>$ZNAV</code>)</th><td>Nav-authority tablet (S9+, A54)</td><td>All tablets</td><td>Active drive-to target, <code>239.7.7.30:10130</code></td><td><span class="chip ok">Built &amp; verified device-to-device</span></td></tr>
+<tr><th>Build-version report (<code>$ZVER</code>)</th><td>Every tablet</td><td>All tablets</td><td>Fleet build identity, <code>239.7.7.40:10140</code></td><td><span class="chip unproven">In progress</span></td></tr>
 <tr><th>Vehicle commands</th><td>&mdash;</td><td>Vehicle</td><td>Heading / speed</td><td><span class="chip none">Planned &mdash; transports are fake</span></td></tr>
 <tr><th>Raw thermal video</th><td><code>zvision</code></td><td>Opt-in viewers</td><td>MJPEG / RTSP</td><td><span class="chip none">Planned</span></td></tr>
 </tbody>
@@ -196,7 +211,7 @@ planned.</p>
 </ul>
 
 </div>
-<p class="srcnote"><b>Converted from</b><br><code>docs/PROTOCOLS.md &sect;1</code> &middot; <code>ARCHITECTURE.md &sect;3</code></p>
+<p class="srcnote"><b>Converted from</b><br><code>docs/PROTOCOLS.md &sect;1, &sect;5</code> &middot; <code>ARCHITECTURE.md &sect;3</code> &middot; <code>README.md</code></p>
 
 <nav class="pager" aria-label="Page navigation"><a class="prev" href="../system/status.html"><span class="pager-dir">Previous</span><span class="pager-name">What is and isn&#x27;t built</span></a><a class="next" href="../protocols/nmea.html"><span class="pager-dir">Next</span><span class="pager-name">NMEA telemetry</span></a></nav>
   </article>

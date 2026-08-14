@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -116,13 +116,23 @@
 <tr><th>Driver night display</th><td>Galaxy A54 (<code>SM-A546V</code>)</td><td><code>:app</code>, DRIVER concept</td><td>6.4&Prime; OLED</td><td><span class="chip unproven">Night legibility unverified</span></td></tr>
 <tr><th>Passenger / crew displays</th><td>Fire HD 10 (<code>KFTUWI</code>), Fire HD 8, spare tablets</td><td><code>:app</code>, passenger carousel or RADAR/MAP</td><td>LCD</td><td><span class="chip ok">In use</span></td></tr>
 <tr><th>Sensor hub</th><td>XCover Pro (<code>SM-G715U</code>)</td><td><code>:beacon</code>, headless</td><td>screen off</td><td><span class="chip ok">GPS + compass verified</span></td></tr>
-<tr><th>Vision edge box</th><td>Jetson Orin Nano Super</td><td><code>zvision</code></td><td>&mdash;</td><td><span class="chip unproven">No camera attached</span></td></tr>
+<tr><th>Vision edge box</th><td>Jetson Orin Nano Super</td><td><code>zvision</code></td><td>&mdash;</td><td><span class="chip unproven">Cameras streaming; ring/aim/detector pending</span></td></tr>
 <tr><th>Light control surface</th><td>Elgato Stream Deck Mini (<code>0fd9:0063</code>)</td><td><code>zdeck</code></td><td>6 keys</td><td><span class="chip ok">Driven on real hardware</span></td></tr>
 <tr><th>Tracker light</th><td>DMX moving head + FTDI USB-DMX</td><td><code>zvision</code> / <code>zdeck</code> via <code>olad</code></td><td>&mdash;</td><td><span class="chip unproven">Characterised; aim uncalibrated</span></td></tr>
 <tr><th>Network</th><td>Travel router (AP + DHCP)</td><td>&mdash;</td><td>&mdash;</td><td><span class="chip ok">In use</span></td></tr>
 <tr><th>Proximity alarm</th><td>ESP32 + 24&nbsp;GHz radar or LiDAR</td><td>&mdash;</td><td>red beacon</td><td><span class="chip none">Not built</span></td></tr>
 </tbody>
 </table>
+</div>
+
+<div class="note">
+  <span class="label">Nav authority follows the OLED split</span>
+  <p>The two Samsungs (S9+, A54) are the <strong>nav-authority</strong> tablets &mdash; only they may
+  set and broadcast the fleet's shared drive-to target over <code>$ZNAV</code>; the two Fires adopt
+  it but cannot change it locally. Authority is not a toggle: it <em>is</em> OLED-device-ness (the
+  same <code>Build.MANUFACTURER != "Amazon"</code> check burn-in uses), computed once at startup, so
+  there is no per-device provisioning step. <a href="../app/map.html#nav-share">How the shared
+  destination works &rarr;</a></p>
 </div>
 
 <h2 id="why">Why the roles split this way</h2>
@@ -268,8 +278,21 @@ are. <a href="../jetson/hardware.html">Hardware and enclosure detail &rarr;</a><
 </div>
 
 <div class="note absent">
-  <span class="label">No camera has been connected to the box yet</span>
-  <p>Everything downstream is proved with <code>--source fake</code>.</p>
+  <span class="label">Cameras now stream &mdash; the ring, mount and detector do not yet exist</span>
+  <p>The thermal Lepton (measured on-board 2026-08-13: <code>Y16</code>
+  <span class="val">160&times;120</span> at <span class="val">8.79&nbsp;fps</span>) and Arducam RGB
+  have been connected and streamed on the box over the USB-C host port. What remains is the permanent
+  multi-camera ring, the on-vehicle mount and aim, and a trained detector. Everything downstream is
+  still proved with <code>--source fake</code>, which stays the CI and bring-up path.</p>
+</div>
+
+<div class="note">
+  <span class="label">FOV reference (resolved 2026-08-10)</span>
+  <p>Both the tablet and <code>zvision</code> default to the <strong>diagonal</strong> reference and
+  agree at <span class="val">&plusmn;64&deg;</span> horizontal &mdash; the Ultra Wide's quoted 160&deg;
+  is the diagonal, confirmed by measurement. Use the diagonal for anything circular in the optical
+  path (the germanium window) and the horizontal &plusmn;64&deg; for bearings and coverage arcs.
+  <a href="../protocols/fov-discrepancy.html">Detail &rarr;</a></p>
 </div>
 
 <p>Thermal optics need an <strong>IR-transmissive window</strong> &mdash; germanium or similar.

@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -94,7 +94,9 @@
 <p class="kicker">Reference</p>
 <h1>Kiosk provisioning</h1>
 <p class="standfirst">Locks a fleet tablet to the cockpit so a passenger cannot leave the app, the lockscreen
-    advertisements never appear, and the tablet cannot reboot into an OS update mid-event.</p>
+    advertisements never appear, and the tablet cannot reboot into an OS update mid-event &mdash; and,
+    because the cockpit is set as the device's Home app, it relaunches itself after a reboot or power
+    loss.</p>
 <div class="prose">
 
 
@@ -135,22 +137,84 @@ Success prints <code>Active admin set to component {...}</code>.</li>
 <li>Launch the app. It locks itself on resume.</li>
 </ol>
 
+<div class="note bug">
+  <span class="label">Provision with a release-signed APK, not a per-machine debug build</span>
+  <p>A device-owner app cannot be uninstalled and can only be <em>updated</em> by an APK signed with
+  the <strong>same</strong> key, so a tablet provisioned with one laptop's debug keystore can never be
+  moved to a release build (or any other machine's debug build) without a factory reset. Use a
+  release APK from a stable, backed-up keystore for anything that stays in the fleet;
+  <code>app-debug.apk</code> is fine only for a throwaway test tablet.</p>
+</div>
+
+<h3 id="permissions">Runtime permissions are pre-granted</h3>
+
+<p>A device owner does <strong>not</strong> auto-grant runtime permissions, and once
+<code>engage()</code> disables the status bar and enters lock task there is no way for anyone to reach
+Settings to grant one that is missing. So <code>engage()</code> pre-grants the app's own requested set
+(<code>requiredCockpitPermissions</code>): <code>ACCESS_FINE_LOCATION</code> always, plus
+<code>BLUETOOTH_CONNECT</code> / <code>BLUETOOTH_SCAN</code> on API 31+ (the Samsungs). It grants
+nothing beyond what the manifest already declares and the app already asks for.</p>
+
+<h3 id="relaunch">Auto-relaunch after a reboot</h3>
+
+<p>A kiosked tablet <strong>relaunches the cockpit by itself</strong> after a reboot or power loss
+&mdash; the failure the fleet can least afford is a mounted display sitting on the stock (ad) launcher
+until someone finds and taps the app. Android blocks a <code>BOOT_COMPLETED</code> receiver from
+starting an activity in the background, but it always launches Home at boot, so <code>engage()</code>
+makes the cockpit the device's <strong>Home app</strong> (a persistent preferred Home, so no chooser
+appears), and the cockpit's <code>onResume()</code> then re-enters lock task. Keyguard is already
+disabled, so nothing stands between power-on and the cockpit.</p>
+
+<div class="note">
+  <span class="label">The Home capability rides a normally-disabled alias</span>
+  <p>It is an <code>&lt;activity-alias&gt;</code> (<code>KioskHomeActivity</code>) that
+  <code>engage()</code> enables and the exit code disables again &mdash; so a non-provisioned device
+  is never offered as a launcher, exactly like every other kiosk policy here being a no-op without
+  device owner. Device-owner-only, so it cannot be exercised in CI; verify it by rebooting a
+  provisioned tablet.</p>
+</div>
+
 <h3>Verify</h3>
 
 <pre><code>adb shell dumpsys device_policy | grep -i "device owner"
-adb logcat -d | grep "kiosk:"          # "kiosk: locked to org.pureagave..."</code></pre>
+adb logcat -d | grep "kiosk:"                # "kiosk: locked to org.pureagave..."
+adb logcat -d | grep "kiosk: pre-granted"    # lists ACCESS_FINE_LOCATION (+ Bluetooth on a Samsung)</code></pre>
+
+<p><strong>Verify auto-relaunch &mdash; the whole point of the Home step.</strong> After provisioning,
+<code>adb reboot</code> and confirm the cockpit comes back on its own with no tap (a Samsung delivers
+Home a couple of minutes after boot &mdash; be patient):</p>
+
+<pre><code>adb reboot
+adb shell dumpsys window | grep -i mCurrentFocus   # -&gt; org.pureagave.zodiac.control/.MainActivity
+adb logcat -d | grep "kiosk: set as preferred Home"</code></pre>
+
+<p><code>mCurrentFocus</code> on the cockpit (not the stock launcher) after a cold boot is the pass.
+This is the one check CI can never do &mdash; do it on a test tablet before trusting the fleet to
+recover unattended.</p>
 
 <h2 id="out">Getting back out</h2>
 
-<p>Device owner <strong>cannot be removed without another factory reset</strong> &mdash; that is the
-point of it. For servicing, uninstalling the app is the escape hatch:</p>
+<p>There is <strong>no adb un-provision</strong> on the shipped build:
+<code>dpm remove-active-admin</code> throws <code>SecurityException</code> (it only works on a
+<code>testOnly</code> APK, which the fleet is not), and a device-owner app cannot be uninstalled. So
+there are exactly two ways out:</p>
 
-<pre><code>adb shell dpm remove-active-admin \
-  org.pureagave.zodiac.control/.kiosk.ZodiacDeviceAdminReceiver</code></pre>
+<ol>
+<li><strong>The hidden exit code &mdash; primary, no reset.</strong> On the running cockpit, tap the
+two hidden right-edge corners &mdash; <strong>bottom-right, then top-right, alternating, six taps
+total</strong> &mdash; each within 2&nbsp;s of the last. The app un-provisions itself: it leaves lock
+task, gives Home back to the stock launcher (clears the persistent preferred Home and disables the
+<code>KioskHomeActivity</code> alias), and relinquishes device owner, so the tablet is unlocked and
+can be serviced, updated or uninstalled.</li>
+<li><strong>Factory reset &mdash; fallback.</strong> If the app is wedged and will not take the code,
+a reset is the only other way; it wipes the tablet and you re-provision from step 1.</li>
+</ol>
 
-<div class="note">
-  <span class="label">Plan on this being a one-way door per tablet</span>
-  <p>Provision the fleet only once the build is settled.</p>
+<div class="note caveat">
+  <span class="label">Verify the exit code on a test tablet first</span>
+  <p>The device-owner path cannot be exercised in CI, so an on-device dry-run is the only real check:
+  provision one, enter the code, confirm <code>dumpsys device_policy</code> shows no device owner.
+  Provision the fleet only once the build is settled.</p>
 </div>
 
 <h2 id="which">Which tablets should get it</h2>
@@ -170,19 +234,25 @@ point of it. For servicing, uninstalling the app is the escape hatch:</p>
 <h2 id="gotcha">Gotchas</h2>
 
 <div class="note bug">
-  <span class="label">Do not rename or delete <code>ZodiacDeviceAdminReceiver</code></span>
-  <p>It breaks provisioning on every already-provisioned tablet, and the only fix is another factory
-  reset. The class is intentionally empty so there is never a reason to touch it.</p>
+  <span class="label">Do not rename <code>ZodiacDeviceAdminReceiver</code> or the <code>KioskHomeActivity</code> alias</span>
+  <p>Renaming or deleting <code>ZodiacDeviceAdminReceiver</code> breaks provisioning on every
+  already-provisioned tablet, and the only fix is another factory reset. The class is intentionally
+  empty so there is never a reason to touch it. The same caveat applies to the
+  <code>KioskHomeActivity</code> <code>&lt;activity-alias&gt;</code>: <code>KioskController</code>
+  references it by string, so a rename breaks auto-relaunch on already-provisioned tablets
+  <em>silently</em> &mdash; the manifest name and the string must stay in lockstep.</p>
 </div>
 
-<div class="note caveat">
-  <span class="label">Outstanding &mdash; three unresolved items</span>
+<div class="note">
+  <span class="label">Resolved since &mdash; the three former open items</span>
   <ul>
-    <li>Provisioning with a <strong>debug APK is a signature trap</strong>.</li>
-    <li>The documented escape hatch <strong>likely does not work</strong>.</li>
-    <li><code>ota_disable_automatic_update</code> is <strong>not an allowed key on API 34</strong>.</li>
+    <li>The <strong>signing trap</strong> (provisioning with a per-machine debug APK) is now
+    documented above.</li>
+    <li>The <strong>escape hatch</strong> is the hidden six-tap exit code, shipped and verified in the
+    2026-08-13 audit fix.</li>
+    <li>Automatic OS updates are disabled through <code>setSystemUpdatePolicy</code> rather than the
+    <code>ota_disable_automatic_update</code> key that API 34 rejects.</li>
   </ul>
-  <p>Recorded as open in <code class="path">tasks/open.md</code>.</p>
 </div>
 
 </div>

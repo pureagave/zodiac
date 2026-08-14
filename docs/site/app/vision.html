@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group is-here">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -219,13 +219,14 @@ val COVERED_ARCS: List&lt;ClosedFloatingPointRange&lt;Float&gt;&gt; = listOf(-64
 <p>An uncovered sector must <strong>never</strong> render identically to a watched-and-clear one.
 Uncovered arcs draw as a <em>dotted</em> rim rather than a solid one.</p>
 
-<div class="note bug">
-  <span class="label">Open bug &mdash; this constant and the Jetson disagree</span>
-  <p>The tablet carries <span class="val">&plusmn;64&deg;</span>. <code>zvision</code>'s
-  <code>--fov-ref</code> defaults to <code>h</code> and every documented example rig omits
-  <code>fovref=d</code>, so the Python side computes bearings as if the camera covered
-  <span class="val">&plusmn;80&deg;</span> &mdash; <strong>up to 16&deg; of disagreement at the
-  frame edge.</strong> <a href="../protocols/fov-discrepancy.html">Full detail &rarr;</a></p>
+<div class="note">
+  <span class="label">Settled 2026-08-10 &mdash; both sides agree at &plusmn;64&deg;</span>
+  <p>The tablet carries <span class="val">&plusmn;64&deg;</span>, and <code>zvision</code>'s
+  <code>--fov-ref</code> now defaults to <code>d</code> too, so the Python side computes the same
+  <span class="val">&plusmn;64&deg;</span> by default &mdash; confirmed by measurement, not just the
+  physics argument. This constant still has to be kept in step with the Jetson's <code>--camera</code>
+  rig by hand, because there is no wire field for coverage.
+  <a href="../protocols/fov-discrepancy.html">Full detail &rarr;</a></p>
 </div>
 
 <h2 id="status">Status line and banner</h2>

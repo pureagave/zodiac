@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -105,11 +105,23 @@
 <table>
 <thead><tr><th></th><th>Built &amp; verified</th><th>Built, not yet proven on the vehicle</th><th>Not built</th></tr></thead>
 <tbody>
-<tr><th><code>:app</code></th><td>All three concepts, playa map, routing, GPS sourcing incl. NET, burn-in, kiosk, logging, passenger display</td><td>2026 base-map address check on-device</td><td>Real vehicle transports</td></tr>
+<tr><th><code>:app</code></th><td>All three concepts, playa map, routing, shared <code>$ZNAV</code> destination (verified device-to-device), GPS sourcing incl. NET, burn-in, kiosk (incl. auto-relaunch after reboot), logging, passenger display</td><td>2026 base-map address check on-device</td><td>Real vehicle transports</td></tr>
 <tr><th><code>:beacon</code></th><td>GPS + compass end to end; all seven sentence types under test</td><td>The five sensor channels in a moving vehicle</td><td>Production Pi + u-blox hub</td></tr>
-<tr><th><code>jetson/</code></th><td>ZTHREAT bus with <code>--source fake</code>, DMX fixture characterised, Stream Deck driven on real hardware</td><td>Camera attached to the box; tracker aim calibration</td><td>Trained detector, DMX arbitration between tracker and deck, proximity alarm</td></tr>
+<tr><th><code>jetson/</code></th><td>ZTHREAT bus with <code>--source fake</code>; thermal + RGB cameras streaming on the box; boot-wedge self-heal proven on hardware; DMX fixture characterised; Stream Deck driven on real hardware</td><td>Tracker aim calibration; the permanent multi-camera ring on the vehicle</td><td>Trained detector, DMX arbitration between tracker and deck, proximity alarm</td></tr>
 </tbody>
 </table>
+</div>
+
+<div class="note">
+  <span class="label">New &mdash; the fleet comes back by itself after a power event</span>
+  <p>The 2026-08-13 resilience audit drove three shipped fixes: a kiosked <strong>tablet relaunches
+  the cockpit itself</strong> after a reboot (the cockpit is set as the device's Home app), the
+  <strong>Jetson self-heals a camera</strong> that wedges in <code>select()</code> at cold boot
+  (<code>CameraStallGuard</code>, <span class="val">~20&nbsp;s</span>, hardware-proven) and re-derives
+  its broadcast target if it started before DHCP, and <code>NetworkThreatSource</code> rebuilds its
+  socket so a router power-cycle no longer kills the night-vision HUD for the night. The one thing
+  still needing a human is beacon power &mdash; it is the fleet's only GNSS. Detail in
+  <code>docs/AUDIT-2026-08-13-resilience.md</code>.</p>
 </div>
 
 <h2 id="fake">Deliberately fake, stubbed, or absent</h2>
@@ -123,7 +135,7 @@
 <tr><th>Vehicle command vocabulary</th><td><code>SetHeading</code> / <code>SetSpeed</code> only, delivered to a fake.</td></tr>
 <tr><th>MAP cell gauges and throttle trace</th><td>Hard-coded literals in the composable &mdash; <code>CELL A 70%</code>, <code>CELL B 45%</code>. Not wired to anything.</td></tr>
 <tr><th>Jetson detector</th><td>Background subtraction. <strong>No model, no weights, no inference runtime</strong> anywhere in the tree.</td></tr>
-<tr><th>Jetson camera ring</th><td>Software complete; <strong>no camera has been connected to the box.</strong></td></tr>
+<tr><th>Jetson camera ring</th><td>Software complete; thermal + RGB cameras now connected and streaming on the box (thermal measured 2026-08-13: <code>Y16</code> 160&times;120 @ 8.79&nbsp;fps). <strong>The permanent multi-camera ring, on-vehicle mount/aim and a trained detector are still to come.</strong></td></tr>
 <tr><th>Tracker light aim</th><td><code>tilt_far</code> / <code>tilt_near</code> / <code>pan_center</code> are uncalibrated placeholders.</td></tr>
 <tr><th>DMX arbitration</th><td>Unresolved. <code>zvision --dmx ola</code> and <code>zdeck</code> must not run together.</td></tr>
 <tr><th><code>CockpitUiState.tiltDeg</code></th><td>Persisted and clamped, but the renderer uses a compile-time <span class="val">45&deg;</span> &mdash; a runtime <code>rotationX</code> would not render in that <code>graphicsLayer</code> on the S9+.</td></tr>
@@ -159,17 +171,16 @@ real beacon.</p>
 
 <p>Recorded rather than quietly fixed, because fixing them is a code change.</p>
 
-<div class="note bug">
-  <span class="label">Open bug &mdash; field-of-view reference</span>
-  <p><code>jetson/HARDWARE.md</code> concludes, with a physics argument, that the Lepton Ultra
-  Wide's quoted 160&deg; is the <em>diagonal</em>, giving <span class="val">&plusmn;64&deg;</span>
-  horizontal, and the tablet agrees: <code>SurroundRing.COVERED_ARCS</code> is
-  <span class="val">-64f..64f</span>. But <code>zvision</code>'s <code>--fov-ref</code> defaults to
-  <code>h</code>, and every documented example rig omits <code>fovref=d</code>, so the Python side
-  computes bearings as if the camera covered <span class="val">&plusmn;80&deg;</span>.</p>
-  <p><strong>The two sides currently disagree by up to 16&deg; at the frame edge.</strong> Either
-  the Python default flips or the tablet's covered arc widens; until then, treat edge bearings as
-  unverified. <a href="../protocols/fov-discrepancy.html">Full detail</a>.</p>
+<div class="note">
+  <span class="label">Resolved 2026-08-10 &mdash; field-of-view reference</span>
+  <p><code>jetson/HARDWARE.md</code> concludes, with a physics argument since confirmed by
+  measurement, that the Lepton Ultra Wide's quoted 160&deg; is the <em>diagonal</em>, giving
+  <span class="val">&plusmn;64&deg;</span> horizontal. The tablet's
+  <code>SurroundRing.COVERED_ARCS</code> is <span class="val">-64f..64f</span>, and
+  <code>zvision</code>'s <code>--fov-ref</code> now <strong>defaults to <code>d</code></strong> too, so
+  both sides compute &plusmn;64&deg; by default and agree without anyone remembering a flag
+  (<code>FovReferenceDefaultTest</code> pins it). <a href="../protocols/fov-discrepancy.html">Full
+  detail</a>.</p>
 </div>
 
 <div class="note bug">
@@ -209,28 +220,39 @@ real beacon.</p>
 
 <h2 id="tests">Test counts</h2>
 
-<p>Measured 2026-08-10, all green.</p>
+<p>Measured 2026-08-14, all green.</p>
 
 <div class="tablewrap">
 <table>
-<thead><tr><th>Suite</th><th class="num">Classes</th><th class="num">Tests</th></tr></thead>
+<thead><tr><th>Suite</th><th class="num">Tests</th></tr></thead>
 <tbody>
-<tr><th><code>:app</code></th><td class="num">76</td><td class="num">817</td></tr>
-<tr><th><code>:beacon</code></th><td class="num">13</td><td class="num">77</td></tr>
-<tr><th><code>jetson</code></th><td class="num">19 files</td><td class="num">429</td></tr>
+<tr><th><code>:app</code></th><td class="num">1008</td></tr>
+<tr><th><code>:beacon</code></th><td class="num">109</td></tr>
+<tr><th><code>jetson</code></th><td class="num">475</td></tr>
 </tbody>
 </table>
 </div>
 
 <p><a href="../reference/build.html">How to run them, and the exact CI gates &rarr;</a></p>
 
-<h2 id="audit">The 2026-08-09 Android audit</h2>
+<h2 id="audit">The audits</h2>
 
-<p>Four independent reviews of the Android side &mdash; the <code>:beacon</code> sensor hub, GPS
-sourcing and fallback, the telemetry/state pipeline, and offline resilience &mdash; produced 20
-findings (A1&ndash;A3, B1&ndash;B6, C1&ndash;C10). <strong>All 20 are closed as of
-2026-08-10.</strong> The evidence is kept because several of the fixes are load-bearing design
-decisions that are easy to undo by accident:</p>
+<p>Three audits are recorded in <code class="path">docs/</code>. Their findings are closed or triaged;
+the evidence is kept because several of the fixes are load-bearing design decisions that are easy to
+undo by accident.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Audit</th><th>What it asked</th><th>Outcome</th></tr></thead>
+<tbody>
+<tr><th><code>AUDIT-2026-08-09.md</code></th><td>Four independent reviews of the Android side &mdash; the <code>:beacon</code> hub, GPS sourcing/fallback, the telemetry/state pipeline, offline resilience</td><td>20 findings (A1&ndash;A3, B1&ndash;B6, C1&ndash;C10); <strong>all closed</strong> as of 2026-08-10</td></tr>
+<tr><th><code>AUDIT-2026-08-13.md</code></th><td>Eight-agent fleet-wide bug-hunt, one high-risk area each</td><td>~40 findings (8 P1 all confirmed, ~12 P2, ~20 P3); every in-scope P1 and P2 fixed and shipped bar two deferred for on-hardware validation</td></tr>
+<tr><th><code>AUDIT-2026-08-13-resilience.md</code></th><td>&ldquo;Does the fleet come back by itself after a power event?&rdquo; &mdash; power loss, unplug/replug, reboot, cold power-on</td><td>Drove the shipped self-recovery work: tablet auto-relaunch (kiosk Home app), the Jetson camera-stall self-heal, and the <code>NetworkThreatSource</code> rebuild loop</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Below: the five 2026-08-09 findings whose fixes are the easiest to revert by accident.</p>
 
 <div class="tablewrap">
 <table>
@@ -245,10 +267,10 @@ decisions that are easy to undo by accident:</p>
 </table>
 </div>
 
-<p>The audit's own <code>file:line</code> references have since drifted; navigate by symbol name.</p>
+<p>The audits' own <code>file:line</code> references have since drifted; navigate by symbol name.</p>
 
 </div>
-<p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md &sect;8, &sect;9</code> &middot; <code>docs/AUDIT-2026-08-09.md</code> &middot; <code>docs/BUILD.md</code> &middot; <code>tasks/open.md</code></p>
+<p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md &sect;8, &sect;9</code> &middot; <code>docs/README.md</code> &middot; <code>docs/AUDIT-2026-08-09.md</code> &middot; <code>docs/AUDIT-2026-08-13.md</code> &middot; <code>docs/AUDIT-2026-08-13-resilience.md</code> &middot; <code>docs/BUILD.md</code> &middot; <code>tasks/open.md</code></p>
 
 <nav class="pager" aria-label="Page navigation"><a class="prev" href="../system/devices.html"><span class="pager-dir">Previous</span><span class="pager-name">Devices &amp; roles</span></a><a class="next" href="../protocols/index.html"><span class="pager-dir">Next</span><span class="pager-name">The fleet bus</span></a></nav>
   </article>

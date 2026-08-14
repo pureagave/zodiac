@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Layers and state · Zodiac</title>
-<meta name="description" content="How the cockpit app is layered: manual DI, one StateFlow, three ViewModel delegates, and two routers with deliberately opposite lifecycles.">
+<meta name="description" content="How the cockpit app is layered: manual DI, one StateFlow, four ViewModel delegates, and two routers with deliberately opposite lifecycles.">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
 <body>
@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group is-here">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -113,13 +113,15 @@ CockpitScreen &#9472; burnInScaffold &#8594; theme &#8594; dispatch on CockpitCo
 CockpitViewModel &#9472; one StateFlow&lt;CockpitUiState&gt;
      &#9474;   &#9500;&#9472;&#9472; MapCameraController    pan / zoom / rotate / tilt / recenter
      &#9474;   &#9500;&#9472;&#9472; NavigationController   drive-to targets, routing, street + art callouts
-     &#9474;   &#9492;&#9472;&#9472; GpsController          source selection, fake-GPS nudges
+     &#9474;   &#9500;&#9472;&#9472; GpsController          source selection, fake-GPS nudges
+     &#9474;   &#9492;&#9472;&#9472; NavShareController     adopt / broadcast the shared $ZNAV destination
      &#9474;
 data/ &#9472; VehicleConnectionGateway &#183; TelemetryRepository &#183; LocationSource
         ThreatSource &#183; PlayaMapRepository &#183; DiscoveryRepository &#183; CockpitPreferences
+        nav (NavShare send/receive) &#183; art (pre-rendered art)
      &#9474;
 core/ &#9472; pure logic, no Android: geo &#183; navigation &#183; ops &#183; vision &#183; telemetry
-        sensor &#183; model &#183; connection &#183; log &#183; net &#183; passenger &#183; permission</code></pre>
+        sensor &#183; model &#183; connection &#183; log &#183; net &#183; passenger &#183; permission &#183; kiosk</code></pre>
 
 <p><code>core/</code> is where every decision that can be tested without a device lives. Draw code
 turns decisions into pixels; the decisions live in <code>core/</code> with tests.
@@ -142,10 +144,10 @@ naming the device, API level, active BRC year and log path.</p>
 
 <h2 id="vm">The ViewModel and its delegates</h2>
 
-<p><code>ui/viewmodel/</code> is four files. <code>CockpitViewModel</code>
-(<span class="val">457</span> lines, <span class="val">20</span> public functions) owns the single
+<p><code>ui/viewmodel/</code> is five files. <code>CockpitViewModel</code>
+(<span class="val">~536</span> lines, <span class="val">20</span> public functions) owns the single
 <code>MutableStateFlow&lt;CockpitUiState&gt;</code>, the flow subscriptions, and the vehicle-command
-actions. It constructs and delegates to three controllers that share that state handle.</p>
+actions. It constructs and delegates to four controllers that share that state handle.</p>
 
 <div class="tablewrap">
 <table>
@@ -155,6 +157,7 @@ actions. It constructs and delegates to three controllers that share that state 
 <tr><th><code>MapCameraController.kt</code></th><td><code>setMapMode</code>, <code>setTiltDeg</code>, <code>setPixelsPerMeter</code>, <code>panBy</code>, <code>nudgeViewRotation</code>, <code>recenterPan</code>, auto-recenter scheduling</td></tr>
 <tr><th><code>NavigationController.kt</code></th><td><code>setNavTarget</code>, <code>driveToNearestToilet</code>, address entry, route recomputation, street-crossing and passing callouts</td></tr>
 <tr><th><code>GpsController.kt</code></th><td><code>selectLocationSource</code>, <code>restartLocationSource</code>, fake-GPS nudge / reset</td></tr>
+<tr><th><code>NavShareController.kt</code></th><td>Adopt an inbound <code>$ZNAV</code> destination and broadcast local sets when this device is a nav authority (<code>NavShareArbiter</code> orders + de-echoes)</td></tr>
 </tbody>
 </table>
 </div>
@@ -249,9 +252,10 @@ colour-agnostically so a palette change never invalidates the layout cache.</p>
 
 <h2 id="prefs">Preferences</h2>
 
-<p><code>DataStoreCockpitPreferences</code> persists <span class="val">21</span> keys in one
+<p><code>DataStoreCockpitPreferences</code> persists <span class="val">22</span> keys in one
 Preferences DataStore &mdash; GPS source, map mode, tilt, zoom, concept, passenger role, and every
-burn-in parameter.</p>
+burn-in parameter. The <code>$ZNAV</code> Lamport counter is persisted separately so a rebooted
+authority does not mint a losing low <code>seq</code>.</p>
 
 <ul>
 <li>Enums are stored <strong>by name</strong>, so a renamed constant falls back to the default

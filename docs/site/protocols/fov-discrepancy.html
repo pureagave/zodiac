@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Known discrepancy: the field-of-view reference · Zodiac</title>
-<meta name="description" content="The open field-of-view disagreement between zvision and the tablet: up to 16 degrees of bearing error at the frame edge.">
+<title>Field of view: the settled reference · Zodiac</title>
+<meta name="description" content="The field-of-view reference between zvision and the tablet, now settled: both default to the diagonal and agree at plus-or-minus 64 degrees horizontal, confirmed by measurement.">
 <link rel="stylesheet" href="../assets/site.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
 
 <header class="topbar">
   <button class="btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-controls="rail">Menu</button>
-  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Protocols — the seams <span aria-hidden="true">/</span> <em>Known discrepancy: FOV</em></p>
+  <p class="crumbs"><a href="../index.html">Zodiac</a> <span aria-hidden="true">/</span> Protocols — the seams <span aria-hidden="true">/</span> <em>Field of view (settled)</em></p>
   <button class="btn" type="button" data-theme-toggle>Light</button>
 </header>
 
@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html" aria-current="page">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html" aria-current="page">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -92,7 +92,7 @@
 <main class="main" id="main">
   <article class="page">
 <p class="kicker">Protocols &#183; the seams</p>
-<h1>Known discrepancy: the field-of-view reference</h1>
+<h1>Field of view: the settled reference</h1>
 
 <div class="note">
   <span class="label">RESOLVED 2026-08-10 &mdash; this page is now history, not a live warning</span>
@@ -113,35 +113,31 @@
   &plusmn;80&deg;. The argument below is retained because it is what led to the
   measurement.</p>
 </div>
-<p class="standfirst">The tablet and the edge box currently disagree about how wide the forward thermal camera
-    sees. The consequence is up to <span class="val">16&deg;</span> of bearing error at the frame
-    edge &mdash; on the number that both draws the driver's HUD and aims a spotlight at a person.</p>
+<p class="standfirst">The tablet and the edge box now <strong>agree</strong> about how wide the forward thermal camera
+    sees: both default to the <strong>diagonal</strong> reference and compute
+    <span class="val">&plusmn;64&deg;</span> horizontal. This was once an open disagreement worth up to
+    <span class="val">16&deg;</span> of bearing error at the frame edge &mdash; on the number that both
+    draws the driver's HUD and aims a spotlight at a person &mdash; and it is now settled, and
+    confirmed by measurement.</p>
 <div class="prose">
 
 
-<div class="note bug">
-  <span class="label">Open &mdash; recorded, not fixed</span>
-  <p>This is a <strong>code</strong> decision, not a documentation one. It is written down so that
-  anyone reading a bearing off the bus knows the edge values are unverified until it is
-  resolved.</p>
-</div>
-
-<h2 id="two">What the two sides believe</h2>
+<h2 id="two">What the two sides compute</h2>
 
 <div class="tablewrap">
 <table>
-<thead><tr><th>Side</th><th>Believes the forward thermal covers</th><th>Where</th></tr></thead>
+<thead><tr><th>Side</th><th>Forward thermal covers</th><th>Where</th></tr></thead>
 <tbody>
 <tr><th>Tablet (<code>:app</code>)</th><td><span class="val">&plusmn;64&deg;</span></td><td><code>SurroundRing.COVERED_ARCS</code> = <code>-64f..64f</code></td></tr>
-<tr><th>Edge box (<code>zvision</code>)</th><td><span class="val">&plusmn;80&deg;</span></td><td><code>--fov-ref</code> defaults to <code>h</code>; <code>geometry.FOV_HORIZONTAL</code>; <code>rig.CameraMount.fov_ref</code></td></tr>
+<tr><th>Edge box (<code>zvision</code>)</th><td><span class="val">&plusmn;64&deg;</span></td><td><code>--fov-ref</code> defaults to <code>d</code>; <code>rig.CameraMount.fov_ref</code>; <code>FovReferenceDefaultTest</code> pins it</td></tr>
 </tbody>
 </table>
 </div>
 
-<p>Every documented example rig &mdash; in <code>jetson/README.md</code>,
-<code>jetson/DEPLOY.md</code>, <code>jetson/HARDWARE.md</code> and
-<code>jetson/TRAINING.md</code> &mdash; omits <code>fovref=d</code>, so following any of them
-reproduces the &plusmn;80&deg; reading.</p>
+<p>Because the default is now <code>d</code>, a camera spec that omits <code>fovref=d</code> &mdash;
+as every documented example rig in <code>jetson/README.md</code>, <code>jetson/DEPLOY.md</code>,
+<code>jetson/HARDWARE.md</code> and <code>jetson/TRAINING.md</code> does &mdash; inherits the correct
+&plusmn;64&deg; reading rather than the old &plusmn;80&deg;.</p>
 
 <h2 id="argument">Why &plusmn;64&deg; is the settled reading</h2>
 
@@ -164,12 +160,13 @@ board on 2026-08-07 (it had first been recorded as 120&times;120).</li>
 <p><code>LeptonUwFovReferenceTest</code> pins that arithmetic, and the tablet's
 <code>SurroundRing.COVERED_ARCS</code> carries the matching &plusmn;64&deg;.</p>
 
-<h2 id="cost">Why it is not cosmetic</h2>
+<h2 id="cost">Why the default mattered</h2>
 
-<p><code>fov_ref</code> feeds <code>pixel_to_bearing</code>, so the wrong choice mis-aims
+<p><code>fov_ref</code> feeds <code>pixel_to_bearing</code>, so the wrong choice would mis-aim
 <strong>every edge bearing by up to 16&deg;</strong> &mdash; about
 <span class="val">2.8&nbsp;m</span> of miss on a person <span class="val">10&nbsp;m</span> away,
-which is exactly where the tracker light gets pointed.</p>
+which is exactly where the tracker light gets pointed. That is why the default was flipped, not left
+to a per-rig flag.</p>
 
 <h2 id="policy">The policy behind the choice</h2>
 
@@ -180,16 +177,13 @@ which is exactly where the tracker light gets pointed.</p>
   figure that names the axis.</p>
 </div>
 
-<h2 id="fix">What resolving it looks like</h2>
+<h2 id="fix">How it was resolved</h2>
 
-<p>Either the Python default flips to <code>d</code>, or the tablet's covered arc widens. Until
-one of those happens:</p>
-
-<ul>
-<li>Add <code>fovref=d</code> by hand to the thermal camera's <code>--camera</code> spec if you want
-the two sides of the vehicle to agree.</li>
-<li>Treat edge bearings as unverified.</li>
-</ul>
+<p>The Python default was flipped to <code>d</code> &mdash; in both <code>rig.CameraMount</code> and
+the CLI &mdash; so both sides compute <span class="val">&plusmn;64&deg;</span> without a flag.
+<code>FovReferenceDefaultTest</code> pins it, and both mutations were run: reverting either default
+turns the suite red. A camera spec can still name the reference explicitly if a future lens needs
+it:</p>
 
 <pre><code>--camera thermal:/dev/video0:az=0:fov=160:fovref=d:lens=fisheye:name=thermal</code></pre>
 

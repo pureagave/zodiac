@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -107,10 +107,10 @@
 <tbody>
 <tr><th><code>app.py</code></th><td>CLI runner; the broadcast + tracker loop</td></tr>
 <tr><th><code>rig.py</code></th><td>Camera mounts, <code>--camera</code> spec parsing, full-circle merge and overlap dedup, coverage-gap reporting</td></tr>
-<tr><th><code>capture.py</code></th><td><code>UvcCamera</code> and <code>ThermalCamera</code> (cv2)</td></tr>
+<tr><th><code>capture.py</code></th><td><code>UvcCamera</code> and <code>ThermalCamera</code> (cv2); reopens a camera that wedges in <code>select()</code> at cold boot</td></tr>
 <tr><th><code>detector.py</code></th><td><code>Detector</code> protocol, <code>FakeDetector</code>, <code>MotionDetector</code></td></tr>
 <tr><th><code>geometry.py</code></th><td>Pixel &rarr; bearing through a lens model, bbox &rarr; size, constant-bearing collision rule</td></tr>
-<tr><th><code>normalize.py</code></th><td>The array-free arithmetic &mdash; contrast stretch window, track-id assignment, re-baseline guard. Exists so the suite runs without numpy</td></tr>
+<tr><th><code>normalize.py</code></th><td>The array-free arithmetic &mdash; contrast stretch window, track-id assignment, re-baseline guard, camera-stall guard. Exists so the suite runs without numpy</td></tr>
 <tr><th><code>threat.py</code> / <code>threat_protocol.py</code></th><td>The <code>DriverThreat</code> record and the ZTHREAT wire format</td></tr>
 <tr><th><code>broadcaster.py</code></th><td>UDP sender &mdash; multicast <strong>and</strong> subnet broadcast</td></tr>
 <tr><th><code>fleet_bus.py</code></th><td>Group / port constants, mirrored from Kotlin</td></tr>
@@ -155,14 +155,15 @@ astern. On the box these live in <code>ZVISION_ARGS</code> in
     port-aft: rgb /dev/video4 az=-120&deg; fov=90&deg;h rectilinear -&gt; covers -165&deg;..-75&deg;
   blind: +166&deg;..+195&deg;</code></pre>
 
-<div class="note bug">
-  <span class="label">Note the <code>fov=160&deg;h</code> in that first line</span>
-  <p><code>--fov-ref</code> defaults to horizontal, so a camera declared <code>fov=160</code> is
-  treated as covering <span class="val">&plusmn;80&deg;</span>. The hardware analysis concludes the
-  Lepton Ultra Wide's quoted 160&deg; is the <strong>diagonal</strong>
-  (<span class="val">&plusmn;64&deg;</span> horizontal), and the tablet already assumes
-  &plusmn;64&deg;. Until the Python default or the examples change, add <code>fovref=d</code> to the
-  thermal camera's spec if you want the two sides of the vehicle to agree.
+<div class="note">
+  <span class="label">That transcript predates the 2026-08-10 default change</span>
+  <p><code>--fov-ref</code> now defaults to <code>d</code>, so the same command prints
+  <code>fov=160&deg;d &hellip; covers -64&deg;..+64&deg;</code>. The Lepton Ultra Wide's quoted
+  160&deg; is the <strong>diagonal</strong> &mdash; argued from physics in <code>HARDWARE.md</code>
+  and since confirmed by measurement (a true 40.4&deg; target reported at 42.5&deg;; the horizontal
+  reading predicts 32.3&deg;). Both sides of the vehicle now compute
+  <span class="val">&plusmn;64&deg;</span> by default, and the tablet's
+  <code>SurroundRing.COVERED_ARCS</code> carries the matching arc.
   <a href="../protocols/fov-discrepancy.html">Full detail &rarr;</a></p>
 </div>
 

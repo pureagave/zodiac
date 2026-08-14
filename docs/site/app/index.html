@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group is-here">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -143,6 +143,10 @@ speed come from the GPS fix, never from tapping the map.</li>
 &mdash; type any city address on a full-screen keypad.</li>
 <li><strong>Street-following routing</strong> with every corner snapped to a real vertex of the GIS
 street polylines, so the drawn route lies on the drawn streets instead of cutting through camps.</li>
+<li><strong>Shared destination across the fleet</strong> &mdash; when one tablet sets a drive-to
+target, every tablet adopts it over <code>$ZNAV</code>, so the whole fleet's DRIVER HUD points the
+same way. The OLED tablets (S9+, A54) are automatic broadcast authorities; the two Fires follow.
+<a href="map.html#nav-share">Detail &rarr;</a></li>
 <li>Street-crossing popups and &ldquo;passing&rdquo; callouts for notable art within
 <span class="val">120&nbsp;m</span>.</li>
 </ul>
@@ -168,7 +172,8 @@ is verified end to end against the real beacon.</li>
 <li><strong>OLED burn-in mitigation</strong>: whole-UI pixel shift, brightness breathe and idle dim,
 and a four-phase idle escalation. <a href="burn-in.html">Detail &rarr;</a></li>
 <li><strong>Kiosk mode</strong>: device-owner lock task, lockscreen and automatic OS updates
-disabled. <a href="../reference/kiosk.html">Provisioning &rarr;</a></li>
+disabled, and the cockpit set as the device's Home app so a kiosked tablet relaunches itself after a
+reboot or power loss. <a href="../reference/kiosk.html">Provisioning &rarr;</a></li>
 <li><strong>On-device postmortem logging</strong> that counts everything it discards.</li>
 <li><strong>Playa discovery</strong>: offline-first cache of the Burning Man API's art and camp
 records.</li>
@@ -228,7 +233,7 @@ amber colour-wheel slots <em>at config construction</em>, not merely by conventi
 </div>
 <p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md &sect;4</code> &middot; <code>docs/BUILD.md &sect;2</code></p>
 
-<nav class="pager" aria-label="Page navigation"><a class="prev" href="../protocols/fov-discrepancy.html"><span class="pager-dir">Previous</span><span class="pager-name">Known discrepancy: FOV</span></a><a class="next" href="../app/concepts.html"><span class="pager-dir">Next</span><span class="pager-name">The three concepts</span></a></nav>
+<nav class="pager" aria-label="Page navigation"><a class="prev" href="../protocols/fov-discrepancy.html"><span class="pager-dir">Previous</span><span class="pager-name">Field of view (settled)</span></a><a class="next" href="../app/concepts.html"><span class="pager-dir">Next</span><span class="pager-name">The three concepts</span></a></nav>
   </article>
   <aside class="toc" id="toc" aria-label="On this page"></aside>
 </main>

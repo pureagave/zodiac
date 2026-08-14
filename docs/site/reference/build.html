@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -174,15 +174,15 @@ Fire OS 6/5 (API 25/22) and would need a further drop &mdash; check any candidat
 
 <h2 id="tests">Test counts</h2>
 
-<p>Measured 2026-08-10, all green.</p>
+<p>Measured 2026-08-14, all green.</p>
 
 <div class="tablewrap">
 <table>
-<thead><tr><th>Suite</th><th class="num">Classes</th><th class="num">Tests</th></tr></thead>
+<thead><tr><th>Suite</th><th class="num">Tests</th></tr></thead>
 <tbody>
-<tr><th><code>:app</code></th><td class="num">76</td><td class="num">817</td></tr>
-<tr><th><code>:beacon</code></th><td class="num">13</td><td class="num">77</td></tr>
-<tr><th><code>jetson</code></th><td class="num">19 files</td><td class="num">429</td></tr>
+<tr><th><code>:app</code></th><td class="num">1008</td></tr>
+<tr><th><code>:beacon</code></th><td class="num">109</td></tr>
+<tr><th><code>jetson</code></th><td class="num">475</td></tr>
 </tbody>
 </table>
 </div>
@@ -226,7 +226,7 @@ modules. Warnings still only report; only errors abort.</li>
 <div class="note">
   <span class="label">Split the file, don't bump the number</span>
   <p>A standing rule. <code>TooManyFunctions</code> had been bumped 24&nbsp;&rarr;&nbsp;25 for one
-  method; it was reverted to <span class="val">22</span> and the ViewModel split into three delegates
+  method; it was reverted to <span class="val">22</span> and the ViewModel split into delegates
   instead. That instinct has caught real organisation problems four times.</p>
 </div>
 

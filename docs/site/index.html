@@ -41,7 +41,7 @@
 <li><a href="protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,20 +84,13 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
 
 <main class="main" id="main">
   <article class="page">
-<p style="border:1px solid currentColor;border-radius:6px;padding:.6em .9em;margin:0 0 1.2em;opacity:.85;font-size:.9em">
-  <strong>Snapshot as of 2026-08-10.</strong> This static site lags the repository.
-  For the current state — including the fleet self-recovery work, shared-destination
-  nav (<code>$ZNAV</code>), and cameras now streaming on the edge box — read the
-  Markdown in the repo: <code>README.md</code>, <code>ARCHITECTURE.md</code>, and the
-  top of <code>SYNC.md</code>.
-</p>
 <p class="kicker">Galactic Relay &#183; Black Rock City</p>
 <h1>One system in three parts</h1>
 <p class="standfirst">Zodiac is the software for a Judge-Dredd-themed mutant vehicle (art car).
@@ -115,7 +108,9 @@ unreliable; nothing safety-relevant depends on it.</p>
 <p>The three codebases <strong>share no code</strong>. They agree through two documented wire
 formats &mdash; NMEA sentences and <code>ZTHREAT</code> frames &mdash; and both are pinned by tests.
 Those two formats are the spine of the whole system, which is why
-<a href="protocols/index.html">Protocols</a> gets its own section here.</p>
+<a href="protocols/index.html">Protocols</a> gets its own section here. The tablets also share one
+piece of state among <em>themselves</em> &mdash; the drive-to destination &mdash; over a third
+multicast channel, <code>$ZNAV</code>.</p>
 
 
 <figure class="flow">
@@ -124,8 +119,9 @@ Those two formats are the spine of the whole system, which is why
   <desc id="flow-desc">The beacon phone broadcasts NMEA telemetry to multicast group 239.7.7.10 port 10110
   plus a subnet broadcast copy. The Jetson vision box broadcasts ZTHREAT frames to 239.7.7.20 port 10120
   plus a subnet broadcast copy. Both are received by the fleet of eight to ten Android tablets running the
-  cockpit app. The Jetson also listens to the beacon's audio-level channel, and drives a DMX moving-head
-  tracker light over a separate DMX cable, outside the network.</desc>
+  cockpit app. The tablets also share a drive-to destination among themselves over a third multicast
+  channel, $ZNAV, on 239.7.7.30 port 10130. The Jetson also listens to the beacon's audio-level channel,
+  and drives a DMX moving-head tracker light over a separate DMX cable, outside the network.</desc>
 
   <!-- network boundary -->
   <rect class="f-bound" x="20" y="40" width="860" height="300" rx="4"></rect>
@@ -156,6 +152,9 @@ Those two formats are the spine of the whole system, which is why
   <text class="f-sub" x="348" y="298">live Black Rock City map</text>
   <text class="f-sub" x="348" y="312">threat HUD &#183; passenger cards</text>
 
+  <!-- $ZNAV: tablets share a drive-to destination among themselves -->
+  <text class="f-sub" x="450" y="336" text-anchor="middle">&#8635; $ZNAV shared drive-to (tablet &#8596; tablet) &#183; 239.7.7.30:10130</text>
+
   <!-- beacon -> tablets -->
   <path class="f-arrow" d="M 230 133 H 288 V 279 H 322"></path>
   <path class="f-head" d="M 330 279 L 321 274.5 L 321 283.5 Z"></path>
@@ -185,7 +184,7 @@ Those two formats are the spine of the whole system, which is why
   <text class="f-scope" x="24" y="358">VEHICLE WIFI &#183; TRAVEL ROUTER (AP + DHCP) &#183; SINGLE /24 &#183; MULTICAST TTL 1 &#8212; NOTHING LEAVES THE VEHICLE</text>
 </svg>
 </figure>
-<p class="caption">Both realtime streams are one-to-many multicast with a subnet-broadcast copy. Nothing unicasts, nothing handshakes, nothing has a hardcoded IP.</p>
+<p class="caption">All three multicast channels are one-to-many with a subnet-broadcast copy &mdash; the two realtime streams (NMEA, ZTHREAT) and the tablets' shared drive-to ($ZNAV). Nothing unicasts, nothing handshakes, nothing has a hardcoded IP.</p>
 
 
 <h2 id="parts">The three parts</h2>
@@ -274,10 +273,11 @@ fall where a feature list would suggest.</p>
   </li>
   <li>
     <span class="statboard-name">jetson/ &mdash; the edge box</span>
-    <span class="chip unproven">Software built, no camera yet</span>
-    <span class="statboard-note">ZTHREAT bus proven with <code>--source fake</code>; DMX fixture
-    characterised; Stream Deck driven on real hardware. <strong>No camera has been attached to the
-    box.</strong></span>
+    <span class="chip unproven">Software built, cameras now streaming</span>
+    <span class="statboard-note">ZTHREAT bus proven with <code>--source fake</code>; thermal + RGB
+    cameras now connected and streaming on the box; boot-wedge self-heal proven on hardware; DMX
+    fixture characterised; Stream Deck driven on real hardware. <strong>The permanent ring, on-vehicle
+    mount/aim and a trained detector are still to come.</strong></span>
   </li>
   <li>
     <span class="statboard-name">Vehicle transports</span>
@@ -333,6 +333,11 @@ weeks pre-event. The 2025 art layer was bundled from <code>iBurnApp/iBurn-Data</
 <p>The project is Apache&nbsp;2.0. The bundled Black Rock City GIS data is <strong>not</strong>
 covered by that licence &mdash; it is used under the Innovate Terms of Service, and
 <code>NOTICE</code> in the repository carries the full third-party attribution.</p>
+
+<p style="margin-top:2.5em;padding-top:1.2em;border-top:1px solid var(--rule);font-size:.85em;color:var(--ink-mute)">
+  <strong>Last updated 2026-08-14.</strong> The repository Markdown (<code>README.md</code>,
+  <code>SYNC.md</code>) remains the source of truth for the very latest.
+</p>
 
 </div>
 <p class="srcnote"><b>Converted from</b><br><code>README.md</code> &middot; <code>ARCHITECTURE.md</code> &middot; <code>docs/PROTOCOLS.md</code> &middot; <code>docs/DEVICES.md</code></p>

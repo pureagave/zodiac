@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -119,7 +119,9 @@
 <tr><th><code>docs/DEVICES.md</code></th><td>Hardware role map and per-device gotchas</td><td><a href="../system/devices.html">Devices and roles</a></td></tr>
 <tr><th><code>docs/BUILD.md</code></th><td>Build, test, deploy, and the exact CI gates</td><td><a href="../reference/build.html">Build, test and CI</a></td></tr>
 <tr><th><code>docs/KIOSK.md</code></th><td>Device-owner provisioning</td><td><a href="../reference/kiosk.html">Kiosk provisioning</a></td></tr>
-<tr><th><code>docs/AUDIT-2026-08-09.md</code></th><td>Historical: the 20-finding Android audit and its evidence. <strong>All closed.</strong> Kept because several fixes are load-bearing design decisions that are easy to undo by accident</td><td><a href="../system/status.html#audit">Status &rarr; the audit</a>, and the individual subsystem pages</td></tr>
+<tr><th><code>docs/AUDIT-2026-08-09.md</code></th><td>Historical: the 20-finding Android audit and its evidence. <strong>All closed.</strong> Kept because several fixes are load-bearing design decisions that are easy to undo by accident</td><td><a href="../system/status.html#audit">Status &rarr; the audits</a>, and the individual subsystem pages</td></tr>
+<tr><th><code>docs/AUDIT-2026-08-13.md</code></th><td>The eight-agent fleet-wide bug-hunt catalogue (~40 findings; every in-scope P1/P2 fixed bar two deferred for on-hardware validation)</td><td><a href="../system/status.html#audit">Status &rarr; the audits</a></td></tr>
+<tr><th><code>docs/AUDIT-2026-08-13-resilience.md</code></th><td>&ldquo;Does the fleet come back by itself after a power event?&rdquo; &mdash; drove the shipped tablet/Jetson self-recovery work</td><td><a href="../system/status.html#audit">Status &rarr; the audits</a></td></tr>
 <tr><th><code>docs/README.md</code></th><td>The repository's own doc index and conventions</td><td>This page</td></tr>
 </tbody>
 </table>
@@ -191,9 +193,10 @@
     reference material, and reproducing it would duplicate the corrected state that
     <code>README.md</code> and <code>ARCHITECTURE.md</code> already carry. It is cited where a
     decision's <em>why</em> lives only there.</li>
-    <li><strong>The full 20-finding audit evidence.</strong> All findings are closed; the five whose
-    fixes are load-bearing are surfaced on <a href="../system/status.html#audit">Status</a>, and the
-    rest are best read in the original with the code open.</li>
+    <li><strong>The full audit evidence.</strong> The three audits &mdash; the 2026-08-09 20-finding
+    review and the two 2026-08-13 fleet-wide passes &mdash; are summarised on
+    <a href="../system/status.html#audit">Status</a>; the finding-by-finding detail is best read in
+    the originals with the code open.</li>
     <li><strong><code>jetson/sensor-pod-assembly.svg</code>.</strong> The assembly diagram is a
     repository asset and is referenced rather than reproduced, because it could not be regenerated
     faithfully.</li>

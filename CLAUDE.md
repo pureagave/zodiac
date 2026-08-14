@@ -224,7 +224,7 @@ fabricated `0.0` (heading and lux). GPS failure is never fatal — the other
 channels keep broadcasting.
 
 Tests: `beacon/src/test/.../{Nmea,AudioLevels,ShockDetector,TripOdometer,BeaconNet,
-ForegroundTypes,TickLoop,...}Test.kt` — 13 files, four of them Robolectric.
+ForegroundTypes,TickLoop,...}Test.kt` — 18 files, several Robolectric.
 
 ## `jetson/` — the edge box
 

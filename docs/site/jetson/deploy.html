@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -376,8 +376,8 @@ left/right and <code>size</code> growing as you approach, on both the console an
   <p>Stand at a known bearing (say 45&deg; off the nose, paced out on the ground) and confirm the
   console's <code>rel_az</code> agrees. Do it once at the centre <em>and once near the frame
   edge</em> &mdash; the edge is where a wrong lens model shows up, and it is the same number that
-  aims the tracker light. <a href="../protocols/fov-discrepancy.html">And note the open FOV-reference
-  bug &rarr;</a></p>
+  aims the tracker light. <a href="../protocols/fov-discrepancy.html">And note the settled FOV
+  reference &rarr;</a></p>
 </div>
 
 <p>For the surround rig, repeat <code>--camera</code> per camera with its mounting bearing and
@@ -392,6 +392,16 @@ light onto the wrong person. <a href="zvision.html#declare">Rig declaration &rar
 sudo systemctl restart zvision
 journalctl -u zvision -f          # live logs
 systemctl status zvision          # confirm active + auto-start</code></pre>
+
+<div class="note">
+  <span class="label">It comes back by itself after a power event</span>
+  <p>The unit is <code>Restart=always</code>, and three self-heal paths cover the playa power
+  realities. A <code>CameraStallGuard</code> reopens a camera that wedges in <code>select()</code> at
+  cold boot (<span class="val">~20&nbsp;s</span>, measured on hardware &mdash; the exact failure that
+  once left the box &ldquo;running but blind&rdquo; for hours, emitting false all-clear). The
+  broadcaster re-derives its subnet-broadcast target if it started before the DHCP lease. And
+  <code>olad</code> is set to restart on crash. A cold power-on needs no human.</p>
+</div>
 
 <h2 id="dmx">7. Bring up the DMX tracker light</h2>
 

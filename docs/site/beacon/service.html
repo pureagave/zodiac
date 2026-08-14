@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -209,13 +209,13 @@ split the field &mdash; taking the whole fleet's telemetry down.</p>
 <h2 id="tests">Tests</h2>
 
 <p><code class="path">beacon/src/test/&hellip;/{Nmea,AudioLevels,ShockDetector,TripOdometer}Test.kt</code>
-and others &mdash; <span class="val">13</span> classes, <span class="val">77</span> tests. Four
+and others &mdash; <span class="val">18</span> classes, <span class="val">109</span> tests. Four
 suites use Robolectric; because <code>TelemetryBroadcaster</code> is a process singleton they all
 stop it and clear the injected GPS handle in <code>@After</code>.</p>
 
 <div class="note bug">
   <span class="label">Until 2026-08-10, none of this ran in CI</span>
-  <p>Every step in <code>android-ci.yml</code> was <code>:app:</code>-scoped, so the beacon's 77
+  <p>Every step in <code>android-ci.yml</code> was <code>:app:</code>-scoped, so the beacon's 109
   unit tests, ktlint, detekt, lint and assemble had <strong>never run on a push</strong> &mdash; on
   the one module that must survive a reboot unattended for a week. All five gates are now unscoped.
   Run them unscoped locally too: an <code>:app:</code>-prefixed task silently skips the beacon,

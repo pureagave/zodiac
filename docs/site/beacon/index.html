@@ -41,7 +41,7 @@
 <li><a href="../protocols/nmea.html">NMEA telemetry</a></li>
 <li><a href="../protocols/zthreat.html">ZTHREAT frames</a></li>
 <li><a href="../protocols/golden-corpus.html">The golden corpus</a></li>
-<li><a href="../protocols/fov-discrepancy.html">Known discrepancy: FOV</a></li>
+<li><a href="../protocols/fov-discrepancy.html">Field of view (settled)</a></li>
 </ol></div>
 <div class="rail-group">
 <span class="rail-group-title">:app — the cockpit</span>
@@ -84,7 +84,7 @@
 </ol></div>
 </nav>
   <div class="rail-foot">
-    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;10.</p>
+    <p>Built from the repository's own Markdown, verified against the code on 2026&#8209;08&#8209;14.</p>
     <p>Offline by design — no network requests.</p>
   </div>
 </aside>
@@ -164,7 +164,7 @@ a roof antenna. The travel router keeps the AP and DHCP role in both cases.
   <li><span class="statboard-name">GPS + compass end to end</span><span class="chip ok">Verified</span>
     <span class="statboard-note">Proven against real tablets on the fleet bus.</span></li>
   <li><span class="statboard-name">All seven sentence types</span><span class="chip ok">Under test</span>
-    <span class="statboard-note">77 unit tests; <code>Nmea.checksum</code> validated against published NMEA 0183 vectors after an <code>xor</code>&rarr;<code>or</code> mutation passed all 35 of the older tests.</span></li>
+    <span class="statboard-note">109 unit tests; <code>Nmea.checksum</code> validated against published NMEA 0183 vectors after an <code>xor</code>&rarr;<code>or</code> mutation passed all 35 of the older tests.</span></li>
   <li><span class="statboard-name">The five sensor channels in a moving vehicle</span><span class="chip unproven">Not yet exercised</span>
     <span class="statboard-note">Beacon channels + auto-dim end to end on the tablets is an open item.</span></li>
   <li><span class="statboard-name">Production Pi + u-blox hub</span><span class="chip none">Not built</span>
