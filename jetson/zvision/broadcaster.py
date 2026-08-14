@@ -73,9 +73,36 @@ class ThreatBroadcaster:
         self.targets: List[tuple] = [(group, port), (bcast, port)]
         if extra_targets:
             self.targets.extend((h, port) for h in extra_targets)
+        # The subnet-broadcast target is derived from the local IP, which is
+        # loopback when we're constructed before the network/DHCP is up (the
+        # cold-boot race: systemd's network-online.target can be satisfied by
+        # link-up, not a lease). Re-derive it lazily until a real address appears,
+        # then freeze — so a Jetson that starts before its lease still reaches the
+        # subnet-broadcast fallback instead of being stuck at 127.0.0.255 for the
+        # whole process lifetime. Only the auto-derived target is refreshed; an
+        # operator override (broadcast / bind_ip / iface_ip) is taken verbatim.
+        self._bcast_index = 1
+        self._broadcast_ip = ip
+        self._auto_broadcast = (
+            broadcast is None and bind_ip is None and iface_ip is None
+        )
+
+    def _refresh_broadcast(self) -> None:
+        """Recover the auto subnet-broadcast target if it froze at a loopback
+        address because the network wasn't up at construction. Probes only while
+        still loopback; once a real address resolves it freezes, so steady state
+        costs nothing."""
+        if not self._auto_broadcast or not self._broadcast_ip.startswith("127."):
+            return
+        ip = local_ip()
+        if ip.startswith("127."):
+            return
+        self._broadcast_ip = ip
+        self.targets[self._bcast_index] = (subnet_broadcast(ip), self.port)
 
     def send(self, frame: str) -> int:
         """Emit one frame to every target; returns how many sends succeeded."""
+        self._refresh_broadcast()
         data = frame.encode("ascii")
         ok = 0
         for target in self.targets:

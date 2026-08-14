@@ -5,9 +5,22 @@ the same round-trip the tablet does on the wire, minus the physical network."""
 import socket
 import unittest
 
+import zvision.broadcaster as broadcaster
 from zvision.broadcaster import ThreatBroadcaster, subnet_broadcast
 from zvision.threat import DriverThreat
 from zvision.threat_protocol import format_frame, parse_frame
+
+
+class _NullSock:
+    """A sink that swallows sends, so a test that has re-derived the broadcast
+    target to a REAL subnet address (x.x.x.255) never actually emits onto the
+    LAN. Replaces tx.sock after construction."""
+
+    def sendto(self, data, target):
+        return len(data)
+
+    def close(self):
+        pass
 
 
 class SubnetBroadcastTest(unittest.TestCase):
@@ -121,6 +134,70 @@ class LoopbackSendTest(unittest.TestCase):
             tx.close()
             rx.close()
         self.assertEqual([], parse_frame(data.decode("ascii")))
+
+
+class AutoBroadcastRefreshTest(unittest.TestCase):
+    """The cold-boot race: constructed before DHCP, local_ip() is loopback, so the
+    subnet-broadcast target would freeze at 127.0.0.255 for the process lifetime.
+    It must recover once the lease lands, then stop probing."""
+
+    def setUp(self):
+        self._orig_local_ip = broadcaster.local_ip
+
+    def tearDown(self):
+        broadcaster.local_ip = self._orig_local_ip
+
+    def _seq(self, *ips):
+        it = iter(ips)
+        broadcaster.local_ip = lambda *a, **k: next(it)
+
+    def test_frozen_loopback_broadcast_reresolves_when_network_appears(self):
+        # Construction sees no network (loopback); the next probe sees the lease.
+        self._seq("127.0.0.1", "192.168.86.235")
+        tx = ThreatBroadcaster(group="127.0.0.1", port=9)
+        tx.sock.close()
+        tx.sock = _NullSock()
+        try:
+            self.assertEqual(("127.0.0.255", 9), tx.targets[1])  # frozen pre-DHCP
+            tx.send(format_frame([]))  # lease is up -> re-derive
+            self.assertEqual(("192.168.86.255", 9), tx.targets[1])
+        finally:
+            tx.close()
+
+    def test_resolved_broadcast_freezes_and_stops_probing(self):
+        # Only two addresses available; a third probe would raise StopIteration,
+        # so this fails loudly if the loopback guard is removed (probe-every-send).
+        self._seq("127.0.0.1", "192.168.86.235")
+        tx = ThreatBroadcaster(group="127.0.0.1", port=9)
+        tx.sock.close()
+        tx.sock = _NullSock()
+        try:
+            tx.send(format_frame([]))  # resolves (2nd probe)
+            self.assertEqual(("192.168.86.255", 9), tx.targets[1])
+            tx.send(format_frame([]))  # must NOT probe again
+            self.assertEqual(("192.168.86.255", 9), tx.targets[1])
+        finally:
+            tx.close()
+
+    def test_explicit_broadcast_is_never_auto_reresolved(self):
+        # An operator override must be honoured verbatim and never re-derived.
+        probes = []
+
+        def resolver(*a, **k):
+            probes.append(1)
+            return "192.168.86.235"
+
+        broadcaster.local_ip = resolver
+        tx = ThreatBroadcaster(group="127.0.0.1", port=9, broadcast="10.9.9.255")
+        tx.sock.close()
+        tx.sock = _NullSock()
+        try:
+            before = len(probes)
+            tx.send(format_frame([]))
+            self.assertEqual(("10.9.9.255", 9), tx.targets[1])  # unchanged
+            self.assertEqual(before, len(probes))  # no probe during send
+        finally:
+            tx.close()
 
 
 if __name__ == "__main__":

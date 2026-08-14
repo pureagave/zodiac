@@ -63,11 +63,21 @@ for p in usbserial opendmx usbdmx stageprofi artnet spi osc \
 done
 chown -R olad:olad "$CONF" 2>/dev/null || true
 
-echo ">> pinning olad to CPU core ${DMX_CORE} (host-timed DMX must not be jittered)"
+echo ">> pinning olad to core ${DMX_CORE} + making it self-heal (Restart=always)"
 mkdir -p /etc/systemd/system/olad.service.d
+# The stock ola package ships Restart=no, so a crashed olad stays dead until the
+# next reboot. With DMX enabled olad owns the tracker-light universe and nothing
+# else re-raises it, so a crash = tracker light dead for the night. Make it
+# self-heal like our own zodiac-* units. StartLimitIntervalSec goes in [Unit]
+# (NOT [Service]) so power-flap restarts are never throttled off — the same
+# placement trap zvision.service guards against in its comments.
 cat > /etc/systemd/system/olad.service.d/override.conf <<EOF
+[Unit]
+StartLimitIntervalSec=0
 [Service]
 CPUAffinity=${DMX_CORE}
+Restart=always
+RestartSec=2
 EOF
 
 systemctl daemon-reload
