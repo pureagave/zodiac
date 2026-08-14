@@ -6,6 +6,24 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — full /opt/zodiac redeploy to main (reconciles the c842d08 drift)
+
+The box had been running main-era `capture`/`normalize`/`broadcaster` fixes over a
+`c842d08` base — consistent but not tidy. Brought the whole checkout to `main`:
+`cd /opt/zodiac && git fetch origin && git reset --hard origin/main` → now at
+**`2f01e78`**, tree clean (only the `*.bak-20260813` backups remain, untracked).
+The box **can fetch origin over HTTPS** (public read), so `git reset --hard` is the
+clean deploy — no rsync needed; `/etc/default/zvision` (camera config) and the
+`/etc/systemd/system/olad.service.d` drop-in live outside the checkout and are
+untouched.
+
+Verified after reset: all `zvision.*` modules import; `python3 -m zvision --once -v
+--source fake` runs the full new pipeline (`3 contacts -> 2 targets ZTHREAT;…`,
+`fov=160°d`, covers −64°..+64° — the fov-ref=d default now active); real zvision
+restarted **active, 61 ZTHREAT/4s healthy** (that restart also transiently stalled
+twice and the CameraStallGuard recovered it). So the whole edge box now runs `main`
+with every fix live and the drift gone.
+
 ## 2026-08-13 — deployed the broadcaster + olad resilience fixes to /opt/zodiac
 
 The thermal fix (RES-P1-1) went to the box during its validation; deployed the
