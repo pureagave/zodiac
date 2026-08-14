@@ -20,6 +20,7 @@ code that remains in :mod:`zvision.capture` is only plumbing.
 from __future__ import annotations
 
 import math
+import time
 from typing import Dict, List, Optional, Set, Tuple
 
 # Smoothing applied to the contrast scale. Deliberately only the scale — see
@@ -242,3 +243,48 @@ class ReBaselineGuard:
     def settling(self) -> bool:
         """Whether the guard is still riding out a step — for logging."""
         return self._settling > 0
+
+
+# A V4L2 handle opened before its USB device is streaming-ready wedges in
+# ``select() timeout`` forever and never self-heals. Measured 2026-08-13, the
+# Jetson cold-boot race: zvision came up at boot with the thermal blind and
+# **stayed blind for two hours**, throttling the whole (synchronous) rig loop and
+# emitting false all-clear, while a fresh open of the exact same device streamed
+# instantly. Reopening the handle once the device is ready is the recovery.
+DEFAULT_STALL_SECS = 6.0
+
+
+class CameraStallGuard:
+    """Decides when a camera that has stopped delivering frames should be
+    reopened. Pure — no cv2/numpy — on an injectable clock, so the reopen cadence
+    is unit-tested without hardware; the array plumbing that actually reopens the
+    handle stays in :mod:`zvision.capture`.
+
+    :meth:`note` is called once per frame read with whether a frame arrived and
+    returns ``True`` when the caller should reopen. A healthy camera (a frame
+    within ``stall_secs``) never reopens. A stalled one reopens at most once per
+    ``stall_secs`` — resetting the clock on a reopen *is* the backoff, so a
+    genuinely dead camera is retried on a fixed cadence rather than every frame.
+    A reopen is never triggered on the very first observation: a healthy camera's
+    first frame can lag its warm-up, and reopening across that would be churn.
+    """
+
+    def __init__(self, stall_secs: float = DEFAULT_STALL_SECS, clock=None) -> None:
+        self._stall = stall_secs
+        self._clock = clock or time.monotonic
+        self._last_ok: Optional[float] = None
+
+    def note(self, frame_ok: bool) -> bool:
+        now = self._clock()
+        if frame_ok:
+            self._last_ok = now
+            return False
+        if self._last_ok is None:
+            # First-ever observation is a failure: start the clock, grace the
+            # warm-up, don't reopen yet.
+            self._last_ok = now
+            return False
+        if now - self._last_ok >= self._stall:
+            self._last_ok = now  # backoff: the next reopen is another stall away
+            return True
+        return False

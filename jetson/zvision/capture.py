@@ -5,9 +5,31 @@ here is needed on the stdlib-only fake path."""
 
 from __future__ import annotations
 
+import sys
 from typing import Optional
 
-from .normalize import image_rows, stretch_window
+from .normalize import CameraStallGuard, image_rows, stretch_window
+
+# Bound the blocking V4L2 read: a camera that stops delivering frames returns
+# None in ~READ_TIMEOUT_MS instead of the driver's ~10 s select() default, so one
+# stalled camera cannot freeze the whole synchronous rig loop (measured
+# 2026-08-13). Comfortably above a healthy 9 fps thermal's ~111 ms frame interval,
+# so it never trips on a working camera. A no-op on OpenCV builds that ignore it —
+# the CameraStallGuard reopen is the real recovery either way.
+OPEN_TIMEOUT_MS = 5000
+READ_TIMEOUT_MS = 2000
+
+
+def _capture_target(device: object) -> object:
+    """What to hand ``cv2.VideoCapture``. A ``/dev/videoN`` string is resolved to
+    its integer index (OpenCV opens an index most reliably); an int is passed
+    through; and any other device *path* — notably a stable
+    ``/dev/v4l/by-path/...`` name, the correct way to pin a camera to a port (see
+    :func:`zvision.rig.parse_camera_spec`) — is passed through unchanged, which is
+    measured-good on this hardware."""
+    if isinstance(device, str) and device.startswith("/dev/video"):
+        return int(device.rsplit("video", 1)[1])
+    return device
 
 
 class UvcCamera:
@@ -26,14 +48,20 @@ class UvcCamera:
         import cv2
 
         self._cv2 = cv2
-        # Accept either "/dev/videoN" or a bare integer index.
-        index: object = device
-        if isinstance(device, str) and device.startswith("/dev/video"):
-            index = int(device.rsplit("video", 1)[1])
+        self._device = device
+        self._width, self._height = width, height
+        self._fourcc, self._fps = fourcc, fps
+        self._stall = CameraStallGuard()
+        self._open()
+
+    def _open(self) -> None:
+        cv2 = self._cv2
         # Force V4L2. Without it OpenCV may pick another backend (obsensor on
         # this Jetson) which fails outright with "Camera index out of range"
         # for a perfectly good /dev/videoN.
-        self._cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
+        cap = cv2.VideoCapture(_capture_target(self._device), cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, OPEN_TIMEOUT_MS)
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, READ_TIMEOUT_MS)
         # FOURCC must be set BEFORE the frame size — several V4L2 drivers reset
         # the negotiated size when the pixel format changes underneath them.
         #
@@ -42,14 +70,31 @@ class UvcCamera:
         # not what it sends, and uncompressed YUYV at 1080p30 declares roughly a
         # gigabit each. Ask for MJPG and several cameras coexist on one bus;
         # leave it at the driver default and the third one fails to stream.
-        if fourcc:
-            self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        if fps:
-            self._cap.set(cv2.CAP_PROP_FPS, fps)
-        if not self._cap.isOpened():
-            raise RuntimeError(f"could not open camera {device!r}")
+        if self._fourcc:
+            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*self._fourcc))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
+        if self._fps:
+            cap.set(cv2.CAP_PROP_FPS, self._fps)
+        if not cap.isOpened():
+            raise RuntimeError(f"could not open camera {self._device!r}")
+        self._cap = cap
+
+    def _reopen(self) -> None:
+        """Release and re-open the handle — the recovery for a camera wedged in
+        select() timeout. A V4L2 handle opened before its USB device was
+        streaming-ready never self-heals; a fresh open does (measured
+        2026-08-13). A reopen that itself fails (device unplugged) is logged and
+        retried on the next stall interval, never fatal."""
+        print(f"zvision: reopening stalled camera {self._device!r}", file=sys.stderr, flush=True)
+        try:
+            self._cap.release()
+        except Exception:
+            pass
+        try:
+            self._open()
+        except Exception as exc:
+            print(f"zvision: reopen of {self._device!r} failed: {exc}", file=sys.stderr, flush=True)
 
     def actual(self) -> dict:
         """What the driver actually gave us, which is often not what we asked
@@ -68,7 +113,10 @@ class UvcCamera:
 
     def read(self) -> Optional["object"]:
         ok, frame = self._cap.read()
-        return frame if ok else None
+        frame_ok = ok and frame is not None
+        if self._stall.note(frame_ok):
+            self._reopen()
+        return frame if frame_ok else None
 
     def close(self) -> None:
         # MultiDetector's shutdown politely skips cameras without a close();
@@ -170,34 +218,60 @@ class ThermalCamera:
         self._cv2 = cv2
         self._np = np
         self._low, self._high = low_pct, high_pct
+        self._device = device
+        self._width, self._height = width, height
         self._rows = height
         # Smoothed contrast scale; None until the first frame. The centre is
         # deliberately NOT held here — it is recomputed every frame.
         self._spread_ema: Optional[float] = None
-        index: object = device
-        if isinstance(device, str) and device.startswith("/dev/video"):
-            index = int(device.rsplit("video", 1)[1])
+        self._stall = CameraStallGuard()
+        self._open()
+
+    def _open(self) -> None:
+        cv2 = self._cv2
         # Force V4L2 rather than letting OpenCV pick GStreamer. Measured
         # difference on the real board: GStreamer silently ignores
         # CAP_PROP_CONVERT_RGB ("unhandled property") and hands back an already
         # 8-bit-converted frame, std ~86. V4L2 delivers genuine uint16 raw,
         # std ~176 — the extra precision is the whole reason for reading Y16.
-        self._cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
+        cap = cv2.VideoCapture(_capture_target(self._device), cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, OPEN_TIMEOUT_MS)
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, READ_TIMEOUT_MS)
         # Y16 before the frame size: the driver re-negotiates geometry when the
         # pixel format changes underneath it.
-        self._cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc("Y", "1", "6", " "))
-        self._cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)  # hand us the raw 16-bit, unconverted
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        if not self._cap.isOpened():
-            raise RuntimeError(f"could not open thermal camera {device!r}")
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc("Y", "1", "6", " "))
+        cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)  # hand us the raw 16-bit, unconverted
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
+        if not cap.isOpened():
+            raise RuntimeError(f"could not open thermal camera {self._device!r}")
+        self._cap = cap
+
+    def _reopen(self) -> None:
+        """Release and re-open the handle — the recovery for a thermal camera
+        wedged in select() timeout (measured 2026-08-13: opened before the
+        PureThermal was streaming-ready at boot, it stayed blind for two hours; a
+        fresh open of the same device streams instantly). A failing reopen is
+        logged and retried on the next stall interval, never fatal."""
+        print(f"zvision: reopening stalled thermal camera {self._device!r}", file=sys.stderr, flush=True)
+        try:
+            self._cap.release()
+        except Exception:
+            pass
+        try:
+            self._open()
+        except Exception as exc:
+            print(f"zvision: reopen of thermal {self._device!r} failed: {exc}", file=sys.stderr, flush=True)
 
     def read(self) -> Optional["object"]:
         """One frame, telemetry cropped and stretched to 8-bit BGR so the rest
         of the pipeline sees an ordinary image."""
         np = self._np
         ok, frame = self._cap.read()
-        if not ok or frame is None:
+        frame_ok = ok and frame is not None
+        if self._stall.note(frame_ok):
+            self._reopen()
+        if not frame_ok:
             return None
         f = np.asarray(frame)
         if f.ndim == 3:

@@ -11,6 +11,7 @@ from zvision.normalize import (
     DEFAULT_MIN_SPREAD,
     REBASELINE_FG_FRACTION,
     REBASELINE_SETTLE_FRAMES,
+    CameraStallGuard,
     ReBaselineGuard,
     TRACK_ID_LIMIT,
     _mint_id,
@@ -354,3 +355,53 @@ class ReBaselineGuardTest(unittest.TestCase):
         self.assertFalse(g.settling)
         g.suppress(1.0)
         self.assertTrue(g.settling)
+
+
+class CameraStallGuardTest(unittest.TestCase):
+    """The Jetson cold-boot race (2026-08-13): a camera opened before its device
+    was streaming-ready wedged in select() timeout for two hours and never
+    recovered. The guard must reopen a stalled camera on a bounded cadence, and
+    must never reopen a healthy one."""
+
+    @staticmethod
+    def _guard(times, stall=6.0):
+        it = iter(times)
+        return CameraStallGuard(stall_secs=stall, clock=lambda: next(it))
+
+    def test_healthy_camera_never_reopens(self):
+        # Frames keep arriving, even across a long wall-clock gap: no reopen.
+        g = self._guard([0.0, 1.0, 2.0, 100.0])
+        self.assertFalse(g.note(True))
+        self.assertFalse(g.note(True))
+        self.assertFalse(g.note(True))
+        self.assertFalse(g.note(True))
+
+    def test_stall_triggers_reopen_at_the_boundary(self):
+        # ok at t=0, then no frames; reopen exactly when >= stall_secs elapses.
+        g = self._guard([0.0, 2.0, 5.0, 6.0], stall=6.0)
+        self.assertFalse(g.note(True))   # t=0 ok, clock starts
+        self.assertFalse(g.note(False))  # t=2, 2 < 6
+        self.assertFalse(g.note(False))  # t=5, 5 < 6
+        self.assertTrue(g.note(False))   # t=6, 6 >= 6 -> reopen
+
+    def test_first_read_failing_graces_warmup_then_reopens(self):
+        # A camera blind from the very first read (the boot wedge) still recovers.
+        g = self._guard([0.0, 3.0, 6.0], stall=6.0)
+        self.assertFalse(g.note(False))  # first-ever obs is a failure: start clock
+        self.assertFalse(g.note(False))  # t=3 < 6
+        self.assertTrue(g.note(False))   # t=6 >= 6 -> reopen
+
+    def test_reopen_resets_the_backoff(self):
+        # A dead camera is retried once per stall_secs, not every frame.
+        g = self._guard([0.0, 6.0, 9.0, 12.0], stall=6.0)
+        self.assertFalse(g.note(False))  # t=0 first fail
+        self.assertTrue(g.note(False))   # t=6 -> reopen, clock resets to 6
+        self.assertFalse(g.note(False))  # t=9, 9-6=3 < 6
+        self.assertTrue(g.note(False))   # t=12, 12-6=6 -> reopen again
+
+    def test_recovery_clears_the_stall(self):
+        g = self._guard([0.0, 6.0, 7.0, 200.0], stall=6.0)
+        self.assertFalse(g.note(False))  # t=0 first fail
+        self.assertTrue(g.note(False))   # t=6 reopen
+        self.assertFalse(g.note(True))   # t=7 a frame arrives -> healthy again
+        self.assertFalse(g.note(True))   # t=200 still healthy, no reopen
