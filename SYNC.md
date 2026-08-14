@@ -6,6 +6,179 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-13 — RES-P1-1 FIXED + proven on hardware: zvision self-heals a boot-time camera wedge
+
+Supersedes the "thermal stall diagnosed" note below with the full diagnosis, fix,
+and a live hardware validation.
+
+**Root cause (measured, not guessed).** The thermal camera, the USB bus, the
+reboot, and the open code are all healthy — `v4l2-ctl` streamed the thermal 30/30
+frames standalone (`Y16 160x120`, ring still attached), and a probe proved OpenCV
+opens the by-path string fine. The bug is a **cold-boot race**: zvision opens the
+thermal before the USB device is streaming-ready, OpenCV's V4L2 read wedges in
+`select() timeout`, and there was **no recovery path** — the boot process stayed
+blind for ~2 h emitting false all-clear, while a fresh open of the same device
+streamed instantly. (Also ruled out: the deployed `/opt/zodiac` `capture.py` is
+byte-identical to repo, so not stale; the `--camera` by-path colons parse
+correctly.)
+
+**Fix.** `CameraStallGuard` in `normalize.py` (pure, clock-injectable, 5
+mutation-killing tests, sibling to `ReBaselineGuard`) + reopen-on-stall in
+`capture.py`: both `UvcCamera` and `ThermalCamera` now split their open into
+`_open()`/`_reopen()` and, on ~6 s of no frames, release and re-open the handle —
+which recovers the wedge because a fresh open of a now-ready device works. A
+bounded read timeout is set too (`CAP_PROP_READ_TIMEOUT_MSEC`). jetson **475**
+green.
+
+**Hardware-validated.** Across 5 reboots the wedge reproduced once, and the
+journal caught the whole cycle: `select() timeout ×2 → "reopening stalled thermal
+camera" → 77 ZTHREAT/5s healthy` — recovered in ~20 s instead of never. The other
+reboots came up clean (confirming the race is intermittent) and streamed with zero
+timeouts, so the fix doesn't disturb a healthy boot.
+
+**Deployment + caveats.** `/opt/zodiac` is at `c842d08` (behind `main`), and its
+`normalize.py` still has the pre-refactor `assign_track_id`, so I deployed
+**surgically** — repo `capture.py` (identical base) overwritten, and only the
+`CameraStallGuard` addition layered onto the box's own `normalize.py`, leaving its
+track-association code intact. Backups on the box as `*.bak-20260813`. **Owed:**
+(1) this OpenCV build ignores `CAP_PROP_READ_TIMEOUT_MSEC` (reads still block
+~10 s), so **threaded capture** is still needed for true multi-camera loop
+isolation; (2) emit **BLIND not all-clear** (RES-P2-1) — now lower-urgency, the
+blind window is bounded to ~20 s; (3) `/opt/zodiac` wants a **full redeploy to
+`main`** as a separate task; (4) nothing committed yet this session.
+
+## 2026-08-13 — thermal stall diagnosed (it's OpenCV, not hardware) + tablets now auto-relaunch (RES-P1-2)
+
+**RES-P1-1 root cause narrowed by measurement — the camera and the ring are
+innocent.** Stopped zvision and read the thermal directly: `v4l2-ctl` streamed
+**30 frames at 8.79 fps, `Y16 160x120`**, with the camera ring still attached on
+the shared xHCI controller. So the `select() timeout` is **not** the PureThermal,
+not the shared USB bus, and not the reboot destabilizing anything — the earlier
+"the ring broke the thermal" hypothesis is disproven. It's a **zvision/OpenCV
+access bug**: OpenCV can't pull frames from a node raw V4L2 reads fine, almost
+certainly the by-path *string* open path (OpenCV picks a non-V4L2 backend for a
+string vs an int index) and/or `Y16` format negotiation. Fix is in `capture.py`
+(`ThermalCamera` open path) — open with an explicit `CAP_V4L2` backend + int
+index, or set `CAP_PROP_FOURCC`/`CONVERT_RGB`; plus the RES-P1-1 fault isolation
+(per-camera read timeout) so one blind camera can't throttle the fleet broadcast.
+Not started (needs on-Jetson verification — CI can't test OpenCV+real-camera).
+
+**RES-P1-2 fixed in code — kiosked tablets auto-relaunch the cockpit after a
+reboot.** The naive `BOOT_COMPLETED -> startActivity` is blocked by Android's
+background-activity-start rules, so the reliable mechanism is making the cockpit
+the **Home app**: `KioskController.engage()` enables a normally-disabled
+`KioskHomeActivity` `<activity-alias>` and pins it as the persistent preferred
+Home; the system launches Home at boot and `MainActivity.onResume()` re-enters
+lock task. `exitKiosk()` relinquishes it (clears the preference + disables the
+alias) before dropping device owner. Entirely device-owner-gated — non-provisioned
+devices are never offered as a launcher — matching the "no-op without device
+owner" philosophy of the rest of the kiosk code. :app gate green
+(ktlint/detekt/lint/assemble/unit). Device verify owed: `adb reboot` a provisioned
+tablet, confirm `mCurrentFocus` returns to the cockpit. Caveat: the A54 driver
+phone is intentionally not kiosked, so it still won't auto-relaunch (acceptable —
+the driver is present). Not committed.
+
+## 2026-08-13 — resilience quick-wins landed in repo: olad self-heal + zvision broadcast cold-boot recovery
+
+Two of the resilience-audit findings fixed in the repo (not yet deployed to the
+live Jetson — deferred while the thermal-stall diagnostic is pending and the box
+is in a known-degraded state).
+
+- **RES-P2-2 — `olad` now self-heals.** The stock ola package ships
+  `Restart=no`, so a crashed olad stayed dead until reboot; with DMX enabled it
+  owns the tracker-light universe and nothing re-raises it. Extended the existing
+  `olad.service.d/override.conf` in `scripts/install-ola.sh` with `Restart=always`
+  + `RestartSec=2` and `StartLimitIntervalSec=0` (in `[Unit]`, the placement trap
+  zvision.service already guards). Latent until `--dmx ola`; applied at next deploy.
+- **RES-P3-2 (broadcast half) — zvision broadcast target recovers from a cold
+  boot.** `ThreatBroadcaster` computed its subnet-broadcast target once at
+  construction from `local_ip()`; if it started before the DHCP lease that froze
+  at `127.0.0.255` for the process lifetime (dead on any AP that eats multicast).
+  Now it re-derives lazily while the target is still loopback-based and freezes
+  once a real address resolves — steady state costs nothing. Operator overrides
+  (`broadcast`/`bind_ip`/`iface_ip`) are respected verbatim. 3 mutation-killing
+  tests; jetson **470 green**. Still owed (owner config): set `--iface-ip` in
+  `/etc/default/zvision` to pin multicast egress to `enP8p1s0`.
+
+Not committed yet. Not deployed — do not restart zvision on the live box until the
+thermal diagnostic (RES-P1-1) is run.
+
+## 2026-08-13 — fleet resilience audit: two power-on gaps + the Jetson is currently blind
+
+High-effort agent sweep (live read-only Jetson + grr + code) of "does everything
+come back by itself after power loss / unplug / reboot / cold boot?" Full findings
++ `file:line` in [`docs/AUDIT-2026-08-13-resilience.md`](docs/AUDIT-2026-08-13-resilience.md);
+triaged into `tasks/open.md` top.
+
+**Good:** beacon and Jetson services auto-start; NET GPS and threat receivers
+rebuild+rejoin after a router reboot (CLAUDE.md's claim verified true in code); the
+app self-heals once launched. **`Restart=always` + `StartLimitIntervalSec=0`** on
+zvision/zodiac-track are correctly placed (no power-flap wedge).
+
+**Three things that break "power it on and it just works":**
+1. **RES-P1-1 — zvision is stalled to ~0.25 Hz right now, emitting false
+   all-clear.** MEASURED: 2 ZTHREAT frames in 8 s (expect ~64). The runner loop is
+   synchronous, so the thermal camera's ~10 s `select() timeout` throttles the
+   **whole fleet broadcast** (`app.py:385` → `capture.py:199` `_cap.read()`). The
+   thermal device is healthy (`v4l2-ctl`: PureThermal fw1.3.0, offers Y16; clean
+   `dmesg`, no ENOSPC) and worked on the bench 2026-08-07 — what changed is the ring
+   added to the **same xHCI controller** (`3610000.usb`, per the USB-C correction
+   below). This is the same "thermal select() timeout" first seen during the reboot.
+   Fix = per-camera read timeout / threaded capture + **emit BLIND not all-clear**;
+   plus an owner thermal-isolation test.
+2. **RES-P1-2 — tablets don't relaunch after a reboot.** No `BOOT_COMPLETED`
+   receiver, no `category.HOME`; every tablet boots to the stock launcher until a
+   human taps Zodiac. Biggest "needs a person after every power event," and it's
+   code-fixable (boot receiver + Home-activity category for kiosked units).
+3. **RES-P1-3 — beacon battery is the fleet's only-GNSS SPOF** (known; wire to
+   ignition-independent vehicle power).
+
+Also: **blind == all-clear on the wire** (RES-P2-1, carry a health bit); **olad has
+`Restart=no`** (RES-P2-2, latent until DMX); a **wedged-but-streaming** Jetson
+defeats every tracker-light fail-safe (RES-P2-3 — reinforces the hardware
+kill-switch P0); Jetson has **no persistent RTC** (boots at a stale epoch, volatile
+journal — RES-P3-1) and is **DHCP with no reservation** (RES-P3-4). Beacon must stay
+**credential-free** (now a provisioning rule, RES-P2-4).
+
+## 2026-08-13 — Jetson USB-C host-mode measured; the "two independent USB budgets" premise was wrong
+
+Ran the scheduled USB-C host-mode test with the camera ring actually attached and
+re-measured the topology. `design/jetson-camera-ring-usb.md` corrected in place.
+
+**What works:** the role switch flips to `host`; a powered hub + two Arducam
+B0590s enumerate and stream (images captured). `role=host` **survives a reboot**
+with no udev/systemd/extlinux persistence anywhere — it is re-derived from Type-C
+CC detection each boot, so it holds as long as the hub stays cabled. All four
+cameras (`by-path` `1.4.3`/`1.4.4` on the USB-C, `2.1`/`2.3` on Type-A) and all
+services (zvision/zodiac-track/zodiac-track-serve/olad) came back on their own.
+
+**The correction (measure, don't guess):** the doc claimed the USB-C is a
+separate host controller (`3550000.usb`) with its own independent 480 Mbps
+budget. False. `3550000.usb` (tegra-xudc) is **device-only** — the flash gadget.
+In **host** mode the Type-C is served by **`3610000.usb`, the same xHCI host
+controller as the four Type-A ports** — it shows as Bus 001 Port 001 beside the
+Type-A hub on Bus 001 Port 002. **One root hub, one shared 480 Mbps HS bus.**
+Moving cameras to the USB-C adds zero HS bandwidth; the only way past 480 is
+genuine SuperSpeed devices on Bus 002 (10 Gbps). The doc's *other* claim — that
+the ring on the USB-C doesn't renumber the Type-A `by-path`s — does hold, but
+because it is a different root-port branch (`…:1.x` vs `…:2.x`), not a different
+controller. SuperSpeed-through-the-Type-C-in-host stays **unproven** (the test
+hub + cameras were USB-2, HS only).
+
+**Found in the same reboot — separate open issue:** zvision came back `active`
+but logs a repeating `select() timeout` on its only camera, the thermal
+(`…2.3…`), with no other log activity and **no threat egress observed** — likely
+broadcasting nothing. This is the exact "came back but blind" failure the
+resilience audit is chasing; whether reboot-induced or pre-existing is TBD.
+Tracked in `tasks/open.md`.
+
+Also confirmed this session: the **beacon (XCover) has no secure lock
+credential**, so `BOOT_COMPLETED` fires without an unlock — the direct-boot
+concern in `tasks/open.md` is resolved by fact (must stay credential-free), and a
+reboot re-confirmed the beacon auto-starts. Kicked off a high-effort fleet
+resilience audit (power-loss / unplug-replug / cold-boot auto-recovery across
+Jetson, beacon, tablets, grr, router) — findings to follow.
+
 ## 2026-08-13 — deleted two dead UI-state fields: `locationFallbackActive`, `commandError`
 
 Area 6 (P3s) of the #9/#10 audit. Both fields were written by

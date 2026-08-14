@@ -10,6 +10,68 @@ What's worth doing next. Critical and High audit items are all done — see `don
 > Beacon area 4 (`start()`/watchdog/`$ZAUD`) fixed on `fix/audit-beacon` — see
 > SYNC 2026-08-13. One item deliberately deferred, below.
 
+> **🆕 2026-08-13 RESILIENCE audit ("does it come back by itself after a power
+> event?") → [`docs/AUDIT-2026-08-13-resilience.md`](../docs/AUDIT-2026-08-13-resilience.md).**
+> Live read-only sweep of Jetson + grr + code. Headline: beacon & Jetson services
+> auto-start and the multicast layer self-heals, **but** two things need a human
+> after every power-on today, and the Jetson vision is currently blind. Top items:
+> - [x] **RES-P1-1 FIXED + HARDWARE-VALIDATED 2026-08-13 — zvision no longer comes
+>       up blind and stays blind.** Diagnosed by measurement: the camera, USB bus,
+>       reboot and open code are all fine (`v4l2-ctl` streamed the thermal 30/30
+>       standalone; OpenCV opens the by-path fine). The real bug is a **cold-boot
+>       race** — zvision opened the thermal before the USB device was
+>       streaming-ready, wedged in `select() timeout`, and had **no recovery path**
+>       (it stayed blind for ~2 h, emitting false all-clear). Fix: `CameraStallGuard`
+>       (`normalize.py`, 5 tests) + reopen-on-stall in `capture.py`'s `UvcCamera`/
+>       `ThermalCamera` (`_open`/`_reopen`), plus a bounded read timeout.
+>       **Proven on hardware:** across 5 reboots the wedge reproduced once, and the
+>       journal showed `select() timeout ×2 → "reopening stalled thermal camera" →
+>       77 ZTHREAT/5s healthy` (~20 s to recover vs. forever). jetson 475 green;
+>       deployed surgically to `/opt/zodiac` (backups `*.bak-20260813`). **Caveats:**
+>       (a) this OpenCV build ignores `CAP_PROP_READ_TIMEOUT_MSEC`, so reads still
+>       block ~10 s — **threaded capture is still owed** for true loop isolation once
+>       the ring is multi-camera; (b) during the wedge window (and any persistently
+>       dead camera) it still emits all-clear, so **RES-P2-1 (emit BLIND) still
+>       stands**, now lower-urgency since the blind window is bounded to ~20 s.
+> - [x] **RES-P1-2 DONE IN CODE 2026-08-13 (device verify owed) — kiosked tablets
+>       now auto-relaunch the cockpit after a reboot.** `KioskController.engage()`
+>       makes the app the persistent preferred **Home** activity (via a
+>       normally-disabled `KioskHomeActivity` `<activity-alias>` it enables) — the
+>       reliable path, since Android blocks a `BOOT_COMPLETED` receiver from
+>       starting an activity in the background. `exitKiosk()` relinquishes it.
+>       Device-owner-gated, so non-provisioned devices are unaffected; :app gate
+>       green (compile/ktlint/detekt/lint/tests). **Owed:** `adb reboot` a
+>       provisioned tablet and confirm `mCurrentFocus` returns to the cockpit
+>       (docs/KIOSK.md "Verify auto-relaunch"). **Caveat:** the A54 driver phone is
+>       intentionally NOT kiosked (docs/KIOSK.md), so it still won't auto-relaunch —
+>       acceptable, the driver is present and can tap it; kiosk it if that changes.
+> - [ ] **RES-P2-1 [CODE-NOW] — blind Jetson == genuine all-clear on the wire.**
+>       Carry a per-arc health/blind bit (or a heartbeat line) so the HUD can show
+>       "SENSOR BLIND." Pairs with RES-P1-1.
+> - [x] **RES-P2-2 DONE IN REPO 2026-08-13 (pending deploy) — `olad` self-heals.**
+>       Extended the existing `olad.service.d/override.conf` in
+>       `scripts/install-ola.sh` with `Restart=always` + `RestartSec=2` ([Service])
+>       and `StartLimitIntervalSec=0` ([Unit], correct placement). **Not yet applied
+>       to the live box** — re-run `install-ola.sh` (or drop in the override +
+>       `daemon-reload` + `restart olad`) at next deploy. Latent until `--dmx ola`.
+> - [x] **RES-P3-2 (broadcast half) DONE IN REPO 2026-08-13 (pending deploy).**
+>       `ThreatBroadcaster` now lazily re-derives the auto subnet-broadcast target
+>       until a real (non-loopback) address appears, then freezes — so a Jetson that
+>       starts before its DHCP lease no longer stays stuck at `127.0.0.255`. Operator
+>       overrides (`broadcast`/`bind_ip`/`iface_ip`) are respected verbatim. 3
+>       mutation-killing tests (jetson 470 green). **Still owed:** pin `--iface-ip`
+>       to the `enP8p1s0` address in `/etc/default/zvision` for multicast-egress NIC
+>       selection (owner config change; the flag already exists).
+> - [ ] **RES-P3-1/P3-4 [CONFIG/OWNER]** — Jetson has no persistent RTC (boots at a
+>       stale epoch until NTP; journal is volatile) and is on DHCP with no
+>       reservation. Enable persistent journald; add a DHCP reservation.
+>
+> **Owner to-do after a power event *today*:** tap Zodiac on every tablet (P1-2);
+> ensure beacon power (P1-3); Jetson vision needs P1-1 diagnosed. See also RES-P2-3
+> (wedged-but-streaming Jetson defeats every tracker-light fail-safe — reinforces the
+> hardware kill-switch P0) and RES-P2-4 (keep the beacon credential-free, now a
+> provisioning rule). Full evidence + `file:line` for all P1/P2/P3 in the audit doc.
+
 - [ ] **Beacon transmit socket should bind to the vehicle WiFi `Network`, not
       wildcard.** `docs/AUDIT-2026-08-13.md` area 4, P2 SUSPECTED (code fact
       confirmed, real-world silent-drop not reproduced) —
@@ -139,9 +201,11 @@ API contract, not real OS scheduling.
       listen — needs the Jetson listener); the transmit side is proven.
 - [ ] **Sideloaded update** — install a new signed APK over a running beacon,
       confirm `MY_PACKAGE_REPLACED` restarts it.
-- [ ] **No lock-screen credential on the beacon phone** — `BOOT_COMPLETED` only
-      fires after first unlock on file-based-encryption devices. Add to the
-      provisioning notes.
+- [x] **CONFIRMED 2026-08-13 — No lock-screen credential on the beacon phone.**
+      `BOOT_COMPLETED` only fires after first unlock on FBE devices; Rob confirmed
+      the XCover has no PIN/credential, so the receiver fires on cold boot. **This
+      is now a provisioning requirement, not just a note: keep the beacon phone
+      credential-free.** Re-verified by a reboot → beacon auto-started.
 - [ ] **Battery-optimization prompt** appears once and never re-nags after a
       decline.
 - [ ] **Doze / charger-loss soak** — confirm the wake lock actually prevents the
@@ -261,12 +325,14 @@ API contract, not real OS scheduling.
 - [ ] **The beacon's API 34/35 foreground-service branches are still argued, not
       observed** — lint cannot validate them and the only beacon device on hand is
       API 29. Needs one boot test on an API 34+ phone before Burn.
-- [ ] **Direct-boot / `BOOT_COMPLETED` before first unlock.** On an FBE device with
-      a secure lock screen the boot receiver never fires, so a 3am thermal reboot
-      leaves the fleet blind until someone physically unlocks the phone. Either
-      confirm the beacon phone has no secure lock credential, or make the
-      receiver/service direct-boot-aware (which also moves `PREF_AUTO_START` to
-      device-protected storage). **Needs Rob's decision.**
+- [x] **RESOLVED 2026-08-13 — Direct-boot / `BOOT_COMPLETED` before first unlock.**
+      Rob confirmed the beacon XCover has **no secure lock credential (no PIN)**, so
+      `BOOT_COMPLETED` fires without an unlock — the FBE first-unlock trap doesn't
+      apply. A reboot this session re-confirmed the beacon auto-starts with zero
+      interaction. **Standing constraint: the beacon phone must stay
+      credential-free** (a PIN reintroduces the trap and would need the receiver
+      made direct-boot-aware + `PREF_AUTO_START` moved to device-protected
+      storage). Documented in the beacon provisioning notes below.
 - [ ] **A `MapLoadController` is the next VM delegate if map loading grows** —
       `retryMapLoad` + the `playaMapRepository` collector are the one cohesive
       group still in `CockpitViewModel` after the 2026-08-10 split.
@@ -599,11 +665,27 @@ defect list. Each is verified against the code, with `file:line`.
 ## 🔌 USB device identity — measured 2026-08-09
 
 > **Camera-ring USB + bandwidth plan:** [`design/jetson-camera-ring-usb.md`](../design/jetson-camera-ring-usb.md)
-> — measured topology (two independent host budgets; the Type-A hub is now
-> **full**: optical + DMX + thermal + Stream Deck), the compressed-vs-raw
-> bandwidth rule, and the recommendation to hang the ring off a **powered hub on
-> the freed USB-C** (its own `3550000.usb-…` `by-path` sub-chain, so it does not
-> renumber the Type-A cameras). **USB-C host-mode test scheduled 2026-08-12.**
+> — measured topology, the compressed-vs-raw bandwidth rule, and the recommendation
+> to hang the ring off a **powered hub on the Type-C (host mode)**, pinned by
+> `by-path`. **USB-C host-mode test DONE 2026-08-13** — role flips to host, ring
+> streams, and **`role=host` survives a reboot** (Type-C CC detection, no
+> persistence config needed). ⚠️ **Corrected a wrong premise:** the USB-C in host
+> mode is served by the **same** controller (`3610000.usb`) and **same 480 Mbps HS
+> bus** as the Type-A ports — **NOT** a second independent budget. It still avoids
+> renumbering Type-A `by-path`s (different root-port branch `…:1.x` vs `…:2.x`).
+> SuperSpeed-through-Type-C-host remains unproven. See the design doc's correction
+> box.
+>
+> **⚠️ NEW 2026-08-13 (P1? — under investigation by the resilience audit): zvision
+> came back from a reboot BLIND.** Its only camera is the thermal
+> (`--camera thermal:…2.3…`), and post-reboot the service is `active` but logs
+> nothing except a repeating `select() timeout` on that device (`cap_v4l.cpp:1119`)
+> — no frames, **no ZTHREAT egress observed**. The thermal offers
+> `Y16`/`UYVY`/`GREY`; this is the classic PureThermal+OpenCV format-negotiation
+> stall. Determine whether the reboot caused it or it was already broken, then pin
+> the capture format/resolution explicitly instead of trusting OpenCV's default. A
+> service that comes back "active but blind" with no self-report is exactly the
+> auto-recovery failure class this fleet can't afford.
 
 Today every camera is pinned **by port** (`/dev/v4l/by-path/...usb-0:2.3:1.0...`,
 where `2.3` is the physical port chain). Measured what identity is actually
