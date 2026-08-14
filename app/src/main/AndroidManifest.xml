@@ -56,6 +56,30 @@
                 android:resource="@xml/usb_gps_device_filter" />
         </activity>
         <!--
+          Home-activity alias for KIOSKED tablets only. Disabled by default so a
+          normal (non-provisioned) device is never offered as a Home app. The
+          device owner enables it and pins it as the persistent preferred Home in
+          KioskController.engage(); that is what makes a kiosked tablet RELAUNCH
+          the cockpit by itself after a reboot / power loss. Android blocks the
+          naive BOOT_COMPLETED -> startActivity path, so being the Home app is the
+          only reliable auto-launch. targetActivity is MainActivity, so a Home
+          launch lands in the same activity as the app-drawer icon and its
+          onResume() re-enters lock task. Renaming this alias breaks auto-launch
+          on every already-provisioned tablet — see docs/KIOSK.md, same caveat as
+          ZodiacDeviceAdminReceiver.
+        -->
+        <activity-alias
+            android:name=".kiosk.KioskHomeActivity"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+        <!--
           Device-admin component for kiosk mode. Provisioned once per tablet
           over adb after a factory reset (see docs/KIOSK.md); the app runs
           perfectly well unprovisioned, just unlocked.

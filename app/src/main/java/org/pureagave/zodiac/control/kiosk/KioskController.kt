@@ -5,6 +5,9 @@ import android.app.admin.DevicePolicyManager
 import android.app.admin.SystemUpdatePolicy
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import org.pureagave.zodiac.control.core.permission.requiredCockpitPermissions
 import timber.log.Timber
@@ -33,6 +36,12 @@ class KioskController(context: Context) {
     private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
     private val admin = ComponentName(context.packageName, ZodiacDeviceAdminReceiver::class.java.name)
     private val packageName: String = context.packageName
+    private val packageManager: PackageManager = context.packageManager
+
+    // The Home-activity alias declared (disabled) in the manifest. Referenced by
+    // string because an <activity-alias> is not a Kotlin class; the name MUST
+    // match the manifest (see docs/KIOSK.md gotcha).
+    private val homeAlias = ComponentName(packageName, "$packageName.kiosk.KioskHomeActivity")
 
     /** True when this app was provisioned as device owner (see docs/KIOSK.md). */
     val isDeviceOwner: Boolean
@@ -76,10 +85,66 @@ class KioskController(context: Context) {
         }.onFailure { Timber.w(it, "kiosk: policy setup failed") }
 
         preGrantUsedPermissions(manager)
+        setAsPreferredHome(manager)
 
         runCatching { activity.startLockTask() }
             .onSuccess { Timber.i("kiosk: locked to %s", packageName) }
             .onFailure { Timber.w(it, "kiosk: startLockTask failed") }
+    }
+
+    /**
+     * Make the cockpit the device's Home app so a kiosked tablet RELAUNCHES it by
+     * itself after a reboot or power loss — the failure the fleet can least
+     * afford is a mounted display sitting on the stock (ad) launcher until a human
+     * taps the app. Android blocks a `BOOT_COMPLETED` receiver from starting an
+     * activity in the background, so being the preferred Home activity is the only
+     * reliable auto-launch: the system launches Home at boot (keyguard is already
+     * disabled above), and [MainActivity]'s `onResume()` then re-enters lock task.
+     *
+     * The Home capability lives on a normally-**disabled** `<activity-alias>`
+     * ([homeAlias]) so a non-provisioned device is never offered as a launcher; we
+     * enable it here, then pin it as the persistent preferred Home so no chooser
+     * appears. [DevicePolicyManager.clearPackagePersistentPreferredActivities]
+     * first keeps the mapping at exactly one entry even though [engage] runs on
+     * every resume. Device-owner-only, like every other step here, and therefore
+     * **unexercisable in CI** — verify by rebooting a provisioned tablet
+     * (docs/KIOSK.md).
+     */
+    private fun setAsPreferredHome(manager: DevicePolicyManager) {
+        runCatching {
+            packageManager.setComponentEnabledSetting(
+                homeAlias,
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+            val homeFilter =
+                IntentFilter(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    addCategory(Intent.CATEGORY_DEFAULT)
+                }
+            manager.clearPackagePersistentPreferredActivities(admin, packageName)
+            manager.addPersistentPreferredActivity(admin, homeFilter, homeAlias)
+        }.onSuccess { Timber.i("kiosk: set as preferred Home (auto-relaunch on boot)") }
+            .onFailure { Timber.w(it, "kiosk: setAsPreferredHome failed") }
+    }
+
+    /**
+     * Undo [setAsPreferredHome]: drop the persistent Home preference and disable
+     * the alias, so an un-provisioned tablet boots back to its stock launcher
+     * instead of being stuck launching a cockpit it no longer locks into. Must run
+     * **before** [DevicePolicyManager.clearDeviceOwnerApp] — clearing the
+     * preference needs the device-owner privilege we are about to relinquish.
+     */
+    private fun relinquishPreferredHome(manager: DevicePolicyManager) {
+        runCatching {
+            manager.clearPackagePersistentPreferredActivities(admin, packageName)
+            packageManager.setComponentEnabledSetting(
+                homeAlias,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }.onSuccess { Timber.i("kiosk: relinquished preferred Home; reverts to stock launcher") }
+            .onFailure { Timber.w(it, "kiosk: relinquishPreferredHome failed") }
     }
 
     /**
@@ -145,6 +210,11 @@ class KioskController(context: Context) {
         }
         runCatching { activity.stopLockTask() }
             .onFailure { Timber.w(it, "kiosk: stopLockTask during exit failed") }
+        // Give Home back to the stock launcher before we drop device owner —
+        // clearing the persistent preference needs the privilege we're about to
+        // relinquish, and a tablet that keeps launching an un-locked cockpit as
+        // Home is a confusing half-state.
+        relinquishPreferredHome(manager)
         // clearDeviceOwnerApp is deprecated in API 34, but it is the only
         // self-service un-provision path and still functions; the recommended
         // replacements require an enrolled management flow we deliberately do not run.

@@ -61,6 +61,25 @@ pre-granting the app's own requested set
 nothing beyond what the app already declares in the manifest and already asks
 for at runtime.
 
+### Auto-relaunch after a reboot
+
+A kiosked tablet **relaunches the cockpit by itself** after a reboot or power
+loss — the failure the fleet can least afford is a mounted display sitting on the
+stock (ad) launcher until someone finds and taps the app. `engage()` makes the
+cockpit the device's **Home app** (a persistent preferred Home, so no chooser
+appears), which is the one reliable auto-launch on modern Android: a
+`BOOT_COMPLETED` receiver is **blocked from starting an activity in the
+background**, but the system always launches Home at boot, and the cockpit's
+`onResume()` then re-enters lock task. Keyguard is already disabled, so nothing
+stands between power-on and the cockpit.
+
+The Home capability rides a normally-**disabled** `<activity-alias>`
+(`KioskHomeActivity`) that `engage()` enables and the exit code disables again —
+so a **non-provisioned device is never offered as a launcher**, exactly like
+every other kiosk policy here being a no-op without device owner. This is
+device-owner-only and cannot be exercised in CI; verify it by rebooting a
+provisioned tablet (below).
+
 ### Verify
 
 ```sh
@@ -74,6 +93,22 @@ adb logcat -d | grep "kiosk: pre-granted"   # lists ACCESS_FINE_LOCATION (+ the 
 with **no dialog ever shown** — the pre-grant path is device-owner-only and
 cannot be exercised in CI.
 
+⚠️ **Verify auto-relaunch — the whole point of the Home step.** After
+provisioning, `adb reboot` the tablet and confirm the **cockpit comes back on its
+own** with no tap:
+
+```sh
+adb reboot
+# after boot (Samsung delivers Home ~a couple minutes after boot — be patient):
+adb shell dumpsys window | grep -i mCurrentFocus   # -> org.pureagave.zodiac.control/.MainActivity
+adb logcat -d | grep "kiosk: set as preferred Home"
+adb shell cmd package resolve-activity -c android.intent.category.HOME | grep -i zodiac
+```
+
+`mCurrentFocus` on the cockpit (not the stock launcher) after a cold boot is the
+pass. This is the one check CI can never do; do it on a test tablet before
+trusting the fleet to recover unattended.
+
 ## Getting back out
 
 There is **no adb un-provision** on the shipped build. `dpm remove-active-admin`
@@ -85,10 +120,11 @@ ways out:
 1. **The hidden exit code — primary, no reset.** On the running cockpit, tap the
    two hidden right-edge corners — **bottom-right, then top-right, alternating,
    six taps total** — each within 2 s of the last. The app un-provisions itself
-   (`KioskController.exitKiosk` → `clearDeviceOwnerApp`): it leaves lock task and
-   relinquishes device owner, so the tablet is unlocked and can be serviced,
-   updated, or uninstalled. `engage()` then no-ops on resume (no longer owner), so
-   it stays unlocked. Confirm:
+   (`KioskController.exitKiosk` → `clearDeviceOwnerApp`): it leaves lock task,
+   **gives Home back to the stock launcher** (clears the persistent preferred Home
+   and disables the `KioskHomeActivity` alias), and relinquishes device owner, so
+   the tablet is unlocked and can be serviced, updated, or uninstalled. `engage()`
+   then no-ops on resume (no longer owner), so it stays unlocked. Confirm:
 
    ```sh
    adb logcat -d | grep "kiosk:"                              # "kiosk: device owner cleared; ..."
@@ -123,3 +159,8 @@ settled.
 Renaming or deleting `ZodiacDeviceAdminReceiver` breaks provisioning on every
 already-provisioned tablet, and the only fix is another factory reset. The class
 is intentionally empty so there is never a reason to touch it.
+
+The same caveat applies to the `KioskHomeActivity` `<activity-alias>`:
+`KioskController` references it by string (an alias is not a Kotlin class), so a
+rename breaks auto-relaunch on already-provisioned tablets silently — the manifest
+name and the string in `KioskController` must stay in lockstep.
