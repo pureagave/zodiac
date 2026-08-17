@@ -140,8 +140,18 @@ Measured, all four streaming at once (30 fps, the only interval these offer):
 |---|---|
 | **4 × 640×480 MJPEG** | ✅ all four ~28 fps, 0 bandwidth errors |
 | **2 × 1280×720 + 2 × 640×480 MJPEG** | ✅ all four ~28 fps, 0 errors |
-| **4 × 1280×720 MJPEG** | ❌ only 2–3 start; the rest `-ENOSPC` / "Not enough bandwidth for altsetting" |
+| **3 × 1280×720 + 1 × 640×480** | ❌ only **2** of the 720p streams start; the 3rd `-ENOSPC` |
+| **4 × 1280×720 MJPEG** | ❌ only 2 start; the rest `-ENOSPC` / "Not enough bandwidth for altsetting" |
 | 4 × 1080p | won't fit (larger than 720p) |
+
+**Exactly two cameras can run 720p at once — and no physical arrangement changes
+that.** Tested (2026-08-17) with all four on the USB-C hub, split across the hub's
+5 G/10 G sections, and **split across the two xHCI *root ports*** (2 on the Type-A
+onboard hub `1-2`, 2 on the USB-C powered hub `1-1`). All three give the identical
+2×720p ceiling. So the isochronous budget is **shared across the whole
+`3610000.usb` controller (Bus 001)**, *not* per-root-port — moving cameras to the
+Jetson's own Type-A ports does **not** add a second budget. The only escape is
+USB-3 cameras on Bus 002.
 
 MJPEG frames validated as clean JPEGs (SOI/EOI intact) — the broad quirks setting
 is not corrupting framing. So:
