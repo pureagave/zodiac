@@ -111,8 +111,10 @@ camera at 8 Hz:
 The decision tree is **compressed vs raw**, against a **single** 480 Mbps HS bus
 (corrected 2026-08-13 — there is no second HS budget to split onto):
 
-1. **MJPEG / H.264 @ 8 Hz** → the whole ring is ~50 Mbps behind the one 480 bus
-   with ~8× headroom. Bandwidth is a non-issue; the real constraints become
+1. **MJPEG / H.264 @ 8 Hz** → the ring's *data* is only ~50 Mbps, but see the
+   measured box below: the real limit is **isochronous bandwidth *reservation***,
+   not data, and it caps the count at each resolution well below what the data
+   rate implies. The real constraints become **resolution × camera-count**,
    **physical ports**, **hub tiers**, and **decode CPU**.
 2. **Raw YUYV @ 8 Hz** → ~470 Mbps will not fit the single 480 bus. Splitting
    Type-A vs USB-C-in-host does **not** help — it is the same bus. Drop to 480p
@@ -121,10 +123,52 @@ The decision tree is **compressed vs raw**, against a **single** 480 Mbps HS bus
    the 10 Gbps SS bus (Bus 002) and the 480 bottleneck disappears even raw. (Still
    one *shared* 10 Gbps bus, not per-port — but 10 Gbps shared is ample.)
 
+## ⚠️ MEASURED 2026-08-17 — the limit is iso *reservation*, not data bandwidth
+
+Ran the real four-camera simultaneous-stream test (4× Arducam B0590, MJPEG, on
+the powered hub on the USB-C). The theoretical "~50 Mbps, 8× headroom" above is
+true for *data* and **misleading for capacity**: a UVC camera reserves USB
+isochronous bandwidth by its descriptor's worst case, **not** its actual MJPEG
+payload, so a handful of cameras exhaust the bus's iso budget (≈80% of 480 Mbps)
+and further `VIDIOC_STREAMON` calls fail with `-ENOSPC` — *fail to start, do not
+degrade*. The `uvcvideo` `FIX_BANDWIDTH` quirk (part of this L4T kernel's default
+`quirks=0xFFFFFFFF`) is already active and is what makes any multi-cam work at all.
+
+Measured, all four streaming at once (30 fps, the only interval these offer):
+
+| Config | Result |
+|---|---|
+| **4 × 640×480 MJPEG** | ✅ all four ~28 fps, 0 bandwidth errors |
+| **2 × 1280×720 + 2 × 640×480 MJPEG** | ✅ all four ~28 fps, 0 errors |
+| **4 × 1280×720 MJPEG** | ❌ only 2–3 start; the rest `-ENOSPC` / "Not enough bandwidth for altsetting" |
+| 4 × 1080p | won't fit (larger than 720p) |
+
+MJPEG frames validated as clean JPEGs (SOI/EOI intact) — the broad quirks setting
+is not corrupting framing. So:
+
+- **Force MJPEG explicitly** (`fourcc=MJPG`). The B0590 lists **YUYV first**, so
+  OpenCV's default negotiation picks raw YUYV — which won't fit even a couple of
+  cameras. This is the single most important camera setting.
+- **Resolution is the capacity knob.** For a four-camera ring on this one 480 bus:
+  **640×480 on all four**, or **720p on the 1–2 forward (collision-critical)
+  cameras + 640×480 on the side/rear** — both measured to fit. Do **not** ask for
+  720p on all four.
+- **Final resolution is a detector-tuning decision** (people at 5/10/20 m, day and
+  night — a blocked hardware task). 640–720 is the practical envelope here; more
+  range/resolution across all cameras needs **USB-3 (SuperSpeed) cameras** on
+  Bus 002, which these USB-2 B0590s cannot use.
+- The camera streams 30 fps; the pipeline samples at its own `--hz` (8–10). The
+  bus carries the full 30 fps regardless — that is what the reservations above
+  reflect.
+- If a future kernel changes the `uvcvideo` default away from including
+  `FIX_BANDWIDTH`, pin `options uvcvideo quirks=128` in `/etc/modprobe.d/` (the
+  current all-ones default is blunt but functional and streams clean frames).
+
 ## Recommendation
 
 Ring behind **one powered hub on the Type-C port (host mode)**, streaming
-**MJPEG @ 8 Hz**, each camera pinned by `by-path`.
+**MJPEG** (forced `fourcc=MJPG`), each camera pinned by `by-path`. Resolution per
+the measured table above — **not** 720p on all four.
 
 - **Powered hub is required** — the port cannot source VBUS for four cameras.
 - **Prefer the Type-C for identity stability, not bandwidth.** A hub on the

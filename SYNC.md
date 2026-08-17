@@ -6,6 +6,28 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-17 — camera-ring bandwidth: MEASURED, the limit is iso reservation not data
+
+Ran the real four-Arducam simultaneous-stream test on the box (all on the powered
+hub on the USB-C, one shared 480 Mbps HS bus). **The naive "~50 Mbps MJPEG, 8×
+headroom" was misleading:** UVC reserves USB *isochronous* bandwidth by descriptor
+worst-case, not actual MJPEG payload, so cameras exhaust the iso budget and extra
+`STREAMON`s fail `-ENOSPC` ("Not enough bandwidth for altsetting") — fail to
+start, not degrade. Measured (30 fps, the only interval these offer):
+- **4 × 640×480 MJPEG:** ✅ all four ~28 fps, clean.
+- **2 × 720p + 2 × 640×480:** ✅ all four ~28 fps, clean.
+- **4 × 720p:** ❌ only 2–3 start, rest `-ENOSPC`.
+
+So a four-camera ring is **640×480 all-round, or 720p on the 1–2 forward cameras +
+640×480 side/rear** — never 720p×4. **Force `fourcc=MJPG`** (the B0590 lists YUYV
+*first*, so OpenCV would default to raw and fit almost nothing). MJPEG frames
+validated as clean JPEGs. The `uvcvideo FIX_BANDWIDTH` quirk (in this L4T kernel's
+default `quirks=0xFFFFFFFF`) is already on and is what makes any multi-cam work.
+More resolution across all four needs USB-3 cameras (Bus 002) — the USB-2 B0590s
+can't. Full detail + table in `design/jetson-camera-ring-usb.md`. Thermal/zvision
+stayed healthy throughout (NRestarts=0, ZTHREAT flowing). The ring is not yet in
+the zvision config — this characterizes what to set when it is.
+
 ## 2026-08-17 — thermal camera is now serial-pinned (works on ANY USB port)
 
 Rob was mid chassis/antenna work and re-plugged the thermal, which raised the
