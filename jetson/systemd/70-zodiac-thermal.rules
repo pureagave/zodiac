@@ -1,0 +1,24 @@
+# PureThermal (GroupGets / FLIR Lepton) thermal camera — pin a stable
+# /dev/zodiac-thermal to the CAPTURE node by the module's UNIQUE serial, so the
+# thermal works on ANY USB port. (The identical Arducams all report SN0001 and
+# genuinely cannot be identity-addressed — they stay pinned by physical port via
+# /dev/v4l/by-path. This rule is thermal-only.)
+#
+# Install: sudo cp jetson/systemd/70-zodiac-thermal.rules /etc/udev/rules.d/
+#          sudo udevadm control --reload-rules && sudo udevadm trigger
+# (jetson/scripts/install.sh does this for you.)
+#
+# Matched on the video node's own udev properties — the same ones
+# 60-persistent-v4l uses to build /dev/v4l/by-id, so they are populated by the
+# time this 70- rule runs:
+#   ID_SERIAL_SHORT      the module serial (globally unique)
+#   ID_VENDOR_ID         1e4e — unique to the PureThermal here (Arducams=0c45)
+#   ID_V4L_CAPABILITIES  ":capture:" selects index0 and EXCLUDES the index1
+#                        metadata/telemetry node (whose caps are ":").
+# No MODE/GROUP: zvision runs as root and the /dev/videoN perms are unchanged —
+# the symlink only needs to exist.
+#
+# NOTE: the serial below is THIS unit's. A replacement PureThermal has a
+# different serial — update it here (read it from
+# `udevadm info -q property -n /dev/videoN | grep ID_SERIAL_SHORT`).
+SUBSYSTEM=="video4linux", ENV{ID_VENDOR_ID}=="1e4e", ENV{ID_SERIAL_SHORT}=="000b0026-5103-3133-3332-373300000000", ENV{ID_V4L_CAPABILITIES}=="*:capture:*", SYMLINK+="zodiac-thermal"

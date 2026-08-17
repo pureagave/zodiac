@@ -25,13 +25,24 @@ if [[ ! -f /etc/default/zvision ]]; then
   echo ">> writing default config /etc/default/zvision"
   sudo tee /etc/default/zvision >/dev/null <<'EOF'
 # Arguments passed to `python3 -m zvision`. See jetson/DEPLOY.md.
-# Start with fake to prove the bus + HUD, then switch to thermal:
-#   ZVISION_ARGS=--source thermal --device /dev/video0 --hz 10
+# Start with fake to prove the bus + HUD, then switch to the thermal. The
+# thermal is serial-pinned to a stable /dev/zodiac-thermal by the udev rule
+# below, so it works on ANY USB port:
+#   ZVISION_ARGS=--hz 8 --camera thermal:/dev/zodiac-thermal:az=0:fov=160:lens=fisheye:fovref=d:name=thermal
 ZVISION_ARGS=--source fake --hz 10
 EOF
 else
   echo ">> keeping existing /etc/default/zvision"
 fi
+
+echo ">> installing zodiac udev rules (device identity, port-independent)"
+# Serial-pin the thermal to /dev/zodiac-thermal and give the Stream Deck its
+# stable node — both survive a re-plug into any USB port. (The identity-blind
+# Arducam RGB ring stays port-pinned via /dev/v4l/by-path; it has no rule here.)
+sudo cp "${SRC}/systemd/70-zodiac-thermal.rules"   /etc/udev/rules.d/
+sudo cp "${SRC}/systemd/70-zodiac-streamdeck.rules" /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=video4linux --action=add
 
 echo ">> installing systemd unit"
 sudo cp "${SRC}/systemd/zvision.service" /etc/systemd/system/zvision.service

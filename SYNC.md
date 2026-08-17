@@ -6,6 +6,37 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-17 — thermal camera is now serial-pinned (works on ANY USB port)
+
+Rob was mid chassis/antenna work and re-plugged the thermal, which raised the
+right question: the thermal, DMX and Stream Deck all have unique identities —
+why must any of them care which USB port they're in? Planned (high-effort Plan
+agent, all facts verified live) and implemented.
+
+**The answer: 2 of the 3 were already identity-bound; only the thermal wasn't.**
+- **Stream Deck** — HID, found by vid:pid `0fd9:0063` + its own udev rule. Port-independent already.
+- **DMX/FTDI** — olad patches the dongle by serial (`FT232R … BG03OCDS → universe 0`) regardless of port. Port-independent already.
+- **Thermal** — was pinned by physical port (`/dev/v4l/by-path/…2.3…`) out of a blanket "by-id is unsafe" rule that is only true for the *Arducams* (all report the firmware-constant serial `SN0001`). The PureThermal has a genuinely unique serial, so by-id/serial IS safe for it.
+
+**Fix:** new udev rule `jetson/systemd/70-zodiac-thermal.rules` creates a stable
+`/dev/zodiac-thermal` → the thermal's **capture** node, matched on
+`ID_VENDOR_ID==1e4e` + the unique `ID_SERIAL_SHORT==000b0026-…` +
+`ID_V4L_CAPABILITIES==*:capture:*` (the last excludes the PureThermal's index1
+metadata node — it exposes two video nodes). `/etc/default/zvision` now reads
+`--camera thermal:/dev/zodiac-thermal:az=0:…`. `install.sh` deploys both zodiac
+udev rules (thermal + streamdeck) + reloads, so it survives a reflash. The
+identity-blind **Arducam RGB ring stays port-pinned** (by-path) — the port is the
+only identity it has and it fixes each camera's mount bearing; a serial rule
+cannot work for it (that's the still-open "name the ports via udev" item).
+
+**Verified on the box:** the running zvision (`NRestarts=0`) launched with
+`thermal:/dev/zodiac-thermal` and holds `/dev/video5` open on FD 4 *through the
+symlink*; ZTHREAT flowing at ~8/s. `/etc/default/zvision` backed up
+(`.bak-20260817-…`), old by-path spec kept as a commented ROLLBACK line. **Owed:
+Rob's port-move acceptance test** — unplug the thermal, move to a different USB
+port, confirm `/dev/zodiac-thermal` reappears and zvision recovers with no config
+change (CameraStallGuard self-heals within ~6 s). NOT re-tested across a reboot yet.
+
 ## 2026-08-13 — full /opt/zodiac redeploy to main (reconciles the c842d08 drift)
 
 The box had been running main-era `capture`/`normalize`/`broadcaster` fixes over a

@@ -705,8 +705,15 @@ on the wrong person — and it fails **silently**: everything opens, frames flow
 nothing errors. So for the ring, the port is not a limitation to route around;
 it is the only identity the hardware offers.
 
-- [ ] **Move thermal + DMX to `by-id`.** Free robustness, no downside, shorter
-      `ZVISION_ARGS`. The ring stays on ports.
+- [x] **DONE 2026-08-17 — thermal is now serial-pinned to a stable
+      `/dev/zodiac-thermal`.** udev rule `jetson/systemd/70-zodiac-thermal.rules`
+      (keyed on the PureThermal's unique serial `000b0026-…`, `:capture:` node
+      only), `ZVISION_ARGS` points at `/dev/zodiac-thermal`, and `install.sh`
+      deploys the rule on reflash. Works on ANY USB port — hardware-verified on the
+      box (process holds `/dev/video5` via the symlink, ZTHREAT flowing). **DMX is
+      already identity-bound** (olad patches FTDI `BG03OCDS` to universe 0
+      regardless of port) and the **Stream Deck** is already HID vid:pid + its own
+      udev rule — so both were already port-independent. The ring stays on ports.
 - [ ] **Name the ports via udev** — `/dev/zodiac-cam-front` / `-left` / `-rear`.
       Same pinning, but the port→bearing map lives in one readable file instead
       of `2.3` chains in the config, and a mis-plug shows up as a *missing*
