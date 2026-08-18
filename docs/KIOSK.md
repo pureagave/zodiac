@@ -145,13 +145,41 @@ device owner. The device-owner path cannot be exercised in CI, so this on-device
 dry-run is the only real check. Provision the fleet only once the build is
 settled.
 
+## ⚠️ Fire tablets CANNOT be kiosked — measured 2026-08-18
+
+This is the painful one, established by exhausting every option on a real Fire HD
+10 (both a 9th-gen `KFMAWI`/API 28 and an 11th-gen `KFTUWI`/API 30):
+
+**Fire OS ships `com.amazon.parentalcontrols` as a *profile owner* baked into the
+OS image.** A profile owner blocks `dpm set-device-owner` outright. And it is
+**unremovable** without root:
+
+- Survives a **factory reset** (it's in the system image, re-applied on every boot).
+- Survives an **online device deregister** at Manage-Your-Content-and-Devices.
+- `dpm remove-active-admin` → `SecurityException: non-test admin`.
+- `pm uninstall --user 0 com.amazon.parentalcontrols` → `DELETE_FAILED_INTERNAL_ERROR`.
+- Clearing the account packages (`pm clear com.amazon.dcp`/`com.amazon.imp`) leaves
+  both the accounts *and* the profile owner in place.
+
+By contrast, **the Samsungs (S9+, A54) have `owners=0`** — no profile owner — so
+they provision cleanly. This confirms it is a **Fire OS built-in**, not a user
+Kids-mode setup. The only way to remove it is **root**, which on Fire tablets is a
+hard, risky project not worth it for this fleet.
+
+**Consequence:** the passenger **Fires cannot be device-owner kiosked**, and the
+auto-relaunch-after-reboot feature (which needs device-owner) does **not** apply to
+them. Realistic options for the Fires: run **unlocked** (accept the ad lockscreen +
+a manual tap after each power-cycle), lighter **screen-pinning** (escapable, no
+auto-relaunch), or swap the passenger displays for non-Fire Android tablets.
+
 ## Which tablets should get it
 
-- **Passenger displays** — yes. This is exactly what it's for.
-- **S9+ hero dashboard** — yes, if it's permanently mounted.
-- **A54 driver phone** — probably not. Kiosk means no maps, no phone, no
-  camera on that device, which is a lot to give up on the one screen the driver
-  might genuinely need something else from.
+- **S9+ hero dashboard** — **yes** (Samsung, provisions cleanly; mounted, worth it).
+- **A54 driver phone** — Samsung, *can* be kiosked, but **probably not**: kiosk
+  means no maps/phone/camera on the one screen the driver might need something
+  else from.
+- **Passenger Fires** — **cannot** (see the box above). Run unlocked or swap the
+  hardware.
 - **XCover beacon** — no. It's headless already; kiosk buys nothing.
 
 ## Gotcha

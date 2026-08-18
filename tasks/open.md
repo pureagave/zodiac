@@ -42,9 +42,14 @@ What's worth doing next. Critical and High audit items are all done — see `don
 >       Device-owner-gated, so non-provisioned devices are unaffected; :app gate
 >       green (compile/ktlint/detekt/lint/tests). **Owed:** `adb reboot` a
 >       provisioned tablet and confirm `mCurrentFocus` returns to the cockpit
->       (docs/KIOSK.md "Verify auto-relaunch"). **Caveat:** the A54 driver phone is
->       intentionally NOT kiosked (docs/KIOSK.md), so it still won't auto-relaunch —
->       acceptable, the driver is present and can tap it; kiosk it if that changes.
+>       (docs/KIOSK.md "Verify auto-relaunch"). ⚠️ **2026-08-18: verify can ONLY be
+>       done on a Samsung.** The Fires **cannot be kiosked at all** — Fire OS's
+>       built-in `com.amazon.parentalcontrols` profile owner blocks device-owner and
+>       can't be removed without root (proven by exhausting every method; see
+>       `docs/KIOSK.md` + SYNC 2026-08-18). So the passenger Fires get no kiosk and
+>       no auto-relaunch; only the S9+/A54 can be provisioned. To verify the
+>       feature, kiosk the **S9+** and reboot it. This also **kills the old plan of
+>       kiosking the passenger Fires** — decide: run them unlocked, or swap hardware.
 > - [ ] **RES-P2-1 [CODE-NOW] — blind Jetson == genuine all-clear on the wire.**
 >       Carry a per-arc health/blind bit (or a heartbeat line) so the HUD can show
 >       "SENSOR BLIND." Pairs with RES-P1-1.

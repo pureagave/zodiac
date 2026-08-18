@@ -6,6 +6,44 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-18 — Fire tablets CAN'T be kiosked; fleet migrated to the `zodiac` network
+
+**Kiosk finding (important — changes the fleet plan).** Tried to provision the
+first fleet tablet (Fire HD 10 9th-gen) into device-owner kiosk. Exhausted every
+option and confirmed **Fire OS bakes `com.amazon.parentalcontrols` in as a profile
+owner that blocks `dpm set-device-owner` and cannot be removed without root** —
+survives factory reset, online deregister, `dpm remove-active-admin` (non-test
+admin), `pm uninstall` (DELETE_FAILED), and account-package `pm clear`. The
+Samsungs have `owners=0` (clean), proving it's a Fire OS built-in, not a Kids
+setup. **So the passenger Fires cannot be kiosked and don't get auto-relaunch;
+only the Samsungs can.** Full detail + the option list in `docs/KIOSK.md` (new
+box). This invalidates the old KIOSK.md assumption that Fires were the prime kiosk
+targets. Along the way: signing was going to be a new release keystore, but Rob
+chose the **debug keystore as the fleet key** (backed up to
+`~/zodiac-fleet-signing-key.keystore`, password `android`) — moot now that Fires
+can't be kiosked, but the S9+ can use it if we kiosk that.
+
+**Network migration — the fleet now runs on its own `zodiac` router.** SSID
+**`zodiac`**, WPA2 pass **`zodiac2026`** (2.4 GHz), double-NATted behind the home
+net during setup. LAN came up as **`192.168.8.x`** (gw `.1`). Verified live on the
+new network:
+- **Jetson** on zodiac via Ethernet (MAC `ac:3a:e2:12:36:6c`), DHCP (router can't
+  do reservations, so its IP floats — was `.246`; find it by MAC). zvision+olad
+  active, **ZTHREAT flowing**.
+- **Beacon** (XCover) on zodiac (`192.168.8.188`), **broadcasting GPS + all sensor
+  channels** — Jetson heard 627 pkts/8s: GGA/RMC + GPS/GLONASS/Galileo GSV (real
+  sky lock) + `$ZTLM`/`$ZAUD`/`$ZBCN`/`$ZODO`/`$GPHDT`.
+- **S9+** auto-joined (`.217`); **Mac** on zodiac (`.187` WiFi; a USB-Ethernet
+  `en6` is wired but awaiting a `sudo ipconfig set en6 DHCP` — WiFi carries
+  everything meanwhile).
+- **Both data sources live on the bus** (GPS from beacon, threats from Jetson).
+
+**Corrected `cmd wifi` note (supersedes the old "Samsung blocks it"):** pushing
+WiFi via `adb shell cmd wifi add-network` is **Android-version-gated, not vendor**
+— **API 30+ works** (Fire 11th "Save successful"; S9+/A54 API 36 save silently),
+**API 28/29 blocked** (`Uid 2000 no access` — Fire 9th, XCover beacon). So the
+beacon + old Fire needed the SSID typed by hand.
+
 ## 2026-08-17 — camera-ring bandwidth: MEASURED, the limit is iso reservation not data
 
 Ran the real four-Arducam simultaneous-stream test on the box (all on the powered
