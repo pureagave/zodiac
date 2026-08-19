@@ -35,6 +35,7 @@ import org.pureagave.zodiac.control.core.geo.PlayaProjection
 import org.pureagave.zodiac.control.core.ops.campGuidance
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.SurroundRing
+import org.pureagave.zodiac.control.core.vision.SurroundRingCoverage
 import org.pureagave.zodiac.control.ui.state.CockpitUiState
 import org.pureagave.zodiac.control.ui.viewmodel.CockpitViewModel
 import kotlin.math.abs
@@ -104,6 +105,14 @@ fun driverNightScreen(
     val ringBlipTracker = remember { SurroundRing.BlipTracker() }
     val ringBlips = remember(state.threats) { ringBlipTracker.blips(state.threats) }
 
+    // The blind-arc decision (RES-P2-1): which rim arcs are COVERED / BLIND /
+    // DEMO. Pure and tested in SurroundRing; the composable only invokes it and
+    // hands the result to the Canvas, same as hudStatus and the blip list.
+    val rimSegments =
+        remember(state.visionFeed, state.visionCoverage) {
+            SurroundRingCoverage.rimSegments(state.visionFeed, state.visionCoverage)
+        }
+
     // Relative bearing to the active target, clamped onto the heading arch.
     val relDeg =
         state.egoFix?.let { ego ->
@@ -116,7 +125,7 @@ fun driverNightScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawDriverHud(state, threats, ringBlips, relDeg.toFloat(), typeface)
+            drawDriverHud(state, threats, ringBlips, rimSegments, relDeg.toFloat(), typeface)
         }
         // Speed (purple = live data) bottom-right, and the status line
         // bottom-left — kept as real Compose text for crispness. The status
@@ -181,6 +190,7 @@ private fun DrawScope.drawDriverHud(
     state: CockpitUiState,
     threats: List<DriverThreat>,
     ringBlips: List<SurroundRing.Blip>,
+    rimSegments: List<SurroundRingCoverage.RimSegment>,
     relDeg: Float,
     tf: Typeface?,
 ) {
@@ -196,7 +206,7 @@ private fun DrawScope.drawDriverHud(
     // a figure, then the reticle/text on top of everything.
     drawPerspectiveGrid(w, h)
     drawHeadingArch(state, relDeg, w, h, tf)
-    drawRingFurniture(state.visionFeed, ringCenter, ringRadius)
+    drawRingFurniture(rimSegments, ringCenter, ringRadius)
     val (collisionBlips, plainBlips) = ringBlips.partition { it.collision }
     plainBlips.forEach { drawRingBlip(it, ringCenter, ringRadius) }
     threats.forEach { drawThreat(it, w, h, tf) }

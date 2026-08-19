@@ -31,6 +31,11 @@ class FakeThreatSource(
     // moot — report a constant "alive" to satisfy the interface.
     override val feedAlive: StateFlow<Boolean> = MutableStateFlow(true).asStateFlow()
 
+    // The demo carries no real camera coverage; null lets the ring fall back to
+    // its static coverage assumption rather than inventing a watched set.
+    override val coverage: StateFlow<List<ClosedFloatingPointRange<Float>>?> =
+        MutableStateFlow<List<ClosedFloatingPointRange<Float>>?>(null).asStateFlow()
+
     private var job: Job? = null
 
     override suspend fun start() {

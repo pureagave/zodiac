@@ -14,6 +14,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.net.FleetBus
+import org.pureagave.zodiac.control.core.vision.CoverageProtocol
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.ThreatProtocol
 import org.pureagave.zodiac.control.data.sensor.MulticastLockHandle
@@ -52,6 +53,7 @@ class NetworkThreatSource(
     private val applicationContext: Context? = null,
     private val port: Int = FleetBus.THREAT_PORT,
     private val staleMs: Long = STALE_MS,
+    private val coverageStaleMs: Long = COVERAGE_STALE_MS,
     private val group: String = FleetBus.THREAT_GROUP,
     private val retryBaseMs: Long = RETRY_BASE_MS,
     private val retryMaxMs: Long = RETRY_MAX_MS,
@@ -94,6 +96,9 @@ class NetworkThreatSource(
     private val _feedAlive = MutableStateFlow(false)
     override val feedAlive: StateFlow<Boolean> = _feedAlive.asStateFlow()
 
+    private val _coverage = MutableStateFlow<List<ClosedFloatingPointRange<Float>>?>(null)
+    override val coverage: StateFlow<List<ClosedFloatingPointRange<Float>>?> = _coverage.asStateFlow()
+
     private var job: Job? = null
     private var watchdog: Job? = null
 
@@ -105,6 +110,15 @@ class NetworkThreatSource(
     @Volatile private var socket: MulticastSocket? = null
 
     @Volatile private var lastRxMs: Long = 0L
+
+    /**
+     * When the last `ZCOVER` frame landed — its own timestamp, independent of
+     * [lastRxMs]. Coverage and threat liveness expire on separate clocks so a
+     * coverage-only stream never marks the threat feed alive (R4), and a stale
+     * coverage signal falls back to the ring's static assumption without
+     * disturbing the threat feed's own staleness.
+     */
+    @Volatile private var lastCoverageMs: Long = 0L
 
     override suspend fun start() {
         if (job?.isActive == true) {
@@ -134,6 +148,14 @@ class NetworkThreatSource(
                         _feedAlive.update { alive -> if (nowMs() - lastRxMs > staleMs) false else alive }
                         _threats.update { contacts -> if (nowMs() - lastRxMs > staleMs) emptyList() else contacts }
                     }
+                    // Coverage expires on its own, slower clock: a Jetson that
+                    // stops sending ZCOVER (crashed, or an old build) drops the
+                    // ring back to its static coverage assumption, never leaving
+                    // a stale watched/blind picture on the HUD. Independent of
+                    // the threat watchdog above so the two never interfere.
+                    if (nowMs() - lastCoverageMs > coverageStaleMs) {
+                        _coverage.update { cov -> if (nowMs() - lastCoverageMs > coverageStaleMs) null else cov }
+                    }
                     delay(staleMs / 2)
                 }
             }
@@ -156,6 +178,7 @@ class NetworkThreatSource(
         multicastLockHandle.release()
         _threats.value = emptyList()
         _feedAlive.value = false
+        _coverage.value = null
     }
 
     /**
@@ -263,19 +286,31 @@ class NetworkThreatSource(
     }
 
     /**
-     * Parse one frame and, only on a successful [ThreatProtocol] frame, stamp
-     * liveness and publish. Split out of [ingestPacket] so a test can drive it
-     * directly with no socket involved — the only way to observe, rather than
-     * infer, that the timestamp write really does happen before the publish.
+     * Parse one frame and route it to its channel. A [ThreatProtocol] frame
+     * stamps threat liveness and publishes contacts; a [CoverageProtocol]
+     * frame publishes coverage on its own timestamp and **never touches**
+     * [lastRxMs]/[_feedAlive]/[_threats] — a coverage-only stream must not
+     * resurrect a dead threat feed (R4). Split out of [ingestPacket] so a test
+     * can drive it directly with no socket involved.
      */
     internal fun ingestFrame(frame: String) {
-        ThreatProtocol.parse(frame)?.let {
+        val threats = ThreatProtocol.parse(frame)
+        if (threats != null) {
             // Order matters: stamp liveness before publishing so a watchdog
             // tick can't see fresh contacts with a stale timestamp and clear
             // them. An empty frame is a valid "all clear" — still a live feed.
             lastRxMs = nowMs()
             _feedAlive.value = true
-            _threats.value = it
+            _threats.value = threats
+            return
+        }
+        // Only if it wasn't a ZTHREAT frame: try the coverage channel. This
+        // path stamps ONLY the coverage timestamp/flow, preserving the ABSENT
+        // semantics of a feed that is emitting coverage but no threats.
+        val coverage = CoverageProtocol.parse(frame)
+        if (coverage != null) {
+            lastCoverageMs = nowMs()
+            _coverage.value = coverage
         }
     }
 
@@ -327,6 +362,15 @@ class NetworkThreatSource(
 
     companion object {
         const val STALE_MS: Long = 1_500L
+
+        /**
+         * How long a `ZCOVER` signal is trusted after the last one arrives.
+         * Wider than [STALE_MS] because coverage is a 1 Hz heartbeat, not the
+         * 10 Hz threat stream — 5 s is several missed heartbeats, past which the
+         * ring reverts to its static coverage assumption rather than trusting a
+         * stale picture.
+         */
+        const val COVERAGE_STALE_MS: Long = 5_000L
         private const val BUFFER_BYTES: Int = 4096
         private const val NANOS_PER_MS: Long = 1_000_000L
 

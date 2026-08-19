@@ -253,6 +253,16 @@ class ReBaselineGuard:
 # instantly. Reopening the handle once the device is ready is the recovery.
 DEFAULT_STALL_SECS = 6.0
 
+# How recently a camera must have delivered a frame to still count as *covering*
+# its arc for blind-arc signalling (RES-P2-1). A camera silent for longer than
+# this is treated as blind — its arc goes onto the wire as unwatched, not
+# all-clear. 3.0 s meets the spec's "<= ~3 s" target and sits under the stall
+# guard's 6 s reopen interval; the 2 s READ_TIMEOUT_MS in capture.py keeps the
+# synchronous loop ticking, so a wedged camera still trips this bound. It must
+# stay well above the thermal's worst honest frame gap (~111 ms at 9 fps plus FFC
+# settle) or a healthy camera would flicker blind.
+LIVE_WINDOW_SECS = 3.0
+
 
 class CameraStallGuard:
     """Decides when a camera that has stopped delivering frames should be
@@ -267,17 +277,29 @@ class CameraStallGuard:
     genuinely dead camera is retried on a fixed cadence rather than every frame.
     A reopen is never triggered on the very first observation: a healthy camera's
     first frame can lag its warm-up, and reopening across that would be churn.
+
+    :meth:`delivering` answers the separate liveness question the blind-arc
+    signal needs: has a frame actually arrived within a window? It reads
+    ``_last_frame``, which advances **only** on a real frame — deliberately
+    distinct from ``_last_ok``, which :meth:`note` resets on every reopen
+    backoff. Reading ``_last_ok`` for liveness would make a genuinely dead
+    camera look alive for ``stall_secs`` after each reopen attempt, which is the
+    exact "false all-clear" this signalling exists to kill.
     """
 
     def __init__(self, stall_secs: float = DEFAULT_STALL_SECS, clock=None) -> None:
         self._stall = stall_secs
         self._clock = clock or time.monotonic
         self._last_ok: Optional[float] = None
+        # Advances ONLY on a delivered frame — never on a reopen. See
+        # :meth:`delivering`; do not fold this back onto ``_last_ok``.
+        self._last_frame: Optional[float] = None
 
     def note(self, frame_ok: bool) -> bool:
         now = self._clock()
         if frame_ok:
             self._last_ok = now
+            self._last_frame = now
             return False
         if self._last_ok is None:
             # First-ever observation is a failure: start the clock, grace the
@@ -288,3 +310,14 @@ class CameraStallGuard:
             self._last_ok = now  # backoff: the next reopen is another stall away
             return True
         return False
+
+    def delivering(self, window_secs: float = LIVE_WINDOW_SECS) -> bool:
+        """True iff a frame was delivered within ``window_secs``.
+
+        A camera that has never delivered is not delivering. A camera whose last
+        real frame is older than the window is not delivering, no matter how
+        recently a reopen fired — that is the whole point of tracking
+        ``_last_frame`` separately from ``_last_ok``."""
+        if self._last_frame is None:
+            return False
+        return self._clock() - self._last_frame <= window_secs

@@ -20,11 +20,13 @@ import kotlin.math.sqrt
  * `pixel_to_bearing` evaluated at `(cx=1.0, cy=0.5)` — this test reproduces
  * that closed form from the raw rig inputs, not from the literal 64.
  *
- * This is the **only** cross-check keeping the tablet's [SurroundRing] and
- * the Jetson's rig geometry from silently drifting apart — there is no wire
- * field for coverage yet (see [SurroundRing.COVERED_ARCS]'s doc). If this
- * test and `rig.py`'s own `half_h_fov_deg` tests ever disagree, the two rigs
- * have drifted and one side is wrong.
+ * Since RES-P2-1 the edge box also puts *live* coverage on the wire (`ZCOVER`),
+ * and [SurroundRing.COVERED_ARCS] is the **fallback** used when there is no
+ * fresh signal (an old Jetson, or a stale one). This cross-check still matters:
+ * the fallback and the live wire value must agree on the forward arc, or an
+ * old-vs-new Jetson would flicker the rim between subtly different geometries.
+ * If this test and `rig.py`'s own `half_h_fov_deg` tests ever disagree, the two
+ * rigs have drifted and one side is wrong.
  */
 class LeptonUwFovReferenceTest {
     // The shipped rig's raw inputs (zvision/rig.py CameraMount defaults):

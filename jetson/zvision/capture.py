@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from typing import Optional
 
-from .normalize import CameraStallGuard, image_rows, stretch_window
+from .normalize import LIVE_WINDOW_SECS, CameraStallGuard, image_rows, stretch_window
 
 # Bound the blocking V4L2 read: a camera that stops delivering frames returns
 # None in ~READ_TIMEOUT_MS instead of the driver's ~10 s select() default, so one
@@ -117,6 +117,11 @@ class UvcCamera:
         if self._stall.note(frame_ok):
             self._reopen()
         return frame if frame_ok else None
+
+    def delivering(self, window_secs: float = LIVE_WINDOW_SECS) -> bool:
+        """Whether this camera has produced a frame recently enough to still
+        count as covering its arc — the blind-arc liveness signal (RES-P2-1)."""
+        return self._stall.delivering(window_secs)
 
     def close(self) -> None:
         # MultiDetector's shutdown politely skips cameras without a close();
@@ -296,6 +301,11 @@ class ThermalCamera:
         )
         stretched = np.clip((f - lo) / (2.0 * scale) * 255.0, 0, 255).astype(np.uint8)
         return self._cv2.cvtColor(stretched, self._cv2.COLOR_GRAY2BGR)
+
+    def delivering(self, window_secs: float = LIVE_WINDOW_SECS) -> bool:
+        """Whether the thermal has produced a frame recently enough to still
+        count as covering its arc — the blind-arc liveness signal (RES-P2-1)."""
+        return self._stall.delivering(window_secs)
 
     def close(self) -> None:
         cap = getattr(self, "_cap", None)

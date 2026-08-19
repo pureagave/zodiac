@@ -60,11 +60,14 @@ complexity:
     # NmeaParser is the fleet's one central sentence reader; it grows a parser per
     # proprietary sentence (ZTLM/ZAUD/ZENV/ZSHK/ZBCN/ZODO) alongside standard
     # GGA/RMC/heading. If it keeps growing, split the proprietary Z-sentences into
-    # their own object. SurroundRing (bands, clustering, hysteresis, coverage arcs
-    # and their complement, speed-gated braking, the hudStatus decision — all
-    # pure and tested) pushed higher still, to 22. It is the one place the
-    # DRIVER HUD's decisions are allowed to live, so growth here is by design;
-    # split it by concern (placement / alerting / coverage) if it goes further.
+    # their own object. SurroundRing (bands, clustering, hysteresis, speed-gated
+    # braking, the hudStatus decision — all pure and tested) sits at 22, the one
+    # place the DRIVER HUD's *placement/alerting* decisions are allowed to live.
+    # RES-P2-1's blind-arc *coverage* decision (rimSegments / normalizeCovered /
+    # uncoveredArcs, classifying each rim arc COVERED/BLIND/DEMO) was split into a
+    # sibling SurroundRingCoverage object rather than bumped in here — following
+    # this file's own "split it by concern (placement / alerting / coverage)"
+    # guidance instead of raising the number. Keep doing that if it grows further.
     thresholdInObjects: 22
     # Default 11 fires at count >= threshold, not >, so CockpitPreferences'
     # current 11 functions (read/set per persisted field + readBurnInConfig/

@@ -9,14 +9,25 @@ import unittest
 from unittest import mock
 
 from zvision.app import _mounts_from_args, _parse_args, main
-from zvision.geometry import FOV_DIAGONAL, LENS_EQUIDISTANT, LENS_RECTILINEAR
+from zvision.coverage_protocol import parse_coverage
+from zvision.geometry import FOV_DIAGONAL, FOV_HORIZONTAL, LENS_EQUIDISTANT, LENS_RECTILINEAR
+from zvision.rig import CameraMount, MultiDetector
+from zvision.threat import DriverThreat
 from zvision.threat_protocol import parse_frame
 from zvision.tracker import TrackerConfig
 
 
 def _run_once(extra_args):
     """Run one `--once` cycle against a bound loopback socket and return the
-    parsed frames it emitted."""
+    parsed ZTHREAT frames it emitted (ZCOVER datagrams parse to None here and
+    are filtered — this helper only cares about the threat channel)."""
+    rc, raw = _run_once_raw(extra_args)
+    return rc, [parse_frame(line) for line in raw if parse_frame(line) is not None]
+
+
+def _run_once_raw(extra_args):
+    """Run one `--once` cycle and return every raw datagram string it emitted,
+    so a caller can split the ZTHREAT and ZCOVER channels itself."""
     rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     rx.bind(("127.0.0.1", 0))
     rx.settimeout(2.0)
@@ -27,16 +38,16 @@ def _run_once(extra_args):
         ["--once", "--group", "127.0.0.1", "--broadcast", "127.0.0.1", "--port", str(port)]
         + extra_args
     )
-    frames = []
+    raw = []
     try:
         while True:
             data, _ = rx.recvfrom(4096)
-            frames.append(parse_frame(data.decode("ascii")))
+            raw.append(data.decode("ascii"))
     except socket.timeout:
         pass
     finally:
         rx.close()
-    return rc, frames
+    return rc, raw
 
 
 class OnceRunTest(unittest.TestCase):
@@ -46,6 +57,78 @@ class OnceRunTest(unittest.TestCase):
         self.assertGreaterEqual(len(frames), 2)
         self.assertEqual(3, len(frames[0]))  # first frame: the 3 fake contacts
         self.assertIn([], frames)            # the exit all-clear frame is present
+
+
+class CoverageEmitTest(unittest.TestCase):
+    """RES-P2-1: coverage rides the same bus as ZTHREAT. `--once` must emit both
+    a threat frame and a coverage frame, and a dead camera's arc must go blind on
+    the wire while ZTHREAT keeps flowing — blind is flagged, never suppressed."""
+
+    def test_once_emits_both_a_threat_and_a_coverage_frame(self):
+        rc, raw = _run_once_raw(["--source", "fake"])
+        self.assertEqual(0, rc)
+        threats = [parse_frame(line) for line in raw if parse_frame(line) is not None]
+        covers = [parse_coverage(line) for line in raw if parse_coverage(line) is not None]
+        self.assertTrue(any(len(t) == 3 for t in threats), "the 3 fake contacts must be on the wire")
+        self.assertTrue(covers, "a ZCOVER frame must be on the wire")
+        # The single fake camera (160 deg diagonal) covers the forward arc, so a
+        # non-empty coverage frame with the bow watched is emitted.
+        self.assertTrue(any(c for c in covers), "at least one coverage frame must report a watched arc")
+
+    def test_a_dead_camera_arc_goes_blind_while_zthreat_keeps_flowing(self):
+        # A three-camera ring where the aft camera is not delivering frames.
+        # Its arc must be absent from the coverage set (blind), while the two
+        # live cameras keep producing ZTHREAT contacts — a stalled camera never
+        # suppresses the threat channel (the P1-1 fix), it only flags its arc.
+        from zvision import app as appmod
+
+        class LiveStub:
+            def __init__(self, contacts):
+                self._contacts = contacts
+
+            def detect(self, t):
+                return list(self._contacts)
+
+            def delivering(self, *_a):
+                return True
+
+            def close(self):
+                pass
+
+        class DeadStub(LiveStub):
+            def detect(self, t):
+                return []
+
+            def delivering(self, *_a):
+                return False
+
+        cams = [
+            (CameraMount("fwd", mount_az_deg=0.0, fov_deg=100.0, fov_ref=FOV_HORIZONTAL),
+             LiveStub([DriverThreat(rel_az_deg=0.0, size=0.5, id=1)])),
+            (CameraMount("stbd", mount_az_deg=90.0, fov_deg=100.0, fov_ref=FOV_HORIZONTAL),
+             LiveStub([DriverThreat(rel_az_deg=0.0, size=0.5, id=1)])),
+            (CameraMount("aft", mount_az_deg=180.0, fov_deg=100.0, fov_ref=FOV_HORIZONTAL),
+             DeadStub([])),
+        ]
+        rig = MultiDetector(cams)
+        with mock.patch.object(appmod, "build_rig", lambda *a, **k: rig):
+            rc, raw = _run_once_raw(["--source", "fake"])
+        self.assertEqual(0, rc)
+
+        threats = [parse_frame(line) for line in raw if parse_frame(line) is not None]
+        covers = [parse_coverage(line) for line in raw if parse_coverage(line) is not None]
+        # ZTHREAT never stopped: the two live cameras' contacts are on the wire.
+        self.assertTrue(any(len(t) >= 1 for t in threats), "the live cameras must still broadcast contacts")
+        # The coverage set from the loop (non-empty) excludes the aft arc.
+        loop_covers = [c for c in covers if c]
+        self.assertTrue(loop_covers, "a coverage frame with watched arcs must be emitted")
+
+        def covered_at(arcs, az):
+            return any(start <= az <= end for start, end in arcs)
+
+        watched = loop_covers[0]
+        self.assertTrue(covered_at(watched, 0.0), "the bow (live) must be covered")
+        self.assertFalse(covered_at(watched, 180.0), "the stern (dead camera) must be blind")
 
 
 class RigCliTest(unittest.TestCase):

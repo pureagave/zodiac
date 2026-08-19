@@ -19,7 +19,7 @@ from .geometry import (
     bbox_height_to_size,
     pixel_to_bearing,
 )
-from .normalize import ReBaselineGuard, associate_tracks
+from .normalize import LIVE_WINDOW_SECS, ReBaselineGuard, associate_tracks
 from .threat import DriverThreat
 
 # A missed blob (a frame where the background subtractor just doesn't find
@@ -71,6 +71,12 @@ class Detector(Protocol):
         """Contacts for time ``t`` (monotonic seconds since start)."""
         ...
 
+    def delivering(self, window_secs: float = LIVE_WINDOW_SECS) -> bool:
+        """Whether this detector's camera is currently delivering frames, so
+        the rig can tell a covering camera from a blind one (RES-P2-1). A
+        detector with no real camera (the fake) is always delivering."""
+        ...
+
     def close(self) -> None:
         ...
 
@@ -97,6 +103,10 @@ class FakeDetector:
             id=3,
         )
         return [far_sweeper, parked, incoming]
+
+    def delivering(self, window_secs: float = LIVE_WINDOW_SECS) -> bool:
+        # No hardware to stall: the synthetic source always "sees" its arc.
+        return True
 
     def close(self) -> None:
         pass
@@ -233,6 +243,13 @@ class MotionDetector:
 
     def _kernel(self):
         return self._cv2.getStructuringElement(self._cv2.MORPH_ELLIPSE, (5, 5))
+
+    def delivering(self, window_secs: float = LIVE_WINDOW_SECS) -> bool:
+        # Delegate to the camera's own frame-delivery signal. A camera that
+        # predates this method (or a test stub without one) is assumed to be
+        # delivering, so a missing signal never silently blinds a real arc.
+        query = getattr(self._camera, "delivering", None)
+        return query(window_secs) if callable(query) else True
 
     def close(self) -> None:
         closer = getattr(self._camera, "close", None)

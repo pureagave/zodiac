@@ -133,6 +133,17 @@ data class CockpitUiState(
      */
     val visionFeed: VisionFeed = VisionFeed.ABSENT,
     /**
+     * Which bearing arcs a *currently delivering* camera watches, from the edge
+     * box's low-rate `ZCOVER` signal (RES-P2-1). Null = no fresh coverage
+     * signal, so the surround ring falls back to
+     * [org.pureagave.zodiac.control.core.vision.SurroundRing.COVERED_ARCS]
+     * (an old Jetson, or a stale signal — today's behaviour). Empty = a live
+     * feed watching nothing, so the whole ring is blind. Drives the ring rim's
+     * COVERED/BLIND classification via `SurroundRingCoverage.rimSegments`; a dead camera
+     * shows as a visible blind wedge instead of a false all-clear.
+     */
+    val visionCoverage: List<ClosedFloatingPointRange<Float>>? = null,
+    /**
      * Whether the HUD should be telling the driver to brake, **after** the
      * flicker latch — see [org.pureagave.zodiac.control.core.vision.AlarmLatch].
      * Distinct from recomputing `brakeAdvised` at the draw site, which strobes:

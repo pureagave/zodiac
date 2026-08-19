@@ -24,6 +24,18 @@ interface ThreatSource {
      */
     val feedAlive: StateFlow<Boolean>
 
+    /**
+     * Which bearing arcs a *currently delivering* camera watches, from the edge
+     * box's low-rate `ZCOVER` signal (RES-P2-1) — or null when there is no fresh
+     * coverage signal (an old Jetson that never sends it, or a signal gone
+     * stale). Null means "fall back to the ring's static coverage assumption";
+     * an empty list means "a live feed watching nothing — whole ring blind".
+     * Distinct from [feedAlive]: coverage carries its own freshness and must
+     * never stamp threat liveness, so a coverage-only stream cannot resurrect a
+     * dead [threats] feed.
+     */
+    val coverage: StateFlow<List<ClosedFloatingPointRange<Float>>?>
+
     suspend fun start()
 
     suspend fun stop()

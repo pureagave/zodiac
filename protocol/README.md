@@ -59,3 +59,32 @@ implementations and only agreed-upon results were written. If you change the
 format, re-run that differential comparison rather than hand-editing the JSON —
 hand-editing lets you write down what you believe instead of what the code does,
 which is the failure this file exists to prevent.
+
+## `coverage-protocol-golden.json` — the ZCOVER frame (RES-P2-1)
+
+The low-rate camera-coverage channel that rides the same bus as ZTHREAT
+(`239.7.7.20:10120`) so the DRIVER surround ring can render a dead camera's arc
+as a **blind** wedge instead of a false all-clear. Two hand-written
+implementations, same discipline as ZTHREAT:
+
+| | file | role |
+|---|---|---|
+| producer | `jetson/zvision/coverage_protocol.py` | `format_coverage` runs on the vehicle |
+| consumer | `app/.../core/vision/CoverageProtocol.kt` | `parse` runs on the vehicle |
+
+Both test suites read this file and fail loudly if it is missing:
+
+- `jetson/tests/test_coverage_golden.py`
+- `app/src/test/java/.../core/vision/CoverageProtocolGoldenTest.kt`
+
+Format: `ZCOVER;start:end;...` — covered arcs in degrees, 1 decimal, swept
+clockwise; a bare `ZCOVER` means nothing covered (whole ring blind). The numeric
+grammar, framing whitespace and 32-bit-float rounding are shared verbatim with
+ZTHREAT (above), so the two channels cannot drift in how they read a number.
+
+**Unlike the ZTHREAT corpus, this one has a checked-in generator:**
+`jetson/tools/gen_coverage_golden.py`. It is still measured, not authored — it
+runs fixed inputs through `zvision.coverage_protocol` and writes down whatever
+the code produces. **Do not hand-edit the JSON**; change the format and re-run
+the tool. ZCOVER is a *new* contract, so it never required touching the ZTHREAT
+corpus.

@@ -576,7 +576,7 @@ class SurroundRingTest {
 class SurroundRingCoverageGapTest {
     @Test
     fun a_forward_only_rig_leaves_one_gap_spanning_the_whole_stern() {
-        val gaps = SurroundRing.uncoveredArcs(listOf(-64f..64f))
+        val gaps = SurroundRingCoverage.uncoveredArcs(listOf(-64f..64f))
         assertEquals(1, gaps.size)
         assertEquals(64f, gaps.single().start, 1e-4f)
         assertEquals(296f, gaps.single().endInclusive, 1e-4f)
@@ -586,7 +586,7 @@ class SurroundRingCoverageGapTest {
     fun the_gap_is_returned_unwrapped_so_a_renderer_can_sweep_it_directly() {
         // Splitting at the seam would need the caller to draw two arcs and get
         // the wrap right itself — exactly the bug this avoids.
-        val gap = SurroundRing.uncoveredArcs(listOf(-64f..64f)).single()
+        val gap = SurroundRingCoverage.uncoveredArcs(listOf(-64f..64f)).single()
         assertTrue("must run past +180 rather than wrapping", gap.endInclusive > 180f)
         assertEquals("and must sweep the 232 deg the rig cannot see", 232f, gap.endInclusive - gap.start, 1e-4f)
     }
@@ -596,14 +596,14 @@ class SurroundRingCoverageGapTest {
         for (covered in listOf(listOf(-64f..64f), listOf(-30f..30f, 100f..170f), listOf(-179f..179f))) {
             val spans =
                 covered.sumOf { (it.endInclusive - it.start).toDouble() } +
-                    SurroundRing.uncoveredArcs(covered).sumOf { (it.endInclusive - it.start).toDouble() }
+                    SurroundRingCoverage.uncoveredArcs(covered).sumOf { (it.endInclusive - it.start).toDouble() }
             assertEquals("covered=$covered", 360.0, spans, 1e-3)
         }
     }
 
     @Test
     fun several_cameras_leave_a_gap_between_each_pair() {
-        val gaps = SurroundRing.uncoveredArcs(listOf(-30f..30f, 100f..170f))
+        val gaps = SurroundRingCoverage.uncoveredArcs(listOf(-30f..30f, 100f..170f))
         assertEquals(2, gaps.size)
         assertEquals(30f, gaps[0].start, 1e-4f)
         assertEquals(100f, gaps[0].endInclusive, 1e-4f)
@@ -614,8 +614,8 @@ class SurroundRingCoverageGapTest {
     @Test
     fun arcs_given_out_of_order_still_produce_the_right_gaps() {
         assertEquals(
-            SurroundRing.uncoveredArcs(listOf(-30f..30f, 100f..170f)),
-            SurroundRing.uncoveredArcs(listOf(100f..170f, -30f..30f)),
+            SurroundRingCoverage.uncoveredArcs(listOf(-30f..30f, 100f..170f)),
+            SurroundRingCoverage.uncoveredArcs(listOf(100f..170f, -30f..30f)),
         )
     }
 
@@ -623,21 +623,174 @@ class SurroundRingCoverageGapTest {
     fun a_rig_with_no_cameras_leaves_the_entire_circle_unwatched() {
         // Not a hypothetical: it is what COVERED_ARCS reduces to if someone
         // empties it while reconfiguring the rig.
-        val gaps = SurroundRing.uncoveredArcs(emptyList())
+        val gaps = SurroundRingCoverage.uncoveredArcs(emptyList())
         assertEquals(360f, gaps.single().endInclusive - gaps.single().start, 1e-4f)
     }
 
     @Test
     fun full_coverage_leaves_no_gap_at_all() {
-        assertTrue(SurroundRing.uncoveredArcs(listOf(-180f..180f)).isEmpty())
+        assertTrue(SurroundRingCoverage.uncoveredArcs(listOf(-180f..180f)).isEmpty())
     }
 
     @Test
     fun the_shipped_rig_leaves_the_stern_unwatched() {
         // Guards the constant itself: today's rig is one forward 160 deg
         // thermal, so most of the circle is genuinely blind.
-        val blind = SurroundRing.uncoveredArcs().sumOf { (it.endInclusive - it.start).toDouble() }
+        val blind = SurroundRingCoverage.uncoveredArcs().sumOf { (it.endInclusive - it.start).toDouble() }
         assertEquals(232.0, blind, 1e-3)
         assertFalse(SurroundRing.isCovered(180f))
+    }
+}
+
+/**
+ * The blind-arc decision (RES-P2-1): [SurroundRingCoverage.rimSegments] classifies each
+ * rim arc COVERED / BLIND / DEMO from the feed state and the live coverage
+ * signal, and [SurroundRingCoverage.normalizeCovered] folds the untrusted wire list into
+ * clean disjoint arcs. A dead camera must render as a visible blind wedge,
+ * never as clear (R5); a blind arc must never be silently dropped or coalesced
+ * into covered (R6).
+ */
+class SurroundRingRimSegmentTest {
+    private fun sweep(segs: List<SurroundRingCoverage.RimSegment>) = segs.sumOf { (it.endDeg - it.startDeg).toDouble() }
+
+    private fun styles(segs: List<SurroundRingCoverage.RimSegment>) = segs.map { it.style }.toSet()
+
+    @Test
+    fun absent_is_one_full_circle_blind_wedge() {
+        val segs = SurroundRingCoverage.rimSegments(VisionFeed.ABSENT, null)
+        assertEquals(1, segs.size)
+        assertEquals(SurroundRingCoverage.RimStyle.BLIND, segs.single().style)
+        assertEquals(360.0, sweep(segs), 1e-3)
+    }
+
+    @Test
+    fun demo_is_one_full_circle_demo_wedge() {
+        val segs = SurroundRingCoverage.rimSegments(VisionFeed.DEMO, listOf(-64f..64f))
+        assertEquals(1, segs.size)
+        // DEMO overrides any coverage: fabricated coverage must not read as watched.
+        assertEquals(SurroundRingCoverage.RimStyle.DEMO, segs.single().style)
+        assertEquals(360.0, sweep(segs), 1e-3)
+    }
+
+    @Test
+    fun live_with_full_circle_coverage_is_all_covered() {
+        val segs = SurroundRingCoverage.rimSegments(VisionFeed.LIVE, listOf(-180f..180f))
+        assertEquals(setOf(SurroundRingCoverage.RimStyle.COVERED), styles(segs))
+        assertEquals(360.0, sweep(segs), 1e-3)
+    }
+
+    @Test
+    fun live_with_partial_coverage_marks_exactly_the_complement_blind() {
+        val segs = SurroundRingCoverage.rimSegments(VisionFeed.LIVE, listOf(-64f..64f))
+        val covered = segs.filter { it.style == SurroundRingCoverage.RimStyle.COVERED }
+        val blind = segs.filter { it.style == SurroundRingCoverage.RimStyle.BLIND }
+        assertTrue("the watched arc is COVERED", covered.isNotEmpty())
+        assertTrue("the rest is BLIND", blind.isNotEmpty())
+        // Covered ~128 deg (±64), blind ~232 deg — exact complement summing to 360.
+        assertEquals(128.0, covered.sumOf { (it.endDeg - it.startDeg).toDouble() }, 1e-3)
+        assertEquals(232.0, blind.sumOf { (it.endDeg - it.startDeg).toDouble() }, 1e-3)
+    }
+
+    @Test
+    fun the_three_styles_are_distinct() {
+        // blind != clear/covered != demo: the whole safety point is that a dead
+        // camera cannot render identically to a watched one.
+        assertNotEquals(SurroundRingCoverage.RimStyle.BLIND, SurroundRingCoverage.RimStyle.COVERED)
+        assertNotEquals(SurroundRingCoverage.RimStyle.BLIND, SurroundRingCoverage.RimStyle.DEMO)
+        assertNotEquals(SurroundRingCoverage.RimStyle.COVERED, SurroundRingCoverage.RimStyle.DEMO)
+    }
+
+    @Test
+    fun live_with_null_coverage_falls_back_to_the_static_arcs() {
+        // Old-Jetson compatibility: no ZCOVER signal reproduces today's behaviour
+        // exactly — the static COVERED_ARCS as the watched set.
+        val fallback = SurroundRingCoverage.rimSegments(VisionFeed.LIVE, null)
+        val explicit = SurroundRingCoverage.rimSegments(VisionFeed.LIVE, SurroundRing.COVERED_ARCS)
+        assertEquals(explicit, fallback)
+        assertTrue(fallback.any { it.style == SurroundRingCoverage.RimStyle.COVERED })
+        assertTrue(fallback.any { it.style == SurroundRingCoverage.RimStyle.BLIND })
+    }
+
+    @Test
+    fun live_with_empty_coverage_is_wholly_blind_never_clear() {
+        // A live feed whose cameras all died: the degenerate empty message must
+        // fail BLIND. This is the safety-critical case the wire design turns on.
+        val segs = SurroundRingCoverage.rimSegments(VisionFeed.LIVE, emptyList())
+        assertEquals(setOf(SurroundRingCoverage.RimStyle.BLIND), styles(segs))
+        assertEquals(360.0, sweep(segs), 1e-3)
+    }
+
+    @Test
+    fun a_covered_arc_classifies_covered_even_though_no_contacts_are_involved() {
+        // The empty-but-live all-clear rule holds for COVERED arcs: a watched arc
+        // with nothing in it is clear, not blind. rimSegments is contact-free by
+        // design — coverage is about which arcs are watched, not what's in them.
+        val segs = SurroundRingCoverage.rimSegments(VisionFeed.LIVE, listOf(-64f..64f))
+        val forward = segs.first { it.startDeg <= 0f && it.endDeg >= 0f }
+        assertEquals(SurroundRingCoverage.RimStyle.COVERED, forward.style)
+    }
+
+    // -- the invariant: segments always sweep exactly 360, no gaps (R6) ----------
+
+    @Test
+    fun rim_segments_always_account_for_the_whole_circle() {
+        val inputs =
+            listOf<List<ClosedFloatingPointRange<Float>>?>(
+                null,
+                emptyList(),
+                listOf(-64f..64f),
+                listOf(-30f..30f, 100f..170f),
+                listOf(-180f..180f),
+                listOf(120f..200f),
+            )
+        for (feed in VisionFeed.entries) {
+            for (covered in inputs) {
+                val segs = SurroundRingCoverage.rimSegments(feed, covered)
+                assertEquals("feed=$feed covered=$covered", 360.0, sweep(segs), 1e-3)
+            }
+        }
+    }
+
+    // -- normalizeCovered folds the untrusted wire list --------------------------
+
+    @Test
+    fun normalize_merges_two_overlapping_arcs_into_one() {
+        assertEquals(listOf(-30f..40f), SurroundRingCoverage.normalizeCovered(listOf(-30f..10f, 0f..40f)))
+    }
+
+    @Test
+    fun normalize_absorbs_a_fully_contained_arc() {
+        // This is the case the raw uncoveredArcs mishandles — a contained arc
+        // makes it compute a spurious blind gap. normalizeCovered runs first so
+        // it never sees one. A mutation that dropped the merge fails here.
+        assertEquals(listOf(-30f..30f), SurroundRingCoverage.normalizeCovered(listOf(-30f..30f, -10f..10f)))
+    }
+
+    @Test
+    fun normalize_rejoins_a_seam_crossing_arc_into_a_single_span() {
+        // 120..200 wraps the ±180 seam; it must come back as one arc, not two.
+        val merged = SurroundRingCoverage.normalizeCovered(listOf(120f..200f))
+        assertEquals(1, merged.size)
+        assertEquals(120f, merged.single().start, 1e-3f)
+        assertEquals(200f, merged.single().endInclusive, 1e-3f)
+    }
+
+    @Test
+    fun normalize_keeps_disjoint_arcs_disjoint() {
+        assertEquals(
+            listOf(-30f..30f, 100f..170f),
+            SurroundRingCoverage.normalizeCovered(listOf(100f..170f, -30f..30f)),
+        )
+    }
+
+    @Test
+    fun normalize_collapses_a_full_turn_to_the_whole_ring() {
+        assertEquals(listOf(-180f..180f), SurroundRingCoverage.normalizeCovered(listOf(0f..360f)))
+    }
+
+    @Test
+    fun normalize_drops_invalid_arcs_toward_less_coverage() {
+        // A zero-length arc contributes nothing; the good arc survives.
+        assertEquals(listOf(-64f..64f), SurroundRingCoverage.normalizeCovered(listOf(10f..10f, -64f..64f)))
     }
 }

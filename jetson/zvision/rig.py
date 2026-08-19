@@ -441,6 +441,25 @@ class MultiDetector:
     def mounts(self) -> List[CameraMount]:
         return [m for m, _ in self._cameras]
 
+    def live_mounts(self) -> List[CameraMount]:
+        """The mounts whose cameras are *currently delivering frames* — the
+        input to blind-arc signalling (RES-P2-1). A camera is live only if it is
+        not in ``_failed`` (it did not throw on the last :meth:`detect`) **and**
+        its detector reports ``delivering()``. Everything else — unplugged,
+        stalled in ``select()``, or throwing — drops out of coverage, so its arc
+        goes onto the wire as blind rather than masquerading as all-clear.
+
+        Reflects the most recent :meth:`detect` pass, since that is what
+        populates ``_failed``; call it right after ``detect`` each frame."""
+        live: List[CameraMount] = []
+        for mount, detector in self._cameras:
+            if mount.name in self._failed:
+                continue
+            query = getattr(detector, "delivering", None)
+            if query is None or query():
+                live.append(mount)
+        return live
+
     def detect(self, t: float) -> List[DriverThreat]:
         per_camera: List[List[DriverThreat]] = []
         for index, (mount, detector) in enumerate(self._cameras):
@@ -543,13 +562,13 @@ def build_rig(
     return MultiDetector(opened, dedup_deg=dedup_deg)
 
 
-def coverage_gaps(mounts: Sequence[CameraMount], step_deg: float = 1.0) -> List[Tuple[float, float]]:
-    """Bearings around the circle no camera can see, as (start, end) arcs swept
-    clockwise — ``end`` may exceed 180 for a gap straddling dead astern.
+def _coverage_scan(mounts: Sequence[CameraMount], step_deg: float = 1.0):
+    """Sample the circle at ``step_deg`` and mark which bearings a camera sees.
 
-    A bring-up aid: print it once and you know whether the ring actually closes,
-    rather than discovering the blind arc when somebody standing in it never
-    appears on the HUD."""
+    Returns ``(covered, bearing, step, steps)`` — ``covered[i]`` is whether any
+    mount watches bearing ``bearing(i)``. Shared by :func:`coverage_gaps` and
+    :func:`covered_arcs` so the blind arcs and the watched arcs are always exact
+    complements of one scan, never two subtly different ones."""
     if step_deg <= 0:
         step_deg = 1.0
     steps = max(1, int(round(360.0 / step_deg)))
@@ -569,22 +588,55 @@ def coverage_gaps(mounts: Sequence[CameraMount], step_deg: float = 1.0) -> List[
         any(abs(wrap180(bearing(i) - az)) <= half for az, half in spans)
         for i in range(steps)
     ]
-    if all(covered):
-        return []
-    if not any(covered):
-        return [(-180.0, 180.0)]
+    return covered, bearing, step, steps
 
-    # Start scanning from a covered bearing so a seam-straddling gap is one run,
-    # not two half-runs at either end of the array.
-    origin = covered.index(True)
-    gaps: List[Tuple[float, float]] = []
+
+def _runs(covered, want: bool, bearing, step: float, steps: int) -> List[Tuple[float, float]]:
+    """Contiguous (start, end) arcs where ``covered[i] == want``, swept
+    clockwise — ``end`` may exceed 180 for an arc straddling dead astern.
+
+    A full circle of ``want`` collapses to a single ``(-180, 180)`` arc; none of
+    it yields ``[]``."""
+    if all(c == want for c in covered):
+        return [(-180.0, 180.0)]
+    if not any(c == want for c in covered):
+        return []
+    # Start scanning from a bearing that is NOT ``want`` so a seam-straddling run
+    # is one arc, not two half-runs at either end of the array.
+    origin = next(i for i in range(steps) if covered[i] != want)
+    runs: List[Tuple[float, float]] = []
     start: Optional[int] = None
     for offset in range(steps + 1):
         i = origin + offset
-        is_covered = covered[i % steps]
-        if not is_covered and start is None:
+        is_want = covered[i % steps] == want
+        if is_want and start is None:
             start = i
-        elif is_covered and start is not None:
-            gaps.append((bearing(start), bearing(start) + (i - start) * step))
+        elif not is_want and start is not None:
+            runs.append((bearing(start), bearing(start) + (i - start) * step))
             start = None
-    return gaps
+    return runs
+
+
+def coverage_gaps(mounts: Sequence[CameraMount], step_deg: float = 1.0) -> List[Tuple[float, float]]:
+    """Bearings around the circle no camera can see, as (start, end) arcs swept
+    clockwise — ``end`` may exceed 180 for a gap straddling dead astern.
+
+    A bring-up aid: print it once and you know whether the ring actually closes,
+    rather than discovering the blind arc when somebody standing in it never
+    appears on the HUD."""
+    covered, bearing, step, steps = _coverage_scan(mounts, step_deg)
+    return _runs(covered, False, bearing, step, steps)
+
+
+def covered_arcs(mounts: Sequence[CameraMount], step_deg: float = 1.0) -> List[Tuple[float, float]]:
+    """The complement of :func:`coverage_gaps`: the bearings the given mounts
+    *do* watch, as (start, end) arcs swept clockwise (``end`` may exceed 180 for
+    an arc straddling dead astern).
+
+    Fed the **live** mounts (see :meth:`MultiDetector.live_mounts`), this is the
+    blind-arc signal put on the wire (RES-P2-1): the union of arcs a
+    currently-delivering camera can see. Everything outside it is blind. A fully
+    watched ring is ``[(-180, 180)]``; nothing watched is ``[]`` (whole ring
+    blind)."""
+    covered, bearing, step, steps = _coverage_scan(mounts, step_deg)
+    return _runs(covered, True, bearing, step, steps)

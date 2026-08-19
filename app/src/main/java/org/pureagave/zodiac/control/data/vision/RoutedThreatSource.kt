@@ -46,6 +46,14 @@ class RoutedThreatSource(
     override val feedAlive: StateFlow<Boolean> = network.feedAlive
 
     /**
+     * Camera coverage comes from the real edge box only (the demo has none), so
+     * it passes straight through from [network] — exactly like [feedState].
+     * Null (old Jetson / stale signal) lets [org.pureagave.zodiac.control.core.vision.SurroundRing]
+     * fall back to its static coverage assumption.
+     */
+    override val coverage: StateFlow<List<ClosedFloatingPointRange<Float>>?> = network.coverage
+
+    /**
      * Tri-state feed health for the DRIVER HUD status line and ring rim —
      * distinct from [feedAlive] because "showing demo data" is neither live
      * nor absent. `demoEnabled=false` (deployed vehicle) means a dead feed

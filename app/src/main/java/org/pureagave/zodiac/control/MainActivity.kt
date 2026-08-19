@@ -117,6 +117,7 @@ private fun rememberCockpitViewModel(app: ZodiacApplication): CockpitViewModel =
                 poisFlow = app.discoveryRepository.pois,
                 threatsFlow = app.threatSource.threats,
                 visionFeedFlow = app.threatSource.feedState,
+                visionCoverageFlow = app.threatSource.coverage,
                 beaconSensors = app.networkLocationSource.beaconSensors,
                 // Authority = OLED (non-Amazon) device, computed once at
                 // startup rather than a per-device toggle — the S9+ and A54

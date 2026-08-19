@@ -7,9 +7,12 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.net.FleetBus
+import org.pureagave.zodiac.control.core.vision.CoverageProtocol
 import org.pureagave.zodiac.control.core.vision.DriverThreat
 import org.pureagave.zodiac.control.core.vision.ThreatProtocol
 import org.pureagave.zodiac.control.data.sensor.MulticastLockHandle
@@ -510,6 +513,95 @@ class NetworkThreatSourceTest {
                 source.stop()
                 scope.cancel()
             }
+        }
+
+    // --- ZCOVER coverage channel (RES-P2-1). It rides the same socket as
+    // ZTHREAT, so the load-bearing property is isolation: coverage must never
+    // stamp threat liveness, and threat liveness must never depend on coverage.
+    // ---
+
+    @Test
+    fun a_coverage_frame_populates_coverage_without_marking_the_feed_alive() =
+        runBlocking {
+            // R4 isolation, driven straight through ingestFrame so the assertion
+            // is deterministic (no socket timing). A ZCOVER-only stream must not
+            // resurrect a dead threat feed — that would fabricate an all-clear.
+            val port = 10240
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkThreatSource(scope = scope, port = port)
+            try {
+                source.ingestFrame(CoverageProtocol.format(listOf(-64f..64f)))
+                assertEquals(listOf(-64f..64f), source.coverage.value)
+                assertFalse("coverage must NOT mark the threat feed alive", source.feedAlive.value)
+                assertTrue("coverage must NOT publish threats", source.threats.value.isEmpty())
+                // Positive control: a ZTHREAT frame DOES flip liveness, so the
+                // false above is real isolation and not a broken feedAlive.
+                source.ingestFrame(ThreatProtocol.format(listOf(DriverThreat(relAzDeg = 1f, size = 0.5f, id = 1))))
+                assertTrue("a real ZTHREAT frame still marks the feed alive", source.feedAlive.value)
+                assertEquals("and it leaves the coverage untouched", listOf(-64f..64f), source.coverage.value)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun coverage_updates_on_a_second_frame_without_disturbing_threats() =
+        runBlocking {
+            val port = 10243
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkThreatSource(scope = scope, port = port)
+            try {
+                source.ingestFrame(ThreatProtocol.format(listOf(DriverThreat(relAzDeg = 2f, size = 0.5f, id = 9))))
+                source.ingestFrame(CoverageProtocol.format(listOf(-30f..30f)))
+                assertEquals(listOf(-30f..30f), source.coverage.value)
+                source.ingestFrame(CoverageProtocol.format(listOf(-90f..90f)))
+                assertEquals(listOf(-90f..90f), source.coverage.value)
+                assertEquals("threats survive coverage updates", 9, source.threats.value.single().id)
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test(timeout = 60_000)
+    fun coverage_expires_to_null_once_zcover_stops() =
+        runBlocking {
+            // The ring must revert to its static assumption when a Jetson stops
+            // sending ZCOVER, never leave a stale watched/blind picture up.
+            val port = 10241
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkThreatSource(scope = scope, port = port, staleMs = 400, coverageStaleMs = 300)
+            try {
+                source.start()
+                assertTrue(
+                    "precondition: coverage came alive",
+                    waitUntil(4_000) {
+                        sendUdp(CoverageProtocol.format(listOf(-64f..64f)), port)
+                        source.coverage.value != null
+                    },
+                )
+                assertTrue(
+                    "coverage must expire to null once the signal stops",
+                    waitUntil(4_000) { source.coverage.value == null },
+                )
+            } finally {
+                source.stop()
+                scope.cancel()
+            }
+        }
+
+    @Test
+    fun stop_clears_coverage() =
+        runBlocking {
+            val port = 10242
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+            val source = NetworkThreatSource(scope = scope, port = port)
+            source.ingestFrame(CoverageProtocol.format(listOf(-64f..64f)))
+            assertEquals(listOf(-64f..64f), source.coverage.value)
+            source.stop()
+            assertNull("stop() must clear coverage so a restart starts honest", source.coverage.value)
+            scope.cancel()
         }
 
     private fun sendUdp(

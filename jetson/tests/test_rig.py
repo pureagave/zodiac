@@ -17,6 +17,7 @@ from zvision.rig import (
     build_camera,
     build_rig,
     coverage_gaps,
+    covered_arcs,
     merge_contacts,
     parse_camera_spec,
     to_global,
@@ -30,17 +31,22 @@ def contact(az, size=0.5, collision=False, tid=1):
 
 
 class StubDetector:
-    """A camera that reports a fixed camera-local contact list."""
+    """A camera that reports a fixed camera-local contact list, and — for the
+    blind-arc tests — a fixed ``delivering`` verdict."""
 
-    def __init__(self, contacts, raises=False):
+    def __init__(self, contacts, raises=False, delivering=True):
         self.contacts = contacts
         self.raises = raises
         self.closed = False
+        self._delivering = delivering
 
     def detect(self, t):
         if self.raises:
             raise RuntimeError("camera unplugged")
         return list(self.contacts)
+
+    def delivering(self, *_args):
+        return self._delivering
 
     def close(self):
         self.closed = True
@@ -558,6 +564,102 @@ class CoverageGapsTest(unittest.TestCase):
             ),
         ]
         self.assertEqual([], coverage_gaps(as_widths))
+
+
+class LiveMountsTest(unittest.TestCase):
+    """RES-P2-1: the blind set is computed from *liveness*, not config. A camera
+    that is configured but not delivering — stalled, or throwing this frame —
+    must drop out of coverage so its arc goes blind, not all-clear."""
+
+    def test_a_non_delivering_camera_is_excluded(self):
+        cams = [
+            (CameraMount("fwd", mount_az_deg=0.0), StubDetector([contact(0.0)], delivering=True)),
+            (CameraMount("aft", mount_az_deg=180.0), StubDetector([], delivering=False)),
+        ]
+        rig = MultiDetector(cams)
+        self.assertEqual(["fwd"], [m.name for m in rig.live_mounts()])
+
+    def test_all_delivering_cameras_are_included(self):
+        # Positive control: nothing is excluded when every camera delivers.
+        cams = [
+            (CameraMount("fwd", mount_az_deg=0.0), StubDetector([contact(0.0)], delivering=True)),
+            (CameraMount("aft", mount_az_deg=180.0), StubDetector([], delivering=True)),
+        ]
+        rig = MultiDetector(cams)
+        self.assertEqual(["fwd", "aft"], [m.name for m in rig.live_mounts()])
+
+    def test_a_camera_that_threw_this_frame_is_excluded(self):
+        # The exception path (unplugged mid-run) also drops from coverage: it is
+        # in _failed after detect(), so its arc must read blind.
+        cams = [
+            (CameraMount("fwd", mount_az_deg=0.0), StubDetector([contact(0.0)])),
+            (CameraMount("aft", mount_az_deg=180.0), StubDetector([], raises=True)),
+        ]
+        rig = MultiDetector(cams)
+        with contextlib.redirect_stderr(io.StringIO()):
+            rig.detect(0.0)  # marks aft failed
+        self.assertEqual(["fwd"], [m.name for m in rig.live_mounts()])
+
+    def test_a_camera_without_a_delivering_method_is_assumed_live(self):
+        # A detector predating the signal (or a bare stub) must not silently
+        # blind its arc — a missing signal counts as delivering.
+        class NoSignalStub:
+            def detect(self, t):
+                return []
+
+        cams = [(CameraMount("legacy", mount_az_deg=0.0), NoSignalStub())]
+        rig = MultiDetector(cams)
+        self.assertEqual(["legacy"], [m.name for m in rig.live_mounts()])
+
+
+class CoveredArcsTest(unittest.TestCase):
+    """The wire signal itself: the union of arcs a live camera watches, and its
+    exact complement (the blind set). Both share one scan so they can never
+    disagree."""
+
+    def test_single_thermal_covers_the_forward_arc(self):
+        # The shipped config: one forward UW thermal (160 deg diagonal -> ±64
+        # horizontal). This wire value must agree with the tablet's static
+        # COVERED_ARCS fallback so old and new Jetsons render the same arc.
+        covered = covered_arcs([CameraMount("t")])
+        self.assertEqual(1, len(covered))
+        start, end = covered[0]
+        self.assertAlmostEqual(-64.0, start, delta=1.5)
+        self.assertAlmostEqual(64.0, end, delta=1.5)
+
+    def test_single_thermal_leaves_the_stern_blind(self):
+        blind = coverage_gaps([CameraMount("t")])
+        self.assertEqual(1, len(blind))
+        start, end = blind[0]
+        self.assertAlmostEqual(64.0, start, delta=1.5)
+        self.assertAlmostEqual(296.0, end, delta=1.5)  # sweeps clockwise through astern
+
+    def test_a_closed_live_ring_has_no_blind_arc(self):
+        ring = [
+            CameraMount(f"c{i}", mount_az_deg=i * 90.0, fov_deg=100.0, fov_ref=FOV_HORIZONTAL)
+            for i in range(4)
+        ]
+        self.assertEqual([], coverage_gaps(ring))
+        self.assertEqual([(-180.0, 180.0)], covered_arcs(ring))
+
+    def test_nothing_live_is_wholly_blind(self):
+        self.assertEqual([], covered_arcs([]))
+        self.assertEqual([(-180.0, 180.0)], coverage_gaps([]))
+
+    def test_a_stalled_camera_in_a_closed_ring_turns_only_its_arc_blind(self):
+        # A four-camera ring that closes, but the aft (az=180) camera is not
+        # delivering. Exactly the stern must go blind; the forward arc stays.
+        mounts = [
+            CameraMount(f"c{i}", mount_az_deg=i * 90.0, fov_deg=100.0, fov_ref=FOV_HORIZONTAL)
+            for i in range(4)
+        ]
+        cams = [(m, StubDetector([], delivering=(m.mount_az_deg != 180.0))) for m in mounts]
+        rig = MultiDetector(cams)
+        live = rig.live_mounts()
+        self.assertNotIn(180.0, [m.mount_az_deg for m in live])
+        blind = coverage_gaps(live)
+        self.assertTrue(any(start <= 180.0 <= end for start, end in blind), "the stern must be blind")
+        self.assertFalse(any(start <= 0.0 <= end for start, end in blind), "the bow must stay covered")
 
 
 if __name__ == "__main__":

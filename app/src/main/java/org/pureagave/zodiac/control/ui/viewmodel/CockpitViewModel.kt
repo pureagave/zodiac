@@ -100,6 +100,13 @@ class CockpitViewModel(
      */
     private val visionFeedFlow: StateFlow<VisionFeed> = MutableStateFlow(VisionFeed.ABSENT),
     /**
+     * Camera coverage arcs for the DRIVER surround ring (edge box `ZCOVER`,
+     * RES-P2-1). Same plain-flow pattern as [visionFeedFlow]; null default so a
+     * ViewModel with no vision source wired falls back to the ring's static
+     * coverage assumption rather than inventing a watched set.
+     */
+    private val visionCoverageFlow: StateFlow<List<ClosedFloatingPointRange<Float>>?> = MutableStateFlow(null),
+    /**
      * Low-rate Sensor Hub channels (ambient light, health, odometer, shock) from
      * the [NetworkLocationSource]. One bundled flow keeps the ViewModel to a
      * single new dependency; empty default for tests / pre-wiring.
@@ -298,6 +305,14 @@ class CockpitViewModel(
                 // why this can't just be folded into "threats is empty".
                 visionFeedFlow.collect { feed ->
                     _uiState.update { it.copy(visionFeed = feed) }
+                }
+            }
+            launch {
+                // Camera coverage arcs (edge box ZCOVER) for the surround ring's
+                // blind-arc rim — RES-P2-1. Mirrors the visionFeedFlow collector;
+                // SurroundRingCoverage.rimSegments turns it into COVERED/BLIND segments.
+                visionCoverageFlow.collect { coverage ->
+                    _uiState.update { it.copy(visionCoverage = coverage) }
                 }
             }
             launch {
@@ -505,6 +520,7 @@ class CockpitViewModelFactory(
     private val poisFlow: StateFlow<List<PlayaPoi>> = MutableStateFlow(emptyList()),
     private val threatsFlow: StateFlow<List<DriverThreat>> = MutableStateFlow(emptyList()),
     private val visionFeedFlow: StateFlow<VisionFeed> = MutableStateFlow(VisionFeed.ABSENT),
+    private val visionCoverageFlow: StateFlow<List<ClosedFloatingPointRange<Float>>?> = MutableStateFlow(null),
     private val beaconSensors: StateFlow<BeaconSensors> = MutableStateFlow(BeaconSensors()),
     private val navAuthorityFlow: StateFlow<Boolean> = MutableStateFlow(true),
     private val navShareFlow: StateFlow<NavShareMessage?> = MutableStateFlow(null),
@@ -524,6 +540,7 @@ class CockpitViewModelFactory(
                 poisFlow = poisFlow,
                 threatsFlow = threatsFlow,
                 visionFeedFlow = visionFeedFlow,
+                visionCoverageFlow = visionCoverageFlow,
                 beaconSensors = beaconSensors,
                 navAuthorityFlow = navAuthorityFlow,
                 navShareFlow = navShareFlow,

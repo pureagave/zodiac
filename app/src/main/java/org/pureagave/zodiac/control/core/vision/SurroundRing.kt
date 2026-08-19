@@ -22,6 +22,11 @@ import kotlin.math.sin
  * modelled (see [brakeAdvised]'s doc), and a contact that drops out on
  * occlusion vanishes from the ring instantly rather than fading (see
  * [blips]'s doc).
+ *
+ * The *coverage* concern — which bearing arcs a live camera watches vs. which
+ * are blind ([SurroundRingCoverage.rimSegments]) — is split into
+ * [SurroundRingCoverage]; the base [COVERED_ARCS] assumption stays here as
+ * shared data.
  */
 object SurroundRing {
     /**
@@ -135,41 +140,16 @@ object SurroundRing {
      * unnecessary caution; one that says "watched" where nothing is looking is
      * the confident all-clear this whole mechanism exists to prevent.
      *
-     * MUST be kept in step with the Jetson's `--camera` rig spec. There is no
-     * wire field for this yet, so this constant is the only thing keeping the
-     * ring honest.
-     *
-     * Future work: replace this with a coverage field on `ThreatProtocol`
-     * once the edge box puts rig geometry on the wire, instead of
-     * duplicating it here.
+     * **Now the fallback, not the only honesty mechanism** (RES-P2-1). The edge
+     * box puts live coverage on the wire via the `ZCOVER` channel
+     * ([CoverageProtocol]); [SurroundRingCoverage.rimSegments] uses that when
+     * present and falls back to this constant only when there is no fresh signal
+     * (an old Jetson, or a stale one). Kept in step with the Jetson's `--camera`
+     * rig geometry by `LeptonUwFovReferenceTest`, which re-derives the ±64° from
+     * first principles — the wire value must agree with this so old and new
+     * Jetsons render the same forward arc.
      */
     val COVERED_ARCS: List<ClosedFloatingPointRange<Float>> = listOf(-64f..64f)
-
-    /**
-     * The bearings the rig does **not** watch — the complement of
-     * [COVERED_ARCS] around the full circle.
-     *
-     * This is the decision that keeps an unwatched sector from rendering
-     * identically to a watched-and-clear one, so it lives here with the rest
-     * of the ring's decisions rather than in draw code. The last gap wraps
-     * through ±180 back to the first covered arc, which is exactly the case a
-     * forward-facing rig produces: one covered arc across the nose and one
-     * gap spanning the whole stern.
-     *
-     * Returned in unwrapped terms — a gap may run past +180 (e.g. `80..280`
-     * for a ±80° covered arc) so a renderer can sweep it directly without
-     * splitting it at the seam.
-     */
-    fun uncoveredArcs(covered: List<ClosedFloatingPointRange<Float>> = COVERED_ARCS): List<ClosedFloatingPointRange<Float>> {
-        if (covered.isEmpty()) return listOf(-HALF_TURN..HALF_TURN)
-        val sorted = covered.sortedBy { it.start }
-        val gaps = mutableListOf<ClosedFloatingPointRange<Float>>()
-        for (i in sorted.indices) {
-            val next = if (i + 1 < sorted.size) sorted[i + 1].start else sorted.first().start + FULL_TURN
-            if (next > sorted[i].endInclusive) gaps += sorted[i].endInclusive..next
-        }
-        return gaps
-    }
 
     /**
      * One contact — or merged group of contacts — positioned on the ring, in

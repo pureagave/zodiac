@@ -29,6 +29,7 @@ from typing import List, Optional
 
 from . import fleet_bus
 from .broadcaster import ThreatBroadcaster
+from .coverage_protocol import CoverageScheduler, format_coverage
 from .detector import DetectorTuning
 from .geometry import FOV_DIAGONAL, LENS_EQUIDISTANT, LENS_MODELS
 from .recorder import (
@@ -43,6 +44,7 @@ from .rig import (
     CameraMount,
     build_rig,
     coverage_gaps,
+    covered_arcs,
     parse_camera_spec,
     validate_mount,
 )
@@ -378,6 +380,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             flush=True,
         )
         _print_rig(mounts)
+    # Blind-arc signalling (RES-P2-1): re-derive coverage from *live* cameras
+    # each frame and emit a low-rate ZCOVER whenever it changes (a camera died
+    # or recovered) or once a second as a heartbeat, on the same bus/socket as
+    # ZTHREAT. A stalled camera drops out of coverage and its arc goes blind on
+    # the wire rather than reading as all-clear.
+    coverage_scheduler = CoverageScheduler()
+    prev_covered: Optional[List] = None
     last_t: Optional[float] = None
     try:
         while running["go"]:
@@ -399,6 +408,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                         f"dim={tf.dimmer:3d}",
                         flush=True,
                     )
+            covered = covered_arcs(detector.live_mounts())
+            if args.verbose and covered != prev_covered:
+                # A blind-set transition is the forensic event worth a journal
+                # line: which arcs went dark, and when, after a power event.
+                blind = coverage_gaps(detector.live_mounts())
+                arcs = ", ".join(f"{a:+.0f}°..{b:+.0f}°" for a, b in blind) if blind else "none"
+                print(f"[{t:7.2f}s] coverage change -> blind: {arcs}", flush=True)
+            prev_covered = covered
+            if coverage_scheduler.due(covered):
+                broadcaster.send(format_coverage(covered))
             last_t = t
             if args.once:
                 break
@@ -408,6 +427,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             recorder.close()
             if args.verbose:
                 print(f"zvision: recorded {summarize(recorder)} -> {args.record}", flush=True)
+        # A bare ZCOVER (whole ring blind) before the all-clear: on the way out
+        # the box watches nothing, and the honest coverage is "blind", not the
+        # empty ZTHREAT's "all clear".
+        broadcaster.send(format_coverage([]))
         broadcaster.send(format_frame([]))  # all-clear so the HUD doesn't freeze
         if tracker is not None and dmx_sink is not None:
             dmx_sink.send(tracker.park().channels)  # rest + black out the head

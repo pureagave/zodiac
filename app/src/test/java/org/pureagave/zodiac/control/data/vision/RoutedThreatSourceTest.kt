@@ -7,6 +7,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.pureagave.zodiac.control.core.vision.DriverThreat
@@ -16,11 +17,14 @@ class RoutedThreatSourceTest {
     private class StubThreatSource(
         initial: List<DriverThreat>,
         alive: Boolean = true,
+        coverage: List<ClosedFloatingPointRange<Float>>? = null,
     ) : ThreatSource {
         val flow = MutableStateFlow(initial)
         val aliveFlow = MutableStateFlow(alive)
+        val coverageFlow = MutableStateFlow(coverage)
         override val threats: StateFlow<List<DriverThreat>> = flow
         override val feedAlive: StateFlow<Boolean> = aliveFlow
+        override val coverage: StateFlow<List<ClosedFloatingPointRange<Float>>?> = coverageFlow
 
         override suspend fun start() = Unit
 
@@ -115,6 +119,31 @@ class RoutedThreatSourceTest {
             awaitFeedState(routed) { it == VisionFeed.DEMO }
             net.aliveFlow.value = true
             assertEquals(VisionFeed.LIVE, awaitFeedState(routed) { it == VisionFeed.LIVE })
+        }
+    }
+
+    // -- coverage passthrough (RES-P2-1) -----------------------------------------
+
+    @Test
+    fun coverage_passes_through_from_the_network_source() {
+        withScope { scope ->
+            val net = StubThreatSource(emptyList(), alive = true, coverage = listOf(-64f..64f))
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = true)
+            assertEquals(listOf(-64f..64f), routed.coverage.value)
+            // It tracks the network source, not the (coverage-less) demo.
+            net.coverageFlow.value = listOf(-90f..90f)
+            assertEquals(listOf(-90f..90f), routed.coverage.value)
+        }
+    }
+
+    @Test
+    fun coverage_is_null_when_the_network_source_has_none() {
+        // An old Jetson sends no ZCOVER: coverage stays null so the ring falls
+        // back to its static assumption rather than inventing a watched set.
+        withScope { scope ->
+            val net = StubThreatSource(emptyList(), alive = true, coverage = null)
+            val routed = RoutedThreatSource(net, StubThreatSource(listOf(demo)), scope, demoEnabled = false)
+            assertNull(routed.coverage.value)
         }
     }
 

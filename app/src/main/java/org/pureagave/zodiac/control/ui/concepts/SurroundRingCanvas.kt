@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import org.pureagave.zodiac.control.core.vision.SurroundRing
-import org.pureagave.zodiac.control.core.vision.VisionFeed
+import org.pureagave.zodiac.control.core.vision.SurroundRingCoverage
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -68,39 +68,38 @@ private const val COLLISION_SPOKE_FRACTION = 0.08f
 private const val FULL_CIRCLE_DEG = 360f
 private const val HALF_TURN_DEG = 180f
 
-/** Static ring chrome: rim (solid over covered arcs, dotted otherwise), ticks, forward wedge, ego hull. */
+/** Static ring chrome: rim (from precomputed segments), ticks, forward wedge, ego hull. */
 internal fun DrawScope.drawRingFurniture(
-    visionFeed: VisionFeed,
+    rimSegments: List<SurroundRingCoverage.RimSegment>,
     center: Offset,
     radius: Float,
 ) {
-    drawRingRim(visionFeed, center, radius)
+    drawRingRim(rimSegments, center, radius)
     drawRingTicks(center, radius)
     drawForwardWedge(center, radius)
     drawHull(center, radius)
 }
 
 /**
- * The rim is the only place sensor health lives on this HUD (2e): solid over
- * a bearing means "watched", dotted means "blind or demo — do not trust an
- * empty ring here". [VisionFeed.ABSENT] dots the whole rim in [NightRed]
- * since nothing is being watched at all; [VisionFeed.DEMO] dots it in
- * [NightGrid] since the coverage is fabricated, not real; [VisionFeed.LIVE]
- * draws [SurroundRing.COVERED_ARCS] solid and everything else dotted.
+ * The rim is the only place sensor health lives on this HUD (2e), and it draws
+ * exactly the segments [SurroundRingCoverage.rimSegments] already decided — this file
+ * turns each [SurroundRingCoverage.RimStyle] into paint and nothing more:
+ * [SurroundRingCoverage.RimStyle.COVERED] is solid [NightGrid] ("watched — an empty ring
+ * here IS all-clear"); [SurroundRingCoverage.RimStyle.BLIND] is dotted [NightRed] (a
+ * visible fault wedge — a dead camera, or nothing watching at all); and
+ * [SurroundRingCoverage.RimStyle.DEMO] is dotted [NightGrid] (coverage is fabricated,
+ * not real).
  */
 private fun DrawScope.drawRingRim(
-    visionFeed: VisionFeed,
+    rimSegments: List<SurroundRingCoverage.RimSegment>,
     center: Offset,
     radius: Float,
 ) {
-    when (visionFeed) {
-        VisionFeed.ABSENT -> drawDottedRingArc(center, radius, -HALF_TURN_DEG, HALF_TURN_DEG, NightRed)
-        VisionFeed.DEMO -> drawDottedRingArc(center, radius, -HALF_TURN_DEG, HALF_TURN_DEG, NightGrid)
-        VisionFeed.LIVE -> {
-            SurroundRing.COVERED_ARCS.forEach { arc -> drawSolidRingArc(center, radius, arc.start, arc.endInclusive, NightGrid) }
-            SurroundRing.uncoveredArcs().forEach { arc ->
-                drawDottedRingArc(center, radius, arc.start, arc.endInclusive, NightGrid)
-            }
+    rimSegments.forEach { seg ->
+        when (seg.style) {
+            SurroundRingCoverage.RimStyle.COVERED -> drawSolidRingArc(center, radius, seg.startDeg, seg.endDeg, NightGrid)
+            SurroundRingCoverage.RimStyle.BLIND -> drawDottedRingArc(center, radius, seg.startDeg, seg.endDeg, NightRed)
+            SurroundRingCoverage.RimStyle.DEMO -> drawDottedRingArc(center, radius, seg.startDeg, seg.endDeg, NightGrid)
         }
     }
 }

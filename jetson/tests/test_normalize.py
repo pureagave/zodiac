@@ -405,3 +405,59 @@ class CameraStallGuardTest(unittest.TestCase):
         self.assertTrue(g.note(False))   # t=6 reopen
         self.assertFalse(g.note(True))   # t=7 a frame arrives -> healthy again
         self.assertFalse(g.note(True))   # t=200 still healthy, no reopen
+
+
+class CameraDeliveringTest(unittest.TestCase):
+    """The blind-arc liveness signal (RES-P2-1). ``delivering`` answers "did a
+    frame actually arrive recently", which must be tracked separately from the
+    reopen backoff — reading ``_last_ok`` would let a dead camera look alive for
+    a stall interval after every reopen, the exact false all-clear this exists to
+    prevent."""
+
+    @staticmethod
+    def _guard(times, stall=6.0):
+        it = iter(times)
+        return CameraStallGuard(stall_secs=stall, clock=lambda: next(it))
+
+    def test_a_recent_frame_counts_as_delivering(self):
+        g = self._guard([0.0, 0.5])
+        g.note(True)                                 # t=0 frame delivered
+        self.assertTrue(g.delivering(3.0))           # t=0.5, well within the window
+
+    def test_a_camera_never_delivering_is_not_delivering(self):
+        g = self._guard([100.0])
+        self.assertFalse(g.delivering(3.0))          # no frame ever
+
+    def test_a_stale_frame_is_not_delivering(self):
+        g = self._guard([0.0, 4.0])
+        g.note(True)                                 # t=0
+        self.assertFalse(g.delivering(3.0))          # t=4, last frame 4 s ago
+
+    def test_boundary_just_inside_the_window_still_delivers(self):
+        g = self._guard([0.0, 2.9])
+        g.note(True)
+        self.assertTrue(g.delivering(3.0))
+
+    def test_boundary_just_outside_the_window_is_blind(self):
+        g = self._guard([0.0, 3.1])
+        g.note(True)
+        self.assertFalse(g.delivering(3.0))
+
+    def test_a_reopen_does_not_masquerade_as_a_delivered_frame(self):
+        # The load-bearing separation: note(False) at the stall boundary fires a
+        # reopen and resets _last_ok — but NOT _last_frame. Liveness must still
+        # read from the last real frame (t=0), not the reopen (t=6). If someone
+        # "simplifies" delivering() back onto _last_ok, this fails.
+        g = self._guard([0.0, 6.0, 6.5], stall=6.0)
+        self.assertFalse(g.note(True))               # t=0 real frame -> _last_frame=0
+        self.assertTrue(g.note(False))               # t=6 stall -> reopen, resets _last_ok only
+        self.assertFalse(g.delivering(3.0))          # t=6.5, last real frame was 6.5 s ago
+
+    def test_a_reopen_read_as_last_ok_would_falsely_deliver(self):
+        # Positive-control twin of the mutation test: with a SHORT enough gap the
+        # real frame is still inside the window, proving delivering() isn't just
+        # always-False. t=0 frame, reopen at t=6, query at t=2.5 would be inside
+        # a 3 s window — but sequencing keeps the query after the frame.
+        g = self._guard([0.0, 2.5], stall=6.0)
+        g.note(True)                                 # t=0
+        self.assertTrue(g.delivering(3.0))           # t=2.5, inside the window
