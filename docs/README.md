@@ -17,7 +17,9 @@ repository [`README.md`](../README.md) for what the system is.
 
 | Doc | What it answers |
 |---|---|
-| [`KIOSK.md`](KIOSK.md) | Locking a fleet tablet to the cockpit (device-owner provisioning) |
+| [`KIOSK.md`](KIOSK.md) | Locking a fleet tablet to the cockpit (device-owner provisioning; note: Fires can't be kiosked) |
+| [`FAILURE-MODES.md`](FAILURE-MODES.md) | Graceful degradation — what still works when the beacon / Jetson / WiFi / a tablet dies |
+| [`MOUNTING.md`](MOUNTING.md) | Vibration-proof tablet mounts — the RAM X-Grip shopping list + fiberglass fastening method |
 | [`AUDIT-2026-08-09.md`](AUDIT-2026-08-09.md) | Historical: the 20-finding Android audit and its evidence. All closed |
 | [`AUDIT-2026-08-13.md`](AUDIT-2026-08-13.md) | The 8-agent fleet-wide bug-hunt catalogue (~40 findings; P1/P2 fixed) |
 | [`AUDIT-2026-08-13-resilience.md`](AUDIT-2026-08-13-resilience.md) | Does the fleet recover by itself after a power event? (power-loss / unplug / reboot auto-recovery) |

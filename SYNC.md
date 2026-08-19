@@ -6,6 +6,31 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-19 — fleet on the `zodiac` network; failure-mode + mounting docs added
+
+Two things logged here that weren't yet in the repo.
+
+**Fleet migrated to its own `zodiac` router (complete + verified).** SSID `zodiac`,
+WPA2 `zodiac2026`, 2.4 GHz, LAN `192.168.8.x` (double-NATted behind the home net
+during setup). Confirmed on-network by device IP (the truth, not "SSID saved"):
+Jetson `.246` (Ethernet), beacon `.188` (broadcasting GPS + sensors), both Fires,
+S9+, and the Mac (`.187` WiFi; a wired USB-Ethernet `en6` is plugged but awaiting a
+one-time `sudo ipconfig set en6 DHCP`). **Gotcha caught:** Fire-11 had silently
+stayed on the home net despite `zodiac` being *saved* — a saved network isn't a
+joined one; check by IP. **The router can't do DHCP reservations**, so the Jetson's
+IP floats — find it by MAC `ac:3a:e2:12:36:6c` (`arp -an | grep 3a:e2:12:36` after a
+subnet ping-sweep). Deploy path unchanged: `git reset --hard origin/main` on
+`/opt/zodiac` + restart zvision (see [[reference-jetson-orin-access]]).
+
+**Two docs added** capturing analysis we did but never wrote down:
+- `docs/FAILURE-MODES.md` — graceful-degradation map, code-verified. Headline: **one
+  Samsung (S9+ or A54) powered = full standalone navigation with no beacon/WiFi/
+  Jetson** (own GPS + on-device map + nav-authority). The failure to guard is losing
+  BOTH Samsungs. Found the one real gap: **a Fires-only fleet can't set a
+  destination** (nav-authority is Samsung-only) — logged in `tasks/open.md`.
+- `docs/MOUNTING.md` — the vibration-proof tablet-mount decision (RAM X-Grip kits)
+  with the exact Amazon shopping list + fiberglass fastening method. No 3D printing.
+
 ## 2026-08-19 — RES-P2-1: a down camera shows as a BLIND arc, not "all clear"
 
 **The gap (from AUDIT-2026-08-13 P2-1).** The DRIVER surround ring rendered a
@@ -63,9 +88,12 @@ to a sibling `core/vision/SurroundRingCoverage` object — still pure, still tes
 shared data. Gate re-run green after the split (app 1047 / beacon 109 / jetson 523).
 
 **Pipeline:** spec (human) → plan (Fable) → implement+tests (Opus) → validate
-(independent Opus, meets-spec, re-ran both suites). Not yet deployed to the Jetson
-— zvision needs the ring wired into `--camera` for `ZCOVER` to carry more than the
-thermal's forward arc; the code is correct for the single-thermal config today.
+(independent Opus, meets-spec, re-ran both suites). **DEPLOYED to `/opt/zodiac`
+(`ab42ec5`) + verified on hardware 2026-08-19:** jetson suite green on the box,
+zvision restarted healthy, both channels on the wire (`ZTHREAT` + `ZCOVER`;
+`ZCOVER;-64.0:65.0` = the thermal's forward arc, rest of ring BLIND). Still owed:
+wire the RGB ring into `--camera` so `ZCOVER` carries real per-camera coverage
+instead of just the single thermal's forward arc (`tasks/open.md`).
 
 **Notes.** `CockpitUiState` gained one field (`visionCoverage`; A5 per-frame copy
 cost negligible). detekt `thresholdInObjects` 22→24 with written rationale —

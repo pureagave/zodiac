@@ -50,9 +50,32 @@ What's worth doing next. Critical and High audit items are all done — see `don
 >       no auto-relaunch; only the S9+/A54 can be provisioned. To verify the
 >       feature, kiosk the **S9+** and reboot it. This also **kills the old plan of
 >       kiosking the passenger Fires** — decide: run them unlocked, or swap hardware.
-> - [ ] **RES-P2-1 [CODE-NOW] — blind Jetson == genuine all-clear on the wire.**
->       Carry a per-arc health/blind bit (or a heartbeat line) so the HUD can show
->       "SENSOR BLIND." Pairs with RES-P1-1.
+> - [x] **RES-P2-1 DONE + DEPLOYED 2026-08-19 — a down camera shows as a BLIND arc,
+>       not "all clear."** New low-rate `ZCOVER` channel (separate from `ZTHREAT`,
+>       same bus) carries the arcs covered by *currently-delivering* cameras;
+>       `SurroundRingCoverage.rimSegments` renders each rim arc COVERED/BLIND/DEMO
+>       (blind = dotted red). Built via spec (`design/RES-P2-1-blind-arc-spec.md`) →
+>       Fable plan → Opus implement+tests → independent validation → human
+>       split-refactor (coverage moved to a sibling object, no detekt bump). Gates
+>       green (app 1047 / beacon 109 / jetson 523); **deployed to `/opt/zodiac`
+>       (`ab42ec5`) + verified on the wire** (`ZCOVER;-64.0:65.0` = thermal forward
+>       arc, rest of ring blind). Follow-up below: wire the RGB ring so `ZCOVER`
+>       carries real per-camera coverage instead of just the thermal's arc.
+> - [ ] **Wire the RGB ring into `--camera` so `ZCOVER` means something.** Today
+>       only the thermal is configured, so `ZCOVER` reports one forward arc and the
+>       whole rest of the ring reads BLIND (correct, but uninformative). Once the
+>       ring is mounted + assigned bearings (see the camera-ring USB section), each
+>       camera's arc lights COVERED and a down camera flips its own wedge to blind.
+> - [ ] **Fires-only cannot set a nav destination (resilience gap).** Nav-authority
+>       is Samsung-only (`!Amazon`); a Fire's drive-to is a gated no-op, and it
+>       can't self-promote if no Samsung is present. If both Samsungs are lost, the
+>       Fires can show the map + follow a pre-set target but can't pick a new one
+>       (and have no GPS). Fix: let a Fire fall back to *local* drive-to when it sees
+>       no authority on the bus. Ops mitigation meanwhile: keep ≥1 Samsung powered
+>       (separate fusing). See `docs/FAILURE-MODES.md`.
+> - [ ] **Order the tablet mounts** — RAM X-Grip kits + fasteners per
+>       `docs/MOUNTING.md` (S9+ / A54 / Fires). Vibration is the enemy; the doc has
+>       the exact Amazon list + fiberglass fastening method.
 > - [x] **RES-P2-2 DONE + DEPLOYED 2026-08-13 — `olad` self-heals.** Extended the
 >       `olad.service.d/override.conf` in `scripts/install-ola.sh` with
 >       `Restart=always` + `RestartSec=2` ([Service]) and `StartLimitIntervalSec=0`
