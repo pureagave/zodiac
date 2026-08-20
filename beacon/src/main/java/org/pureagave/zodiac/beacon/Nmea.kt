@@ -10,6 +10,13 @@ import java.util.Locale
 object Nmea {
     private const val FULL_CIRCLE = 360.0
 
+    // $ZVER field bounds — mirror the tablet's FleetVersionProtocol grammar.
+    private const val NODE_MAX_LEN = 8
+    private const val LABEL_MAX_LEN = 16
+
+    // Largest value the epoch grammar ([0-9]{1,10}) can carry: ten nines.
+    private const val MAX_EPOCH = 9_999_999_999L
+
     /** `$GPHDT,<deg>,T*cs` — true heading, 0..360, one decimal. */
     fun hdt(headingDeg: Double): String {
         val norm = ((headingDeg % FULL_CIRCLE) + FULL_CIRCLE) % FULL_CIRCLE
@@ -85,6 +92,48 @@ object Nmea {
     ): String {
         val body = "ZODO,%.1f,%.1f".format(Locale.US, tripM, totalM)
         return "\$$body*${checksum(body)}\r\n"
+    }
+
+    /**
+     * `$ZVER,node,name,base,sha,dirty,epoch*cs` — the beacon's build announcement
+     * for the FLEET-1 version monitor. One of three hand-written implementations
+     * of this wire (with the tablet's `FleetVersionProtocol.kt` and the Jetson's
+     * `version_protocol.py`), pinned together by `protocol/version-protocol-golden.json`;
+     * the beacon only *emits*, so it builds but never parses. Fields are sanitised
+     * to their grammar so the output always parses on the tablet: [node] uppercased
+     * `[A-Z0-9]` last 8, [name]/[base] filtered to their legal sets, [epoch] clamped
+     * into `[0, 10^10)`. [sha] and [dirty] come straight from `BuildConfig` (already
+     * `9-hex`-or-`unknown` and a bool).
+     */
+    fun zver(
+        node: String,
+        name: String,
+        base: String,
+        sha: String,
+        dirty: Boolean,
+        epoch: Long,
+    ): String {
+        val body =
+            "ZVER,${sanitizeNode(node)},${sanitizeLabel(name, "._-", "node")}," +
+                "${sanitizeLabel(base, ".+~-", "0.0.0")},$sha,${if (dirty) "1" else "0"}," +
+                "${epoch.coerceIn(0L, MAX_EPOCH)}"
+        return "\$$body*${checksum(body)}\r\n"
+    }
+
+    /** Uppercase, `[A-Z0-9]` only, last 8 chars; "0" when nothing survives. */
+    private fun sanitizeNode(raw: String): String {
+        val cleaned = raw.uppercase(Locale.US).filter { it in 'A'..'Z' || it in '0'..'9' }
+        return cleaned.takeLast(NODE_MAX_LEN).ifEmpty { "0" }
+    }
+
+    /** Keep only [extra]-plus-alphanumeric chars, first 16; [fallback] when nothing survives. */
+    private fun sanitizeLabel(
+        raw: String,
+        extra: String,
+        fallback: String,
+    ): String {
+        val cleaned = raw.filter { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it in extra }
+        return cleaned.take(LABEL_MAX_LEN).ifEmpty { fallback }
     }
 
     /** Two-hex-digit XOR of the sentence body (the chars between `$` and `*`). */

@@ -404,11 +404,17 @@ API contract, not real OS scheduling.
       (`self_version()` from git+machine-id+hostname, fail-toward-unknown;
       `VersionScheduler`) + `fleet_bus` VERSION constants + a 2nd `ThreatBroadcaster`
       on the version group in `app.py`. Proven via `--once -v`; jetson 542.
-      **⚠️ Owed on hardware (needs fleet up):** `zver_listen.py` on the Jetson should
-      now show the edge box; confirm each device announces + a reflash flips it
-      CURRENT within ~10 s.
-      **Remaining: 6c beacon emit (fleet-fatal — DEFERRED for Rob's greenlight),
-      5 hero UI card (needs the S9+).**
+      **6c DONE 2026-08-20 (Rob greenlit)** — the beacon emits `$ZVER` via a
+      separate `VersionBroadcaster` (own socket/coroutine; `TelemetryBroadcaster`
+      GNSS path byte-untouched; `TelemetryService` starts it in its own
+      `runCatching`). `Nmea.zver` is the 3rd builder, pinned by
+      `BeaconVersionGoldenTest`. 13 tests; `org.json` added to `:beacon` test deps.
+      beacon 122. **Every node now emits; all three implementations agree on one
+      28-vector corpus.**
+      **⚠️ Owed on hardware (needs fleet up):** `zver_listen.py` on the Jetson
+      should now show edge box + tablets + beacon; confirm a reflash flips a device
+      CURRENT within ~10 s. Beacon needs a reflash to carry 6c.
+      **Remaining: 5 hero UI roster card (needs the S9+ + Rob's eye) — the last piece.**
 - [x] **FLEET-2 DONE 2026-08-11 — builds are now self-identifying.** Spec at
       `design/FLEET-2-build-identity-spec.md`. Git values computed **once** in the
       root `build.gradle.kts` (`providers.exec`, failing toward unknown/dirty) and

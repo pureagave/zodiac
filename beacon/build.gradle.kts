@@ -99,4 +99,7 @@ dependencies {
     // B4 (ShadowPowerManager) and B3 (Robolectric BroadcastReceiver dispatch).
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("androidx.test:core:1.6.1")
+    // Read the FLEET-1 $ZVER golden corpus in BeaconVersionGoldenTest (the
+    // android.jar org.json stub throws in a plain unit test); same dep the app uses.
+    testImplementation("org.json:json:20240303")
 }

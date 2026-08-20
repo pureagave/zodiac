@@ -6,6 +6,38 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-20 — FLEET-1 phase 6c: the beacon announces its build (emit complete)
+
+Rob greenlit touching the beacon. With this, **every node on the fleet now emits
+`$ZVER`** — tablets, edge box, and the sensor hub — so the hero roster is fed by
+the whole vehicle.
+
+**Isolation first** (the beacon is the fleet's only GNSS — "fleet-fatal if
+wrong"): the version emit is a **separate `VersionBroadcaster` with its own
+socket and coroutine**, and `TelemetryBroadcaster`'s GNSS transmit path is
+**byte-untouched**. `TelemetryService` starts/stops it in its own `runCatching`,
+so a version-emit fault is caught, logged, and can never take GPS off the wire.
+`VersionBroadcaster` mirrors the app's `FleetVersionSender` (send-twice multicast
++ subnet broadcast via the tested `BeaconNet`, router-boot-race tolerance, fixed
+sentence re-sent every 10 s).
+
+**`Nmea.zver(...)`** is the beacon's builder — the third hand-written `$ZVER`
+implementation — sharing no code with the app or Jetson (decision 10) but pinned
+to the same corpus: `BeaconVersionGoldenTest` validates it byte-for-byte against
+`protocol/version-protocol-golden.json`. The beacon only emits, so it validates
+format vectors only. Identity = `Nmea.zver(ANDROID_ID, Build.MODEL,
+BuildConfig.{VERSION_BASE,GIT_SHA,GIT_DIRTY,GIT_COMMIT_EPOCH_SECONDS})` — same
+fail-toward-unknown as everywhere.
+
+13 new beacon tests (golden format vectors, `Nmea.zver` sanitiser/clamp branches,
+`VersionBroadcaster` fake-socket transport). Added `testImplementation
+org.json:json` to `:beacon` (the app already had it) to read the corpus. Gate
+green: `:app` 1067, `:beacon` **122**, jetson 542.
+
+**All three implementations now agree byte-for-byte on one 28-vector corpus.**
+FLEET-1 is code-complete except **phase 5 — the hero roster card**, which needs
+the S9+ in front of Rob. ⚠️ Beacon needs a reflash to carry this.
+
 ## 2026-08-20 — FLEET-1 phase 6b: the Jetson (zvision) announces its build
 
 The edge box now emits `$ZVER` on the version bus, so it shows up in the hero

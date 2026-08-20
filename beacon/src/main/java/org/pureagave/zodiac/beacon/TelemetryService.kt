@@ -8,12 +8,18 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 /** Set by the caller when a start has a reason to believe it's happening in the
  * background: a boot start (B3), or a manual re-delivery. A `START_STICKY`
@@ -37,6 +43,11 @@ private const val TAG = "ZodiacBeacon"
 class TelemetryService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // FLEET-1 version emit — its own scope + broadcaster, entirely separate from
+    // TelemetryBroadcaster so a fault here can never touch the GNSS transmit path.
+    private val versionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var versionBroadcaster: VersionBroadcaster? = null
+
     override fun onStartCommand(
         intent: Intent?,
         flags: Int,
@@ -58,6 +69,10 @@ class TelemetryService : Service() {
         // after a cold boot. Never let that be silent again.
         runCatching { TelemetryBroadcaster.start(this, micEnabled = micUsable) }
             .onFailure { Log.e(TAG, "beacon: start() failed — the service is up but will not transmit", it) }
+        // Separate from the GNSS start above and swallowed on failure: the version
+        // announce is a nice-to-have, never worth risking the fleet's only GNSS.
+        runCatching { startVersionBroadcast() }
+            .onFailure { Log.w(TAG, "beacon: version announce failed to start (non-fatal)", it) }
         return START_STICKY
     }
 
@@ -65,9 +80,38 @@ class TelemetryService : Service() {
         // Stop first: the odometer's final persist happens inside stop(), and it
         // must run with the CPU still awake, not race a wake lock release.
         TelemetryBroadcaster.stop()
+        runCatching { versionBroadcaster?.stop() }
+        versionBroadcaster = null
+        versionScope.cancel()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         super.onDestroy()
+    }
+
+    /**
+     * Announce this beacon's build on the FLEET-1 version bus. Idempotent for a
+     * `START_STICKY` restart or a repeated manual start — a second call must not
+     * stack broadcasters. The sentence is fixed for the process; the broadcaster
+     * re-sends it every 10 s and re-resolves its subnet-broadcast target from the
+     * live DHCP lease (the phone can boot before the router has one).
+     */
+    private fun startVersionBroadcast() {
+        if (versionBroadcaster != null) return
+        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+        val sentence = beaconVersionSentence(androidId, Build.MODEL)
+        val wifi = getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val broadcaster =
+            VersionBroadcaster(
+                scope = versionScope,
+                dhcp = {
+                    @Suppress("DEPRECATION")
+                    val info = wifi?.dhcpInfo
+                    DhcpLease(info?.ipAddress ?: 0, info?.netmask ?: 0)
+                },
+            )
+        broadcaster.start(sentence)
+        versionBroadcaster = broadcaster
+        Log.i(TAG, "beacon: announcing version ${sentence.trim()}")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
