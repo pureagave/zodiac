@@ -6,6 +6,42 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-20 — FLEET-1 phase 3b: the `$ZVER` socket glue
+
+The version monitor's pure core (phases 1/2/3a — protocol, roster math, peer-table
+fold) was already built + mutation-tested. This adds the transport that was
+missing between them and the wire.
+
+**New group on the bus.** `FleetBus.VERSION_GROUP = 239.7.7.40 : 10140` (`$ZVER`),
+following the established numbering (`.10` GPS, `.20` threats, `.30` nav).
+
+**`data/fleet/FleetVersionReceiver`** — folds received `$ZVER` datagrams into a
+`StateFlow<Map<node, FleetObservation>>` via the pure `FleetPeerTable.ingest`. A
+deliberate near-clone of `NavShareReceiver` (same wildcard-bind + group-join +
+held multicast lock under its own `zodiac-zver` tag + rebuild-on-silence backoff
+loop), because that listener is already hardened. The one real difference from
+`$ZNAV`: a roster is a **set keyed by node**, not one current value — a fresh
+sighting upserts exactly that node (overwriting its build the instant a reflashed
+device re-announces) and can never evict another; malformed/foreign datagrams are
+no-ops. Staleness stays out (that's `FleetRoster`'s job from `now`); the receiver
+only stamps `lastHeardAtMs` with an injected monotonic clock — **the aggregator in
+phase 4 must read those timestamps against the same clock base.**
+
+**`data/fleet/FleetVersionSender`** — re-broadcasts one fixed `$ZVER` every **10 s**
+on `NavShareSender`'s send-twice (multicast + `/24` subnet broadcast) +
+re-resolve-targets-every-5 s mechanics. The one structural difference: **no
+authority gate** — every node announces its own build (that's the whole point), so
+there's no follower/no-op variant, and the payload is fixed for the process
+lifetime (`start(sentence)` latches, nothing to replace mid-run).
+
+12 new tests, all over real loopback sockets in the `NavShare*Test` style; the
+map-fold behaviours (two nodes coexist, a reflash overwrites *that* node's build
+in place, the arrival is timestamped) are the mutation-killers that distinguish
+this from the single-value `$ZNAV` receiver. Full gate green (`:app` **1059** /
+`:beacon` 109). Remaining FLEET-1: 4 (DI wiring + `FleetVersionMonitor` off
+`CockpitUiState`, hardware emit verify), 6 (beacon + Jetson emit + golden corpus),
+5 (hero card — needs the S9+). Spec: `design/FLEET-1-version-monitor-spec.md`.
+
 ## 2026-08-19 — fleet on the `zodiac` network; failure-mode + mounting docs added
 
 Two things logged here that weren't yet in the repo.

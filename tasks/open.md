@@ -384,7 +384,11 @@ API contract, not real OS scheduling.
       wire is `$ZVER` on **239.7.7.40:10140**. Pure, tested core done + pushed:
       `core/telemetry/FleetVersion*` (protocol, `1c74cc5`), `FleetRoster`
       (aggregator, `def9eb6`), `FleetPeerTable` (receive-side fold, `517da46`).
-      Remaining: 3b socket sender/receiver plumbing, 4 DI wiring
+      **3b DONE 2026-08-20** — `data/fleet/FleetVersionReceiver` (folds `$ZVER` into
+      a `StateFlow<Map<node, FleetObservation>>` via `FleetPeerTable`) +
+      `FleetVersionSender` (re-broadcasts one fixed sentence every 10 s, no
+      authority gate), both mirroring `NavShare*`; `FleetBus.VERSION_GROUP/PORT`
+      added; 12 loopback tests; gate green (app 1059). Remaining: 4 DI wiring
       (`FleetVersionMonitor`, kept off `CockpitUiState`) + hardware emit verify,
       5 hero UI card (needs the S9+), 6 beacon+Jetson emit + golden corpus.
 - [x] **FLEET-2 DONE 2026-08-11 — builds are now self-identifying.** Spec at

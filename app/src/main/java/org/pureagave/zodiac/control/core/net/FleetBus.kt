@@ -25,6 +25,10 @@ object FleetBus {
     const val NAV_GROUP = "239.7.7.30"
     const val NAV_PORT = 10130
 
+    /** Build-version announcements ($ZVER) from every node — the FLEET-1 monitor. */
+    const val VERSION_GROUP = "239.7.7.40"
+    const val VERSION_PORT = 10140
+
     /** Link-local only — one hop, never past the vehicle's own switch/AP. */
     const val TTL = 1
 }
