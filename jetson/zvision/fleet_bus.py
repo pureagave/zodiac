@@ -15,5 +15,9 @@ TELEMETRY_PORT = 10110
 THREAT_GROUP = "239.7.7.20"
 THREAT_PORT = 10120
 
+# Build-version announcements ($ZVER) from every node — the FLEET-1 monitor.
+VERSION_GROUP = "239.7.7.40"
+VERSION_PORT = 10140
+
 # Link-local only — one hop, never past the vehicle's own switch/AP.
 TTL = 1

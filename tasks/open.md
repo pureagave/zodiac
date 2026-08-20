@@ -395,9 +395,20 @@ API contract, not real OS scheduling.
       device's own multicast echo) wired in `ZodiacApplication` (self identity from
       FLEET-2 `BuildConfig`, emit starts at boot, one log line per roster change).
       `tools/zver_listen.py` sniffer added. 4 tests; gate green (app 1063).
-      **⚠️ Owed on hardware (needs fleet up):** run `zver_listen.py` on the Jetson
-      and confirm each device announces + a reflash flips it CURRENT within ~10 s.
-      Remaining: 5 hero UI card (needs the S9+), 6 beacon+Jetson emit + golden corpus.
+      **6a DONE 2026-08-20** — `$ZVER` golden corpus
+      (`protocol/version-protocol-golden.json`, 6 format + 22 parse vectors, gen by
+      `protocol/gen-version-golden.py`) + Python codec `version_protocol.py`; both
+      `FleetVersionProtocolGoldenTest.kt` and `test_version_protocol_golden.py`
+      validate byte-for-byte (app 1067, jetson 534).
+      **6b DONE 2026-08-20** — the Jetson emits `$ZVER` every 10 s: `version_report.py`
+      (`self_version()` from git+machine-id+hostname, fail-toward-unknown;
+      `VersionScheduler`) + `fleet_bus` VERSION constants + a 2nd `ThreatBroadcaster`
+      on the version group in `app.py`. Proven via `--once -v`; jetson 542.
+      **⚠️ Owed on hardware (needs fleet up):** `zver_listen.py` on the Jetson should
+      now show the edge box; confirm each device announces + a reflash flips it
+      CURRENT within ~10 s.
+      **Remaining: 6c beacon emit (fleet-fatal — DEFERRED for Rob's greenlight),
+      5 hero UI card (needs the S9+).**
 - [x] **FLEET-2 DONE 2026-08-11 — builds are now self-identifying.** Spec at
       `design/FLEET-2-build-identity-spec.md`. Git values computed **once** in the
       root `build.gradle.kts` (`providers.exec`, failing toward unknown/dirty) and

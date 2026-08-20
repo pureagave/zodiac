@@ -6,6 +6,37 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-20 — FLEET-1 phase 6b: the Jetson (zvision) announces its build
+
+The edge box now emits `$ZVER` on the version bus, so it shows up in the hero
+roster like any tablet — no SSH, no cable.
+
+**`jetson/zvision/version_report.py`** — `self_version()` derives the box's
+identity once at startup: `base` from `zvision.__version__`; `sha`/`dirty`/`epoch`
+by shelling `git` in the deployed checkout (`/opt/zodiac` is a real clone);
+`node` from `/etc/machine-id` (last 6, the roster key); `name` from the hostname.
+**Every git failure degrades toward unknown/dirty**, exactly like the app's
+`BuildIdentity` — a box that can't identify its build reads *unknown*, never a
+confident current. `git` is shelled with a 3 s timeout and any failure swallowed,
+so it never blocks the pipeline and runs where there's no git (CI, `--source
+fake`). `VersionScheduler` is the pure 10 s cadence (mirrors `CoverageScheduler`).
+
+**`app.py`** — a *second* `ThreatBroadcaster` on the version group
+(`239.7.7.40:10140`; the class is a generic fleet UDP sender) emits the fixed
+sentence every 10 s from the main loop, closed in `finally`. `fleet_bus` gained
+`VERSION_GROUP`/`VERSION_PORT`.
+
+**Proven end-to-end** on the dev box: `python -m zvision --once -v` emits
+`$ZVER,PROLAN,MacBookPro.lan,0.1.0,106101b5b,1,…*4F` (correctly `dirty=1` on a
+mid-edit tree; a clean `/opt/zodiac` reports `0`) alongside ZTHREAT/ZCOVER, CI
+byte-check exit 0. 8 tests pin the fallbacks (git-absent→unknown/dirty, dirty
+porcelain, garbage sha→unknown, node from machine-id vs hostname, round-trip) +
+the cadence. jetson **542**.
+
+**Remaining FLEET-1:** 6c beacon emit (fleet-fatal module — **deferred for Rob's
+greenlight**), 5 hero card (needs the S9+). When the fleet's up: `zver_listen.py`
+on the Jetson should now show the edge box in the roster.
+
 ## 2026-08-20 — FLEET-1 phase 6a: the `$ZVER` golden corpus + Python codec
 
 Locks the `$ZVER` wire as a **cross-language contract** before the beacon and

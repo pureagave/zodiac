@@ -49,6 +49,8 @@ from .rig import (
     validate_mount,
 )
 from .threat_protocol import format_frame
+from .version_protocol import build as build_version
+from .version_report import VersionScheduler, self_version
 
 
 def _parse_args(argv: Optional[List[str]]) -> argparse.Namespace:
@@ -388,6 +390,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     coverage_scheduler = CoverageScheduler()
     prev_covered: Optional[List] = None
     last_t: Optional[float] = None
+    # FLEET-1: announce this box's build on the version bus (a *separate* group,
+    # 239.7.7.40:10140) so the hero tablet flags a stale edge box like any stale
+    # tablet. The sentence is fixed for the process; a second broadcaster reuses
+    # the same hardened multicast + subnet-broadcast sender ZTHREAT uses.
+    version_broadcaster = ThreatBroadcaster(
+        group=fleet_bus.VERSION_GROUP,
+        port=fleet_bus.VERSION_PORT,
+        iface_ip=args.iface_ip,
+        bind_ip=args.bind_ip,
+        broadcast=args.broadcast,
+    )
+    self_zver = build_version(self_version())
+    version_scheduler = VersionScheduler()
+    if args.verbose:
+        print(
+            f"zvision: version {self_zver.strip()} -> "
+            f"{fleet_bus.VERSION_GROUP}:{fleet_bus.VERSION_PORT}",
+            flush=True,
+        )
     try:
         while running["go"]:
             t = time.monotonic() - start
@@ -418,6 +439,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             prev_covered = covered
             if coverage_scheduler.due(covered):
                 broadcaster.send(format_coverage(covered))
+            if version_scheduler.due():
+                version_broadcaster.send(self_zver)
             last_t = t
             if args.once:
                 break
@@ -439,6 +462,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             zaud.close()
         detector.close()
         broadcaster.close()
+        version_broadcaster.close()
     return 0
 
 
