@@ -388,9 +388,16 @@ API contract, not real OS scheduling.
       a `StateFlow<Map<node, FleetObservation>>` via `FleetPeerTable`) +
       `FleetVersionSender` (re-broadcasts one fixed sentence every 10 s, no
       authority gate), both mirroring `NavShare*`; `FleetBus.VERSION_GROUP/PORT`
-      added; 12 loopback tests; gate green (app 1059). Remaining: 4 DI wiring
-      (`FleetVersionMonitor`, kept off `CockpitUiState`) + hardware emit verify,
-      5 hero UI card (needs the S9+), 6 beacon+Jetson emit + golden corpus.
+      added; 12 loopback tests; gate green (app 1059).
+      **4 DONE 2026-08-20** — `data/fleet/FleetVersionMonitor` (peers + self →
+      `StateFlow<List<FleetRosterEntry>>` via `FleetRoster.compute`, off
+      `CockpitUiState`; 5 s recompute tick ages silent peers OFFLINE; filters the
+      device's own multicast echo) wired in `ZodiacApplication` (self identity from
+      FLEET-2 `BuildConfig`, emit starts at boot, one log line per roster change).
+      `tools/zver_listen.py` sniffer added. 4 tests; gate green (app 1063).
+      **⚠️ Owed on hardware (needs fleet up):** run `zver_listen.py` on the Jetson
+      and confirm each device announces + a reflash flips it CURRENT within ~10 s.
+      Remaining: 5 hero UI card (needs the S9+), 6 beacon+Jetson emit + golden corpus.
 - [x] **FLEET-2 DONE 2026-08-11 — builds are now self-identifying.** Spec at
       `design/FLEET-2-build-identity-spec.md`. Git values computed **once** in the
       root `build.gradle.kts` (`providers.exec`, failing toward unknown/dirty) and

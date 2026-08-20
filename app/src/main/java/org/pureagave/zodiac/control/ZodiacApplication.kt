@@ -21,6 +21,10 @@ import org.pureagave.zodiac.control.core.log.RollingFileLog
 import org.pureagave.zodiac.control.core.ops.NavShareProtocol
 import org.pureagave.zodiac.control.core.passenger.DisplayRoleStore
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
+import org.pureagave.zodiac.control.core.telemetry.BuildIdentity
+import org.pureagave.zodiac.control.core.telemetry.FleetRosterEntry
+import org.pureagave.zodiac.control.core.telemetry.FleetVersion
+import org.pureagave.zodiac.control.core.telemetry.FleetVersionProtocol
 import org.pureagave.zodiac.control.data.FakeTelemetryRepository
 import org.pureagave.zodiac.control.data.RoutedVehicleGateway
 import org.pureagave.zodiac.control.data.TelemetryRepository
@@ -28,6 +32,9 @@ import org.pureagave.zodiac.control.data.VehicleConnectionGateway
 import org.pureagave.zodiac.control.data.art.ArtImageStore
 import org.pureagave.zodiac.control.data.discovery.BmApiClient
 import org.pureagave.zodiac.control.data.discovery.DiscoveryRepository
+import org.pureagave.zodiac.control.data.fleet.FleetVersionMonitor
+import org.pureagave.zodiac.control.data.fleet.FleetVersionReceiver
+import org.pureagave.zodiac.control.data.fleet.FleetVersionSender
 import org.pureagave.zodiac.control.data.log.FileLogTree
 import org.pureagave.zodiac.control.data.nav.NavShareReceiver
 import org.pureagave.zodiac.control.data.nav.NavShareSender
@@ -103,7 +110,28 @@ class ZodiacApplication : Application() {
             Build.MODEL,
         )
         Timber.i("boot: BRC year %d, log at %s", GoldenSpike.ACTIVE_YEAR, fileLog.currentFile.absolutePath)
+        startFleetVersionAnnounce()
     }
+
+    /**
+     * FLEET-1: at boot, begin announcing this build on the version bus and
+     * collecting peers' — so a device is visible in the roster without any screen
+     * opened. The sender re-broadcasts every 10 s; the monitor's periodic
+     * recompute is what ages a silent peer to OFFLINE. One log line per roster
+     * change makes it observable on the Fire (where the on-device log viewer is
+     * the only way in) long before the hero card exists.
+     */
+    private fun startFleetVersionAnnounce() {
+        fleetVersionSender.start(FleetVersionProtocol.build(selfFleetVersion))
+        applicationScope.launch {
+            fleetVersionMonitor.roster.collect { roster -> Timber.i("fleet roster: %s", rosterLogLine(roster)) }
+        }
+    }
+
+    private fun rosterLogLine(roster: List<FleetRosterEntry>): String =
+        roster.joinToString("; ") { entry ->
+            "${entry.version.name}=${entry.status}${if (entry.isSelf) "*" else ""}"
+        }
 
     /**
      * Record an uncaught exception *before* handing back to the platform
@@ -200,6 +228,43 @@ class ZodiacApplication : Application() {
         NavShareReceiver(applicationContext = this, scope = applicationScope).also {
             applicationScope.launch { it.start() }
         }
+    }
+
+    /**
+     * FLEET-1: this device's own build, announced on the version bus as `$ZVER`
+     * and folded into the roster as the `isSelf` row. [node][FleetVersion.node]
+     * reuses the same stable id as `$ZNAV`'s `src`; the identity comes from the
+     * FLEET-2 `BuildConfig` fields (an unidentifiable build reads *unknown*, never
+     * *current* — that lives in [BuildIdentity]).
+     */
+    val selfFleetVersion: FleetVersion by lazy {
+        FleetVersion(
+            node = navSrcId,
+            name = Build.MODEL,
+            identity = BuildIdentity.parse(BuildConfig.VERSION_NAME, BuildConfig.GIT_COMMIT_EPOCH_SECONDS),
+        )
+    }
+
+    /** FLEET-1 transmit path: re-broadcasts [selfFleetVersion] every 10 s. Every node announces; started at boot. */
+    val fleetVersionSender: FleetVersionSender by lazy {
+        FleetVersionSender(scope = applicationScope, applicationContext = this)
+    }
+
+    /** FLEET-1 receive path: folds peers' `$ZVER` into a table. Every device runs one; started on first access. */
+    val fleetVersionReceiver: FleetVersionReceiver by lazy {
+        FleetVersionReceiver(applicationContext = this, scope = applicationScope).also {
+            applicationScope.launch { it.start() }
+        }
+    }
+
+    /**
+     * FLEET-1 aggregation: peers + self → the roster the hero card renders.
+     * Deliberately **off** `CockpitUiState` — a version roster is a slow
+     * side-channel (changes on a reflash, not per frame), so the A5 hot path
+     * stays lean.
+     */
+    val fleetVersionMonitor: FleetVersionMonitor by lazy {
+        FleetVersionMonitor(peers = fleetVersionReceiver.peers, self = selfFleetVersion, scope = applicationScope)
     }
 
     /**

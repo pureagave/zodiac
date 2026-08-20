@@ -6,6 +6,42 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-20 — FLEET-1 phase 4: monitor DI wiring + `zver_listen.py`
+
+Wires 3b into the app so every tablet now **announces its own build and collects
+peers'** at boot, and folds the two into the roster the hero card will render.
+
+**`data/fleet/FleetVersionMonitor`** — a thin flow composition over the pure
+`FleetRoster.compute`: `receiver.peers` + this device's own `FleetVersion`
+(`isSelf`) → `StateFlow<List<FleetRosterEntry>>`. Kept **off `CockpitUiState`** (a
+roster changes on a reflash, not per frame — the A5 hot path stays lean). Two
+things drive a recompute: a peer change, and a **periodic `RECOMPUTE_MS = 5 s`
+tick** — the tick is what ages a peer that has simply gone *silent* to OFFLINE on
+the clock (`STALE_AFTER_MS = 35 s`), since no datagram announces absence. Two
+sharp edges handled: (1) the monitor's `now()` shares the same process-global
+monotonic clock base the receiver stamps observations with; (2) a device is joined
+to its **own** multicast group so it hears its own `$ZVER` back — that echo is
+filtered by node before self is folded in, so self is exactly one row and never
+ages to OFFLINE. 4 tests (self always present; a peer appears; the echo isn't
+duplicated; a silent peer flips OFFLINE on a virtual-time tick).
+
+**`ZodiacApplication` wiring** — `selfFleetVersion = FleetVersion(navSrcId,
+Build.MODEL, BuildIdentity.parse(VERSION_NAME, GIT_COMMIT_EPOCH_SECONDS))`; sender
++ receiver + monitor as lazy singletons; `startFleetVersionAnnounce()` in
+`onCreate` starts the emit at boot and collects the roster into **one log line per
+change** (`fleet roster: SM-X810=CURRENT*; KFTUWI=BEHIND; …`), so it's observable
+on the Fire via the on-device log viewer long before the hero card exists.
+
+**`tools/zver_listen.py`** — a Jetson-side sniffer (the Mac firewall drops inbound
+UDP) that decodes `$ZVER` and prints a worst-first roster mirroring `FleetRoster`'s
+newest-epoch-wins rule. Validated against crafted sentences: dirty→UNKNOWN,
+unknown-sha→UNKNOWN, older-clean→BEHIND, newest→CURRENT.
+
+Gate green (`:app` **1063** / `:beacon` 109). **Owed on hardware** (needs the fleet
+up — Rob's Jetson bring-up): run `zver_listen.py` on the Jetson and confirm each
+device announces, then a reflash of one flips it CURRENT within ~10 s. Remaining
+FLEET-1: 6 (beacon + Jetson emit + golden corpus), 5 (hero card — needs the S9+).
+
 ## 2026-08-20 — FLEET-1 phase 3b: the `$ZVER` socket glue
 
 The version monitor's pure core (phases 1/2/3a — protocol, roster math, peer-table
