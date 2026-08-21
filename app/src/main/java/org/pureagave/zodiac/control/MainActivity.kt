@@ -86,6 +86,7 @@ private fun zodiacApp(onExitKiosk: () -> Unit = {}) {
         burnInManager = app.burnInManager,
         fileLog = app.fileLog,
         logBufferOverflow = { app.logBufferOverflow },
+        fleetRoster = app.fleetVersionMonitor.roster,
         audio = audio,
         passengerMode = passengerMode,
         onSetPassengerMode = app.displayRole::setPassengerMode,

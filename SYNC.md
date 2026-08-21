@@ -6,6 +6,31 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-21 — FLEET-1 phase 5: the roster UI — a FLEET tab in the log viewer
+
+The last FLEET-1 piece. Rob's call on placement (with his eye on the hero
+display): **a FLEET tab inside the existing log-viewer overlay** (bottom-right
+hidden long-press), rather than a persistent card or the passenger carousel —
+reuses the gesture, adds no chrome, and puts build health next to the diagnostic
+log. Available on *every* device, not just the hero, since any tablet can pull up
+the log viewer.
+
+`logViewerPanel` gained a `fleetRoster: StateFlow<List<FleetRosterEntry>>`
+(`FleetVersionMonitor.roster`, wired `ZodiacApplication` → `MainActivity` →
+`cockpitScreen` → panel; **collected only while the panel is open**, so a roster
+change never recomposes the live cockpit). A LOG/FLEET tab toggle in the header
+switches the body; the roster renders worst-status-first (the order
+`FleetRoster.compute` already applies) with **CURRENT = blue (`theme.secondary`),
+BEHIND/OFFLINE/UNKNOWN = red (`theme.error`)** per the ConceptTheme rule, `▸` +
+bold marking this device, and each node's `identity.render()` build string. The
+header shows `N nodes · all current` / `· M stale`. The old `header()` was inlined
+(the tab bar needed 7 inputs → `LongParameterList`); loss chips extracted to
+`logLossChips`.
+
+Gate green (`:app` 1067 / `:beacon` 122 / jetson 542 — no test count change; UI).
+**FLEET-1 is now code-complete — all 6 phases shipped.** Deploying to the hero
+display for Rob's eye on legibility.
+
 ## 2026-08-20 — FLEET-1 phase 6c: the beacon announces its build (emit complete)
 
 Rob greenlit touching the beacon. With this, **every node on the fleet now emits

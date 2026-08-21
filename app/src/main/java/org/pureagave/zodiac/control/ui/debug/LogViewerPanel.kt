@@ -30,11 +30,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.log.LogSeverity
 import org.pureagave.zodiac.control.core.log.RollingFileLog
 import org.pureagave.zodiac.control.core.log.logLineSeverity
+import org.pureagave.zodiac.control.core.telemetry.FleetRosterEntry
+import org.pureagave.zodiac.control.core.telemetry.FleetStatus
 import org.pureagave.zodiac.control.ui.concepts.ConceptTheme
 
 private val Scrim = Color(0xF2000000)
@@ -111,9 +116,17 @@ fun logViewerPanel(
      * previews and any caller that has no buffered tree.
      */
     bufferOverflow: () -> Long = { 0L },
+    /**
+     * FLEET-1 fleet-version roster (`FleetVersionMonitor.roster`) shown in the
+     * FLEET tab — who's on which build, worst-status-first. Collected only while
+     * the panel is open. Defaults to empty for previews / callers with no monitor.
+     */
+    fleetRoster: StateFlow<List<FleetRosterEntry>> = MutableStateFlow(emptyList()),
 ) {
     var snapshot by remember { mutableStateOf(LogSnapshot()) }
     var reloads by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableStateOf(PanelTab.LOG) }
+    val roster by fleetRoster.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
     LaunchedEffect(reloads) {
@@ -149,53 +162,144 @@ fun logViewerPanel(
                     .padding(12.dp)
                     .clickable(enabled = false) {},
         ) {
-            header(theme, snapshot, onReload = { reloads++ }, onClose = onClose)
-            snapshot.lastError?.let {
-                Text(
-                    text = "LAST ERROR  $it",
-                    color = theme.error,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = LINE_SP.sp,
-                    softWrap = false,
-                    maxLines = 1,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
-            }
-            if (lines.isEmpty()) {
-                Text(
-                    text = "— no log lines —",
-                    color = theme.dim,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = LINE_SP.sp,
-                )
-            } else {
-                LazyColumn(
-                    state = listState,
-                    // Lines are long and must not wrap: a wrapped timestamp
-                    // column destroys the scannability that makes this usable.
-                    modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState()),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Scrolling to the top of the buffer must not read as the
-                    // beginning of the story when it is really where the story
-                    // was cut. The header carries the same number; this puts it
-                    // where the cut actually is.
-                    if (snapshot.agedOut > 0) {
-                        item {
-                            Text(
-                                text = "— ${snapshot.agedOut} earlier lines aged out of the rotation window —",
-                                color = theme.dim,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = LINE_SP.sp,
-                                softWrap = false,
-                                maxLines = 1,
-                            )
-                        }
-                    }
-                    items(lines.size) { i -> logLine(lines[i], theme) }
+                    tabButton("LOG", tab == PanelTab.LOG, theme) { tab = PanelTab.LOG }
+                    tabButton("FLEET", tab == PanelTab.FLEET, theme) { tab = PanelTab.FLEET }
+                    Text(
+                        text =
+                            if (tab == PanelTab.LOG) {
+                                "${snapshot.lines.size} lines  ${"%.0f".format(snapshot.sizeKb)} KB"
+                            } else {
+                                fleetSummary(roster)
+                            },
+                        color = theme.dim,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = HEADER_SP.sp,
+                    )
                 }
+                // Loss chips belong to the log; the roster shows each node's status per row.
+                if (tab == PanelTab.LOG) logLossChips(snapshot, theme)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    panelButton("RELOAD", theme.primary) { reloads++ }
+                    panelButton("CLOSE", theme.error, onClose)
+                }
+            }
+            when (tab) {
+                PanelTab.FLEET -> fleetRosterView(roster, theme)
+                PanelTab.LOG -> logBody(snapshot, lines, listState, theme)
             }
         }
     }
+}
+
+/** Which view the log-viewer overlay is showing. */
+private enum class PanelTab { LOG, FLEET }
+
+/** The rolling-log body: last-error banner, then the tailed lines (or an empty note). */
+@Composable
+private fun logBody(
+    snapshot: LogSnapshot,
+    lines: List<String>,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    theme: ConceptTheme,
+) {
+    snapshot.lastError?.let {
+        Text(
+            text = "LAST ERROR  $it",
+            color = theme.error,
+            fontFamily = FontFamily.Monospace,
+            fontSize = LINE_SP.sp,
+            softWrap = false,
+            maxLines = 1,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+    }
+    if (lines.isEmpty()) {
+        Text(
+            text = "— no log lines —",
+            color = theme.dim,
+            fontFamily = FontFamily.Monospace,
+            fontSize = LINE_SP.sp,
+        )
+    } else {
+        LazyColumn(
+            state = listState,
+            // Lines are long and must not wrap: a wrapped timestamp
+            // column destroys the scannability that makes this usable.
+            modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState()),
+        ) {
+            // Scrolling to the top of the buffer must not read as the
+            // beginning of the story when it is really where the story
+            // was cut. The header carries the same number; this puts it
+            // where the cut actually is.
+            if (snapshot.agedOut > 0) {
+                item {
+                    Text(
+                        text = "— ${snapshot.agedOut} earlier lines aged out of the rotation window —",
+                        color = theme.dim,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = LINE_SP.sp,
+                        softWrap = false,
+                        maxLines = 1,
+                    )
+                }
+            }
+            items(lines.size) { i -> logLine(lines[i], theme) }
+        }
+    }
+}
+
+/**
+ * The FLEET-1 roster: one row per node, worst-status-first (the ordering
+ * `FleetRoster.compute` already applied). CURRENT is blue (status-ok); BEHIND /
+ * OFFLINE / UNKNOWN are red (a stale or unheard-from node is a problem you want to
+ * see). `▸` marks this device. The build string is `FleetVersion.identity.render()`.
+ */
+@Composable
+private fun fleetRosterView(
+    roster: List<FleetRosterEntry>,
+    theme: ConceptTheme,
+) {
+    if (roster.isEmpty()) {
+        Text(
+            text = "— no nodes heard — every device is silent, or none is emitting \$ZVER yet —",
+            color = theme.dim,
+            fontFamily = FontFamily.Monospace,
+            fontSize = LINE_SP.sp,
+        )
+        return
+    }
+    LazyColumn(modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
+        items(roster.size) { i -> rosterRow(roster[i], theme) }
+    }
+}
+
+@Composable
+private fun rosterRow(
+    entry: FleetRosterEntry,
+    theme: ConceptTheme,
+) {
+    val marker = if (entry.isSelf) "▸" else " "
+    val line =
+        "$marker ${entry.version.name.padEnd(ROSTER_NAME_COLS)} " +
+            "${entry.status.name.padEnd(ROSTER_STATUS_COLS)} ${entry.version.identity.render()}"
+    Text(
+        text = line,
+        color = if (entry.status == FleetStatus.CURRENT) theme.secondary else theme.error,
+        fontFamily = FontFamily.Monospace,
+        fontSize = LINE_SP.sp,
+        fontWeight = if (entry.isSelf) FontWeight.Bold else FontWeight.Normal,
+        softWrap = false,
+        maxLines = 1,
+    )
 }
 
 @Composable
@@ -218,46 +322,55 @@ private fun logLine(
     )
 }
 
+/**
+ * The rolling-log's loss chips. Silent loss would make the log a liar about its
+ * own completeness, so each way a line can vanish gets a chip — coloured by what
+ * it means. Aged out is the window working as designed (data value, purple);
+ * buffer overflow is load-shedding (also by-design loss, purple); dropped and a
+ * refused rotation are the log failing at its job (fault, red). LOG tab only —
+ * the roster shows each node's status per row.
+ */
 @Composable
-private fun header(
-    theme: ConceptTheme,
+private fun logLossChips(
     snapshot: LogSnapshot,
-    onReload: () -> Unit,
-    onClose: () -> Unit,
+    theme: ConceptTheme,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = "LOG  ${snapshot.lines.size} lines  ${"%.0f".format(snapshot.sizeKb)} KB",
-            color = theme.primary,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            fontSize = HEADER_SP.sp,
-        )
-        // Silent loss would make the log a liar about its own completeness, so
-        // both ways a line can vanish get a chip here — but they are different
-        // claims and are coloured as such. Aged out is the window working as
-        // designed (data value, purple); dropped and a refused rotation are the
-        // log failing at its job (fault, red).
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (snapshot.agedOut > 0) headerChip("${snapshot.agedOut} AGED OUT", theme.accent)
-            // Buffer overflow is load-shedding, not an IO failure — the app
-            // out-logged the flash and the pre-file buffer shed the oldest to
-            // stay bounded. Coloured with AGED OUT (by-design loss), not with
-            // the red faults, but still on screen: it means the record has
-            // holes these other counters can't account for.
-            if (snapshot.overflow > 0) headerChip("${snapshot.overflow} OVERFLOW", theme.accent)
-            if (snapshot.dropped > 0) headerChip("${snapshot.dropped} DROPPED", theme.error)
-            if (snapshot.rotationFailures > 0) headerChip("${snapshot.rotationFailures} ROTATE FAIL", theme.error)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            panelButton("RELOAD", theme.primary, onReload)
-            panelButton("CLOSE", theme.error, onClose)
-        }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (snapshot.agedOut > 0) headerChip("${snapshot.agedOut} AGED OUT", theme.accent)
+        if (snapshot.overflow > 0) headerChip("${snapshot.overflow} OVERFLOW", theme.accent)
+        if (snapshot.dropped > 0) headerChip("${snapshot.dropped} DROPPED", theme.error)
+        if (snapshot.rotationFailures > 0) headerChip("${snapshot.rotationFailures} ROTATE FAIL", theme.error)
     }
+}
+
+/** One-line summary of the roster for the FLEET tab header: node count + how many are not CURRENT. */
+private fun fleetSummary(roster: List<FleetRosterEntry>): String {
+    val stale = roster.count { it.status != FleetStatus.CURRENT }
+    val tail = if (stale == 0) "all current" else "$stale stale"
+    return "${roster.size} node${if (roster.size == 1) "" else "s"} · $tail"
+}
+
+/** A LOG/FLEET tab toggle — the active one is bright and boxed, the inactive one dim. */
+@Composable
+private fun tabButton(
+    label: String,
+    active: Boolean,
+    theme: ConceptTheme,
+    onClick: () -> Unit,
+) {
+    val color = if (active) theme.primary else theme.dim
+    Text(
+        text = label,
+        color = color,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = HEADER_SP.sp,
+        modifier =
+            Modifier
+                .border(1.dp, color)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -298,3 +411,7 @@ private const val WIDTH_FRACTION = 0.94f
 private const val HEIGHT_FRACTION = 0.88f
 private const val LINE_SP = 10
 private const val HEADER_SP = 13
+
+// Fixed monospace column widths for the FLEET roster rows so name / status / build align.
+private const val ROSTER_NAME_COLS = 12
+private const val ROSTER_STATUS_COLS = 8

@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.pureagave.zodiac.control.burnin.BurnInMitigationManager
 import org.pureagave.zodiac.control.burnin.burnInScaffold
 import org.pureagave.zodiac.control.core.geo.GoldenSpike
@@ -23,6 +25,7 @@ import org.pureagave.zodiac.control.core.log.RollingFileLog
 import org.pureagave.zodiac.control.core.model.CockpitConcept
 import org.pureagave.zodiac.control.core.ops.sunTimes
 import org.pureagave.zodiac.control.core.telemetry.AudioLevel
+import org.pureagave.zodiac.control.core.telemetry.FleetRosterEntry
 import org.pureagave.zodiac.control.data.art.ArtImageStore
 import org.pureagave.zodiac.control.ui.concepts.ThemeTracker
 import org.pureagave.zodiac.control.ui.concepts.driverNightScreen
@@ -55,6 +58,8 @@ fun cockpitScreen(
     fileLog: RollingFileLog,
     /** Lines the log's pre-file buffer shed under a burst; shown in the viewer. */
     logBufferOverflow: () -> Long = { 0L },
+    /** FLEET-1 fleet-version roster (`FleetVersionMonitor.roster`); shown in the log viewer's FLEET tab. */
+    fleetRoster: StateFlow<List<FleetRosterEntry>> = MutableStateFlow(emptyList()),
     /** Beacon mic level — passenger visualiser only; null when no hub is heard. */
     audio: AudioLevel? = null,
     /** This tablet's role; see [org.pureagave.zodiac.control.core.passenger.DisplayRoleStore]. */
@@ -159,6 +164,7 @@ fun cockpitScreen(
                         theme = ThemeTracker,
                         onClose = { logsOpen = false },
                         bufferOverflow = logBufferOverflow,
+                        fleetRoster = fleetRoster,
                     )
                 }
             }
