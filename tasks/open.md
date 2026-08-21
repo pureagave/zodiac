@@ -100,6 +100,27 @@ What's worth doing next. Critical and High audit items are all done — see `don
 > hardware kill-switch P0) and RES-P2-4 (keep the beacon credential-free, now a
 > provisioning rule). Full evidence + `file:line` for all P1/P2/P3 in the audit doc.
 
+- [ ] **App multicast RX freezes when the cockpit is backgrounded (Samsung) —
+      NET GPS/threats/nav/roster all pause.** MEASURED 2026-08-21 on the fleet
+      `zodiac` router: with the app *behind the notification shade*, a tablet
+      received **nothing** on any `239.7.7.x` group or the `/24` broadcast — despite
+      the `WifiMulticastLock` being held (logcat `acquireMulticastLock
+      lockTag=zodiac-zver/-threats/-znav`). The instant the app came to the
+      foreground it received the beacon, the S9+, **and** a wired-origin test
+      packet from the Jetson — so it is **NOT the router** (multicast forwards fine
+      every direction) and not the app's socket code; it is Android/Samsung
+      background-throttling the receive path. **Transmit is unaffected** (all 3
+      tablets show on the Jetson's `zver_listen` while backgrounded). Impact:
+      normal op is fine (cockpit foreground; the kiosked S9+/A54-as-Home stay
+      foreground), but the **passenger Fires can't be kiosked** — if their app is
+      backgrounded they lose GPS (they have no own GNSS) + the threat HUD until
+      refocused. **Fix: run the NET receivers (`NetworkLocationSource`,
+      `NetworkThreatSource`, `NavShareReceiver`, `FleetVersionReceiver`) inside a
+      foreground service** (as `:beacon` already does) so reception survives
+      backgrounding; that is the only thing that makes the un-kioskable Fires
+      reliable. The Samsungs are covered by `FailoverLocationSource` (own GNSS) for
+      *position* even backgrounded, but still lose threats/nav-share.
+
 - [ ] **Beacon transmit socket should bind to the vehicle WiFi `Network`, not
       wildcard.** `docs/AUDIT-2026-08-13.md` area 4, P2 SUSPECTED (code fact
       confirmed, real-world silent-drop not reproduced) —
