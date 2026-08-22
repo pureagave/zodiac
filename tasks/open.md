@@ -477,6 +477,15 @@ API contract, not real OS scheduling.
       survive a week unattended, and logcat does not persist across a reboot.
 
 ### Surfaced by the 2026-08-10 documentation audit
+- [ ] **All mounted display tablets need permanent vehicle power, not battery.**
+      MEASURED 2026-08-22: the **A54 driver HUD ran flat in a few days** on
+      battery — and it's an always-on OLED, one of the heaviest draws in the
+      fleet. The event is a week-plus, so battery alone is a non-starter for the
+      hero / driver / passenger displays. Each needs a reliable continuous 5 V /
+      USB-C supply off the vehicle rail (feeds into the power-architecture /
+      Victron DC-DC planning — a per-tablet load to budget). Corollary for ops:
+      a dead HUD can't be reached over adb, so **reflashes and health checks
+      assume the displays are powered.** Pairs with the beacon-power item below.
 - [ ] **Wire the beacon phone to permanent vehicle power** — it is the fleet's
       only GNSS, so its charge state is a single point of failure for every
       tablet's position and nav. The ~2-4 day battery figure is margin for a
