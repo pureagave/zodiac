@@ -22,6 +22,7 @@ import org.pureagave.zodiac.control.core.ops.NavShareProtocol
 import org.pureagave.zodiac.control.core.passenger.DisplayRoleStore
 import org.pureagave.zodiac.control.core.sensor.LocationSourceType
 import org.pureagave.zodiac.control.core.telemetry.BuildIdentity
+import org.pureagave.zodiac.control.core.telemetry.FleetRoleName
 import org.pureagave.zodiac.control.core.telemetry.FleetRosterEntry
 import org.pureagave.zodiac.control.core.telemetry.FleetVersion
 import org.pureagave.zodiac.control.core.telemetry.FleetVersionProtocol
@@ -130,7 +131,7 @@ class ZodiacApplication : Application() {
 
     private fun rosterLogLine(roster: List<FleetRosterEntry>): String =
         roster.joinToString("; ") { entry ->
-            "${entry.version.name}=${entry.status}${if (entry.isSelf) "*" else ""}"
+            "${FleetRoleName.of(entry.version.name)}=${entry.status}${if (entry.isSelf) "*" else ""}"
         }
 
     /**

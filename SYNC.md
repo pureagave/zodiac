@@ -6,6 +6,22 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-22 — FLEET-1 roster: friendly role names (Rob's call)
+
+The model numbers (`SM-X810`, `SM-A546V`, …) don't tell Rob which device is
+stale at a glance, so the roster now shows **role names**. New pure
+`core/telemetry/FleetRoleName.of(name)` maps `Build.MODEL` / the Jetson hostname
+→ **HERO** (SM-X810) / **DRIVER** (SM-A546V) / **BEACON** (SM-G715U) / **PASSENGER
+11** (KFTUWI) / **PASSENGER 9** (KFMAWI) / **JETSON** (zvision). Applied in the
+FLEET-tab rows and the boot `fleet roster:` log line. **Display-only — the wire
+still carries `Build.MODEL`, so the `$ZVER` golden corpus and every emitter are
+untouched (no reflash needed for this to take effect on receivers).** The two
+Fires keep a generation suffix so a stale passenger is still identifiable; an
+unrecognised device falls back to its raw model (never blank, never a wrong
+guess). 4 tests; gate green. Verified on the A54/hero: rows now read
+`▸ DRIVER  CURRENT  0.1.0+72c5fb27b` etc. **FLEET-1 is complete.** Next: the
+foreground-service hardening (un-kioskable Fires keep NET RX when backgrounded).
+
 ## 2026-08-21 — FLEET-1 phase 5: the roster UI — a FLEET tab in the log viewer
 
 The last FLEET-1 piece. Rob's call on placement (with his eye on the hero

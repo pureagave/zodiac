@@ -38,6 +38,7 @@ import kotlinx.coroutines.withContext
 import org.pureagave.zodiac.control.core.log.LogSeverity
 import org.pureagave.zodiac.control.core.log.RollingFileLog
 import org.pureagave.zodiac.control.core.log.logLineSeverity
+import org.pureagave.zodiac.control.core.telemetry.FleetRoleName
 import org.pureagave.zodiac.control.core.telemetry.FleetRosterEntry
 import org.pureagave.zodiac.control.core.telemetry.FleetStatus
 import org.pureagave.zodiac.control.ui.concepts.ConceptTheme
@@ -288,8 +289,9 @@ private fun rosterRow(
     theme: ConceptTheme,
 ) {
     val marker = if (entry.isSelf) "▸" else " "
+    val role = FleetRoleName.of(entry.version.name)
     val line =
-        "$marker ${entry.version.name.padEnd(ROSTER_NAME_COLS)} " +
+        "$marker ${role.padEnd(ROSTER_NAME_COLS)} " +
             "${entry.status.name.padEnd(ROSTER_STATUS_COLS)} ${entry.version.identity.render()}"
     Text(
         text = line,
@@ -412,6 +414,7 @@ private const val HEIGHT_FRACTION = 0.88f
 private const val LINE_SP = 10
 private const val HEADER_SP = 13
 
-// Fixed monospace column widths for the FLEET roster rows so name / status / build align.
-private const val ROSTER_NAME_COLS = 12
+// Fixed monospace column widths for the FLEET roster rows so name / status / build
+// align. Name column fits the longest role label ("PASSENGER 11") plus a gap.
+private const val ROSTER_NAME_COLS = 14
 private const val ROSTER_STATUS_COLS = 8

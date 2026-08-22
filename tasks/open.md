@@ -435,7 +435,16 @@ API contract, not real OS scheduling.
       **⚠️ Owed on hardware (needs fleet up):** `zver_listen.py` on the Jetson
       should now show edge box + tablets + beacon; confirm a reflash flips a device
       CURRENT within ~10 s. Beacon needs a reflash to carry 6c.
-      **Remaining: 5 hero UI roster card (needs the S9+ + Rob's eye) — the last piece.**
+      **5 DONE 2026-08-21/22** — a **FLEET tab in the log viewer** (bottom-right
+      long-press; Rob's placement call): LOG/FLEET toggle, worst-status-first rows,
+      CURRENT=blue / BEHIND·OFFLINE·UNKNOWN=red, `▸`+bold = this device, build
+      string per row, `N nodes · M stale` header. Wired `FleetVersionMonitor.roster`
+      → `MainActivity` → `cockpitScreen` → panel (collected only while open).
+      **Friendly role names** via `FleetRoleName` (HERO/DRIVER/BEACON/PASSENGER
+      9·11/JETSON, display-only — wire unchanged). Verified on hardware.
+      **✅ FLEET-1 COMPLETE — all 6 phases shipped.** Follow-ups only: reflash the
+      fleet to carry the emit + card everywhere (beacon/Jetson/Fires still on
+      `ca41bbf`); optional `zver_listen.py` friendly-name mapping.
 - [x] **FLEET-2 DONE 2026-08-11 — builds are now self-identifying.** Spec at
       `design/FLEET-2-build-identity-spec.md`. Git values computed **once** in the
       root `build.gradle.kts` (`providers.exec`, failing toward unknown/dirty) and
