@@ -6,6 +6,36 @@ Newest entries on top. Each entry: ISO date, short title, body. Don't rewrite hi
 
 ---
 
+## 2026-08-22 — FleetLinkService: keep NET RX alive when the cockpit is backgrounded
+
+Fixes the 2026-08-21 finding (backgrounded app loses fleet multicast on Samsung).
+Approached measure-first: built a minimal foreground service, **proved the
+hypothesis on hardware before finalizing**, and it held.
+
+**`FleetLinkService`** (`:app`) — a minimal FGS whose only job is to keep the
+cockpit *process* at foreground priority so the NET receivers
+(`Network{Location,Threat}Source`, `NavShareReceiver`, `FleetVersionReceiver`,
+all in `ZodiacApplication`'s scope) keep receiving fleet multicast when the
+Activity is backgrounded. **Owns no receivers** — purely the process-priority
+anchor, so no lifecycle to get wrong. `location` FGS type (a nav app receiving
+position over the fleet bus; unlike `dataSync` it has no daily time cap for an
+all-day cockpit), typed `startForeground` on API 29+ with the location permission
+granted, graceful untyped fallback otherwise. Started from `MainActivity.onCreate`
+(a foreground start, always permitted). Manifest gained `FOREGROUND_SERVICE` +
+`FOREGROUND_SERVICE_LOCATION` and the `<service>` decl. `START_STICKY`.
+
+**HARDWARE-PROVEN on the API-36 hero (the strictest case):** app backgrounded
+(Samsung launcher foreground), FGS `isForeground=true types=0x8`; the Jetson sent
+a wired-origin `JETSON-BG` `$ZVER` and the **backgrounded** app received it —
+`fleet roster: HERO=…; JETSON-BG=CURRENT; BEACON=CURRENT`. Before the FGS a
+backgrounded app received nothing on any group or the broadcast. Not unit-tested
+(an Android-integration concern with no `:app` Robolectric harness — verified
+on-device, the project's standard for device-owner/kiosk/FGS paths). Gate green.
+⚠️ Still to verify on a **Fire** (the real beneficiary — API 28/30, not connected
+at fix time; older Android throttles less, and this is the standard fix, so low
+risk). Fleet must be reflashed to carry it. Battery: a persistent FGS keeps the
+process alive, same as `:beacon` already does — fine on vehicle power.
+
 ## 2026-08-22 — FLEET-1 roster: friendly role names (Rob's call)
 
 The model numbers (`SM-X810`, `SM-A546V`, …) don't tell Rob which device is

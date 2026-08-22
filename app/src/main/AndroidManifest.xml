@@ -18,6 +18,17 @@
          WifiManager.dhcpInfo, the app's first device-to-device transmit path. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
+    <!-- Keep the fleet NET receivers (GPS, threats, nav, version) alive when the
+         cockpit Activity is backgrounded. Without a foreground service the OS
+         throttles the app's multicast RX (measured 2026-08-21, Samsung): a
+         kiosked tablet stays foreground so it's fine, but the un-kioskable
+         passenger Fires would lose GPS + the threat feed the moment the app
+         drops behind a dialog/launcher. `location` type — a nav app receiving
+         position over the fleet bus, and unlike `dataSync` it carries no daily
+         time cap for an all-day cockpit. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
     <!-- Bluetooth Classic SPP for NMEA GPS receivers (Phase 4d). -->
     <uses-permission
         android:name="android.permission.BLUETOOTH"
@@ -79,6 +90,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity-alias>
+        <!--
+          Keeps the process at foreground priority so the NET receivers keep
+          receiving fleet multicast when the cockpit Activity is backgrounded
+          (see the FOREGROUND_SERVICE permission note above). Not exported — only
+          MainActivity starts it. `location` type matches the NET GPS feed.
+        -->
+        <service
+            android:name=".FleetLinkService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
         <!--
           Device-admin component for kiosk mode. Provisioned once per tablet
           over adb after a factory reset (see docs/KIOSK.md); the app runs

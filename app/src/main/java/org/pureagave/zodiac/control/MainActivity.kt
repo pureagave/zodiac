@@ -41,6 +41,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableImmersiveMode()
+        // Keep the process at foreground priority so the NET receivers keep
+        // receiving fleet multicast when this Activity is backgrounded — Samsung
+        // throttles a backgrounded app's RX despite the MulticastLock (measured
+        // 2026-08-21; matters for the un-kioskable Fires). Started from a
+        // foreground Activity, so the FGS start is always permitted.
+        runCatching { FleetLinkService.start(this) }
         setContent { zodiacApp(onExitKiosk = { kiosk.exitKiosk(this@MainActivity) }) }
     }
 

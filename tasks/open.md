@@ -100,6 +100,17 @@ What's worth doing next. Critical and High audit items are all done — see `don
 > hardware kill-switch P0) and RES-P2-4 (keep the beacon credential-free, now a
 > provisioning rule). Full evidence + `file:line` for all P1/P2/P3 in the audit doc.
 
+- [x] **FIXED 2026-08-22 — `FleetLinkService` foreground service.** A minimal
+      FGS (`location` type, started from `MainActivity`) keeps the cockpit *process*
+      at foreground priority so the NET receivers keep receiving fleet multicast
+      when the Activity is backgrounded. **HARDWARE-PROVEN on the API-36 hero:**
+      backgrounded (launcher foreground) with the FGS `isForeground=true`, it
+      received a wired-origin `JETSON-BG` `$ZVER` — before the FGS a backgrounded
+      app received nothing. Owns no receivers (they stay in `ZodiacApplication`'s
+      scope); it's purely the process-priority anchor. ⚠️ Still to verify on a Fire
+      (the actual beneficiary — API 28/30, not connected at fix time; older Android
+      throttles less, and the fix is the standard one, so low risk). The fleet must
+      be reflashed to carry it. Original finding below (kept for the evidence):
 - [ ] **App multicast RX freezes when the cockpit is backgrounded (Samsung) —
       NET GPS/threats/nav/roster all pause.** MEASURED 2026-08-21 on the fleet
       `zodiac` router: with the app *behind the notification shade*, a tablet
